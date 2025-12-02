@@ -60,9 +60,9 @@ function InventoryVariantsSection(): JSX.Element | null {
     const payload = {
       name: formState.name.trim(),
       variant_sku: formState.sku.trim(),
-      barcode: formState.barcode.trim() || undefined,
+      barcode: formState.barcode.trim() || null,
       unit_price_override:
-        parsedPrice !== undefined && !Number.isNaN(parsedPrice) ? parsedPrice : undefined,
+        parsedPrice !== undefined && !Number.isNaN(parsedPrice) ? parsedPrice : null,
       is_default: formState.isDefault,
       is_active: formState.isActive,
     };

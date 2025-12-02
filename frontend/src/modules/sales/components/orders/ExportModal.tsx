@@ -11,26 +11,14 @@ function ExportModal({ open, onClose }: Props) {
   }
 
   return (
-    <div
-      style={{ position: "fixed", inset: 0, background: "rgba(0, 0, 0, 0.5)", display: "grid", placeItems: "center" }}
-    >
-      <div
-        style={{
-          width: 520,
-          background: "#0b1220",
-          borderRadius: 12,
-          border: "1px solid rgba(255, 255, 255, 0.08)",
-          padding: 16,
-        }}
-      >
-        <h3 style={{ marginTop: 0 }}>Exportar órdenes</h3>
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
-          <button onClick={onClose} style={{ padding: "8px 12px", borderRadius: 8 }}>
+    <div className="orders-export-modal-overlay">
+      <div className="orders-export-modal-content">
+        <h3 className="orders-export-modal-title">Exportar órdenes</h3>
+        <div className="orders-export-modal-actions">
+          <button onClick={onClose} className="orders-export-modal-btn">
             Cerrar
           </button>
-          <button
-            style={{ padding: "8px 12px", borderRadius: 8, background: "#2563eb", color: "#fff", border: 0 }}
-          >
+          <button className="orders-export-modal-btn orders-export-modal-btn--export">
             Exportar
           </button>
         </div>

@@ -4,7 +4,7 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "../../auth/useAuth";
 import { type Role } from "../../auth/roles";
 import { useAuthz } from "../../auth/useAuthz";
-import Loader from "../../shared/components/Loader";
+import { Loader } from "@components/ui/Loader";
 
 // [PACK28-guards]
 type RequireRoleProps = {

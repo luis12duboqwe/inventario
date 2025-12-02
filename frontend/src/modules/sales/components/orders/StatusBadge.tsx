@@ -5,28 +5,24 @@ type Props = {
 };
 
 function StatusBadge({ value }: Props) {
-  const map: Record<string, string> = {
-    DRAFT: "#6b7280",
-    OPEN: "#2563eb",
-    PAID: "#16a34a",
-    CANCELLED: "#b91c1c",
-    REFUNDED: "#f59e0b",
+  const getBadgeClass = (status: string) => {
+    switch (status) {
+      case "DRAFT":
+        return "orders-status-badge--draft";
+      case "OPEN":
+        return "orders-status-badge--open";
+      case "PAID":
+        return "orders-status-badge--paid";
+      case "CANCELLED":
+        return "orders-status-badge--cancelled";
+      case "REFUNDED":
+        return "orders-status-badge--refunded";
+      default:
+        return "orders-status-badge--default";
+    }
   };
-  const background = map[value] || "#6b7280";
-  return (
-    <span
-      style={{
-        padding: "2px 8px",
-        borderRadius: 999,
-        background,
-        color: "#0b1220",
-        fontSize: 12,
-        fontWeight: 700,
-      }}
-    >
-      {value}
-    </span>
-  );
+
+  return <span className={`orders-status-badge ${getBadgeClass(value)}`}>{value}</span>;
 }
 
 export default StatusBadge;

@@ -17,21 +17,17 @@ type Props = {
 
 export default function CustomerBar({ customer, onPick, onQuickNew }: Props) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 12, color: "#94a3b8" }}>Cliente</div>
-        <div style={{ fontWeight: 700 }}>{customer?.name ?? "Mostrador"}</div>
-        {!!customer?.phone && (
-          <div style={{ fontSize: 12, color: "#94a3b8" }}>{customer.phone}</div>
-        )}
-        {!!customer?.docId && (
-          <div style={{ fontSize: 12, color: "#38bdf8" }}>RTN: {customer.docId}</div>
-        )}
+    <div className="pos-customer-bar">
+      <div className="pos-customer-info">
+        <div className="pos-customer-label">Cliente</div>
+        <div className="pos-customer-name">{customer?.name ?? "Mostrador"}</div>
+        {!!customer?.phone && <div className="pos-customer-phone">{customer.phone}</div>}
+        {!!customer?.docId && <div className="pos-customer-doc">RTN: {customer.docId}</div>}
       </div>
-      <button onClick={onPick} style={{ padding: "8px 12px", borderRadius: 8 }}>
+      <button onClick={onPick} className="pos-customer-button">
         Buscar
       </button>
-      <button onClick={onQuickNew} style={{ padding: "8px 12px", borderRadius: 8 }}>
+      <button onClick={onQuickNew} className="pos-customer-button">
         Nuevo
       </button>
     </div>

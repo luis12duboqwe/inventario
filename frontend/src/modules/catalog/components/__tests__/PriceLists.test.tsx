@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { type Mock, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../dashboard/context/DashboardContext", () => ({
   useDashboard: vi.fn(),
@@ -10,7 +10,7 @@ vi.mock("../../../inventory/pages/context/InventoryLayoutContext", () => ({
   useInventoryLayout: vi.fn(),
 }));
 
-vi.mock("../../../../api", () => ({
+vi.mock("@api/customers", () => ({
   listCustomers: vi.fn(),
 }));
 
@@ -36,15 +36,15 @@ vi.mock("../../../../utils/corporateReason", () => ({
 
 import PriceLists from "../PriceLists";
 import { priceListsService } from "../../services/priceListsService";
-import { listCustomers } from "../../../../api";
+import { listCustomers } from "@api/customers";
 import { promptCorporateReason } from "../../../../utils/corporateReason";
 import { useDashboard } from "../../../dashboard/context/DashboardContext";
 import { useInventoryLayout } from "../../../inventory/pages/context/InventoryLayoutContext";
 
-const listSpy = priceListsService.list as vi.Mock;
-const createSpy = priceListsService.create as vi.Mock;
-const updateSpy = priceListsService.update as vi.Mock;
-const resolveSpy = priceListsService.resolve as vi.Mock;
+const listSpy = priceListsService.list as Mock;
+const createSpy = priceListsService.create as Mock;
+const updateSpy = priceListsService.update as Mock;
+const resolveSpy = priceListsService.resolve as Mock;
 
 const baseDashboard = {
   token: "token",
@@ -317,10 +317,10 @@ describe("PriceLists", () => {
       items: [],
     });
     resolveSpy.mockResolvedValue(null);
-    (listCustomers as unknown as vi.Mock).mockResolvedValue([]);
-    (promptCorporateReason as unknown as vi.Mock).mockReturnValue("Motivo válido");
-    (useDashboard as unknown as vi.Mock).mockReturnValue(baseDashboard);
-    (useInventoryLayout as unknown as vi.Mock).mockReturnValue(baseInventoryContext);
+    (listCustomers as unknown as Mock).mockResolvedValue([]);
+    (promptCorporateReason as unknown as Mock).mockReturnValue("Motivo válido");
+    (useDashboard as unknown as Mock).mockReturnValue(baseDashboard);
+    (useInventoryLayout as unknown as Mock).mockReturnValue(baseInventoryContext);
     vi.spyOn(window, "prompt").mockReturnValue("Motivo válido");
   });
 
@@ -367,7 +367,7 @@ describe("PriceLists", () => {
 
   it("impide guardar cuando el motivo corporativo es inválido", async () => {
     listSpy.mockResolvedValueOnce([]);
-    (promptCorporateReason as unknown as vi.Mock).mockReturnValueOnce("abc");
+    (promptCorporateReason as unknown as Mock).mockReturnValueOnce("abc");
 
     render(<PriceLists />);
 
@@ -426,7 +426,12 @@ describe("PriceLists", () => {
 
     await waitFor(() => expect(createSpy).toHaveBeenCalled());
 
-    const [tokenArg, payloadArg, reasonArg] = createSpy.mock.calls[0];
+    const calls = createSpy.mock.calls;
+    expect(calls.length).toBeGreaterThan(0);
+    const firstCall = calls[0];
+    expect(firstCall).toBeDefined();
+    if (!firstCall) throw new Error("No calls found");
+    const [tokenArg, payloadArg, reasonArg] = firstCall;
     expect(tokenArg).toBe("token");
     expect(payloadArg.name).toBe("Lista corporativa");
     expect(reasonArg).toBe("Motivo válido");

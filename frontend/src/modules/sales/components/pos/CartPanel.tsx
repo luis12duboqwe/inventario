@@ -42,64 +42,52 @@ export default function CartPanel({
 }: Props) {
   const data = Array.isArray(lines) ? lines : [];
   return (
-    <div
-      style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 10 }}
-    >
-      <div style={{ fontWeight: 700, marginBottom: 8 }}>Carrito</div>
-      <div style={{ display: "grid", gap: 8, maxHeight: 360, overflow: "auto" }}>
+    <div className="pos-cart-panel">
+      <div className="pos-cart-panel__title">Carrito</div>
+      <div className="pos-cart-list">
         {data.length ? (
           data.map((line) => (
-            <div
-              key={line.id}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 70px 90px 26px 26px 26px",
-                gap: 8,
-                alignItems: "center",
-              }}
-            >
+            <div key={line.id} className="pos-cart-item">
               <div>
-                <div style={{ fontWeight: 600 }}>{line.name}</div>
-                <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                <div className="pos-cart-item__name">{line.name}</div>
+                <div className="pos-cart-item__meta">
                   {line.sku ?? "—"}
                   {line.imei ? ` · IMEI ${line.imei}` : ""}
                 </div>
                 {Array.isArray(line.badges) && line.badges.length > 0 && (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
+                  <div className="pos-cart-item__badges">
                     {line.badges.map((badge) => (
-                      <span
-                        key={badge}
-                        style={{
-                          background: "rgba(56,189,248,0.18)",
-                          color: "#38bdf8",
-                          padding: "2px 8px",
-                          borderRadius: 9999,
-                          fontSize: 11,
-                        }}
-                      >
+                      <span key={badge} className="pos-cart-item__badge">
                         {badge}
                       </span>
                     ))}
                   </div>
                 )}
               </div>
-              <input
-                type="number"
-                min={1}
-                value={line.qty}
-                onChange={(event) =>
-                  onQty(line.id, Math.max(1, Number(event.target.value ?? 1)))
-                }
-                style={{ padding: 6, borderRadius: 8, textAlign: "center" }}
-              />
-              <div style={{ textAlign: "right" }}>
-                {Intl.NumberFormat().format(line.price)}
+              <div className="pos-qty-stepper">
+                <button
+                  type="button"
+                  onClick={() => onQty(line.id, line.qty - 1)}
+                  disabled={line.qty <= 1}
+                  aria-label="Disminuir cantidad"
+                >
+                  −
+                </button>
+                <span>{line.qty}</span>
+                <button
+                  type="button"
+                  onClick={() => onQty(line.id, line.qty + 1)}
+                  aria-label="Aumentar cantidad"
+                >
+                  +
+                </button>
               </div>
+              <div className="pos-cart-item__price">{Intl.NumberFormat().format(line.price)}</div>
               <RequirePerm perm={PERMS.POS_DISCOUNT} fallback={null}>
                 <button
                   title="Desc."
                   onClick={() => onDiscount(line.id)}
-                  style={{ padding: "6px 8px", borderRadius: 8 }}
+                  className="pos-cart-item__action"
                 >
                   %
                 </button>
@@ -108,7 +96,7 @@ export default function CartPanel({
                 <button
                   title="Precio"
                   onClick={() => onOverridePrice(line.id)}
-                  style={{ padding: "6px 8px", borderRadius: 8 }}
+                  className="pos-cart-item__action"
                 >
                   $
                 </button>
@@ -116,31 +104,31 @@ export default function CartPanel({
               <button
                 title="Quitar"
                 onClick={() => onRemove(line.id)}
-                style={{ padding: "6px 8px", borderRadius: 8 }}
+                className="pos-cart-item__action"
               >
                 ×
               </button>
             </div>
           ))
         ) : (
-          <div style={{ color: "#9ca3af" }}>Vacío</div>
+          <div className="pos-cart-empty">Vacío</div>
         )}
       </div>
-      <hr style={{ borderColor: "rgba(255,255,255,0.08)", margin: "10px 0" }} />
-      <div style={{ display: "grid", gap: 6, fontSize: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
+      <hr className="pos-cart-divider" />
+      <div className="pos-cart-totals">
+        <div className="pos-cart-totals__row">
           <span>Sub-total</span>
           <span>{Intl.NumberFormat().format(totals.sub)}</span>
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
+        <div className="pos-cart-totals__row">
           <span>Descuentos</span>
           <span>-{Intl.NumberFormat().format(totals.disc)}</span>
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
+        <div className="pos-cart-totals__row">
           <span>Impuestos</span>
           <span>{Intl.NumberFormat().format(totals.tax)}</span>
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
+        <div className="pos-cart-totals__row pos-cart-totals__row--grand">
           <span>Total</span>
           <span>{Intl.NumberFormat().format(totals.grand)}</span>
         </div>

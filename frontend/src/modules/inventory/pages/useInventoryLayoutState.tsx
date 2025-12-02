@@ -1,66 +1,67 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-
+import { useCallback, useEffect, useMemo } from "react";
 import {
-  AlertTriangle,
-  Boxes,
   Building2,
   Cog,
   DollarSign,
   RefreshCcw,
   ShieldCheck,
   Smartphone,
+  Boxes,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import type {
-  Device,
-  DeviceImportSummary,
-  DeviceListFilters,
-  DeviceUpdateInput,
-  ProductVariant,
-  ProductVariantCreateInput,
-  ProductVariantUpdateInput,
-  ProductBundle,
-  ProductBundleCreateInput,
-  ProductBundleUpdateInput,
-} from "../../../api";
+import type { Device, DeviceUpdateInput } from "@api/inventory";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 import { useInventoryModule } from "../hooks/useInventoryModule";
-import { inventoryService } from "../services/inventoryService";
 import { useSmartImportManager } from "./hooks/useSmartImportManager";
-import { promptCorporateReason } from "../../../utils/corporateReason";
-import { safeArray } from "@/utils/safeValues"; // [PACK36-inventory-state]
-import type {
-  InventoryLayoutContextValue,
-  StatusBadge,
-  StatusCard,
-} from "./context/InventoryLayoutContext";
+import { safeArray } from "@/utils/safeValues";
+import type { StatusBadge, StatusCard } from "./context/InventoryLayoutContext";
 
-export type InventoryTabId =
-  | "productos"
-  | "listas"
-  | "movimientos"
-  | "proveedores"
-  | "alertas"
-  | "reservas";
+// New Context Types
+import type { InventorySearchContextValue } from "./context/InventorySearchContext";
+import type { InventoryMetricsContextValue } from "./context/InventoryMetricsContext";
+import type { InventoryActionsContextValue } from "./context/InventoryActionsContext";
 
-const INVENTORY_TABS: Array<{
-  id: InventoryTabId;
-  label: string;
-  icon: ReactNode;
-  path: string;
-}> = [
-  { id: "productos", label: "Productos", icon: <Boxes size={16} aria-hidden="true" />, path: "productos" },
-  { id: "listas", label: "Listas de precios", icon: <DollarSign size={16} aria-hidden="true" />, path: "listas" },
-  { id: "movimientos", label: "Movimientos", icon: <RefreshCcw size={16} aria-hidden="true" />, path: "movimientos" },
-  { id: "proveedores", label: "Proveedores", icon: <Building2 size={16} aria-hidden="true" />, path: "proveedores" },
-  { id: "alertas", label: "Alertas", icon: <AlertTriangle size={16} aria-hidden="true" />, path: "alertas" },
-  { id: "reservas", label: "Reservas", icon: <ShieldCheck size={16} aria-hidden="true" />, path: "reservas" },
-];
+// Extracted Hooks
+import { useInventoryTabs, type InventoryTabId } from "./hooks/useInventoryTabs";
+import { useInventoryEdit } from "./hooks/useInventoryEdit";
+import { useInventoryStatus } from "./hooks/useInventoryStatus";
+import { useInventoryVariants } from "./hooks/useInventoryVariants";
+import { useInventoryBundles } from "./hooks/useInventoryBundles";
+import { useInventoryLabeling } from "./hooks/useInventoryLabeling";
+import { useInventoryFiltering } from "./hooks/useInventoryFiltering";
+import { useInventoryDownloads } from "./hooks/useInventoryDownloads";
+import { useInventoryAlerts } from "./hooks/useInventoryAlerts";
+
+export type { InventoryTabId };
+
+export type InventoryLayoutContextValue = {
+  module: InventoryActionsContextValue["module"];
+  smartImport: InventoryActionsContextValue["smartImport"];
+  search: InventorySearchContextValue;
+  editing: InventoryActionsContextValue["editing"];
+  metrics: InventoryMetricsContextValue;
+  downloads: InventoryActionsContextValue["downloads"];
+  catalog: InventoryActionsContextValue["catalog"];
+  alerts: InventoryActionsContextValue["alerts"];
+  helpers: InventoryActionsContextValue["helpers"];
+  labeling: InventoryActionsContextValue["labeling"];
+  reservations: InventoryActionsContextValue["reservations"];
+  variants: InventoryActionsContextValue["variants"];
+  bundles: InventoryActionsContextValue["bundles"];
+};
 
 export type InventoryLayoutState = {
+  // Split Context Values
+  searchValue: InventorySearchContextValue;
+  metricsValue: InventoryMetricsContextValue;
+  actionsValue: InventoryActionsContextValue;
+
+  // Legacy Context Value (constructed from split values for backward compat if needed)
   contextValue: InventoryLayoutContextValue;
-  tabOptions: Array<{ id: InventoryTabId; label: string; icon: ReactNode }>;
+
+  // Page State
+  tabOptions: Array<{ id: string; label: string; icon: any; href: string }>;
   activeTab: InventoryTabId;
   handleTabChange: (tabId: InventoryTabId) => void;
   moduleStatus: "ok" | "warning" | "critical";
@@ -72,33 +73,10 @@ export type InventoryLayoutState = {
   handleSubmitDeviceUpdates: (updates: DeviceUpdateInput, reason: string) => Promise<void>;
 };
 
-function resolveActiveTab(pathname: string, enablePriceLists: boolean): InventoryTabId {
-  if (pathname.includes("/movimientos")) {
-    return "movimientos";
-  }
-  if (pathname.includes("/listas-precios")) {
-    return "listas";
-  }
-  if (pathname.includes("/proveedores")) {
-    return "proveedores";
-  }
-  if (pathname.includes("/alertas")) {
-    return "alertas";
-  }
-  if (pathname.includes("/reservas")) {
-    return "reservas";
-  }
-  if (pathname.includes("/listas") && enablePriceLists) {
-    return "listas";
-  }
-  return "productos";
-}
-
 export function useInventoryLayoutState(): InventoryLayoutState {
   const navigate = useNavigate();
   const location = useLocation();
-  const { enablePriceLists, globalSearchTerm, setGlobalSearchTerm, pushToast, setError } =
-    useDashboard();
+  const { enablePriceLists, pushToast, setError } = useDashboard();
   const inventoryModule = useInventoryModule();
   const {
     stores,
@@ -111,7 +89,6 @@ export function useInventoryLayoutState(): InventoryLayoutState {
     totalValue,
     formatCurrency,
     lowStockDevices,
-    handleDeviceUpdate,
     backupHistory,
     updateStatus,
     lastInventoryRefresh,
@@ -141,24 +118,109 @@ export function useInventoryLayoutState(): InventoryLayoutState {
     expiringReservations,
   } = inventoryModule;
 
-  const [inventoryQuery, setInventoryQuery] = useState("");
-  const [estadoFilter, setEstadoFilter] = useState<Device["estado_comercial"] | "TODOS">("TODOS");
-  const [editingDevice, setEditingDevice] = useState<Device | null>(null);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [thresholdDraft, setThresholdDraft] = useState(lowStockThreshold);
-  const [isSavingThreshold, setIsSavingThreshold] = useState(false);
-  const [exportingCatalog, setExportingCatalog] = useState(false);
-  const [importingCatalog, setImportingCatalog] = useState(false);
-  const [catalogFile, setCatalogFile] = useState<File | null>(null);
-  const [lastImportSummary, setLastImportSummary] = useState<DeviceImportSummary | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // --- Extracted Hooks ---
+  const { tabs, activeTab, handleTabChange } = useInventoryTabs(enablePriceLists);
 
-  const [variants, setVariants] = useState<ProductVariant[]>([]);
-  const [variantsLoading, setVariantsLoading] = useState(false);
-  const [variantsIncludeInactive, setVariantsIncludeInactive] = useState(false);
-  const [bundles, setBundles] = useState<ProductBundle[]>([]);
-  const [bundlesLoading, setBundlesLoading] = useState(false);
-  const [bundlesIncludeInactive, setBundlesIncludeInactive] = useState(false);
+  const {
+    editingDevice,
+    isEditDialogOpen,
+    openEditDialog,
+    closeEditDialog,
+    handleSubmitDeviceUpdates: handleEditSubmit,
+  } = useInventoryEdit(
+    inventoryModule.token,
+    selectedStoreId,
+    refreshSummary,
+    (msg, type) => pushToast({ message: msg, variant: type }),
+    setError,
+  );
+
+  const { status: computedModuleStatus, label: computedModuleStatusLabel } = useInventoryStatus(
+    lowStockDevices.length,
+    totalDevices,
+    reservationsMeta ? { active_count: reservationsMeta.total } : undefined,
+  );
+
+  const {
+    variants,
+    variantsLoading,
+    variantsIncludeInactive,
+    setVariantsIncludeInactive,
+    refreshVariants,
+    handleCreateVariant,
+    handleUpdateVariant,
+    handleArchiveVariant,
+  } = useInventoryVariants({
+    token: inventoryModule.token,
+    selectedStoreId: inventoryModule.selectedStoreId,
+    enableVariants: inventoryModule.enableVariants,
+    pushToast,
+    setError,
+  });
+
+  const {
+    bundles,
+    bundlesLoading,
+    bundlesIncludeInactive,
+    setBundlesIncludeInactive,
+    refreshBundles,
+    handleCreateBundle,
+    handleUpdateBundle,
+    handleArchiveBundle,
+  } = useInventoryBundles({
+    token: inventoryModule.token,
+    selectedStoreId: inventoryModule.selectedStoreId,
+    enableBundles: inventoryModule.enableBundles,
+    pushToast,
+    setError,
+  });
+
+  const {
+    inventoryQuery,
+    setInventoryQuery,
+    estadoFilter,
+    setEstadoFilter,
+    filteredDevices,
+    highlightedDevices,
+  } = useInventoryFiltering(devices, lowStockDevices, selectedStoreId);
+
+  const {
+    exportingCatalog,
+    importingCatalog,
+    catalogFile,
+    setCatalogFile,
+    lastImportSummary,
+    fileInputRef,
+    handleDownloadReportClick,
+    handleDownloadCsvClick,
+    handleExportCatalogClick,
+    handleImportCatalogSubmit,
+  } = useInventoryDownloads({
+    selectedStore,
+    selectedStoreId,
+    inventoryQuery,
+    estadoFilter,
+    pushToast,
+    setError,
+    downloadInventoryReport,
+    downloadInventoryCsv,
+    exportCatalogCsv,
+    importCatalogCsv,
+  });
+
+  const {
+    thresholdDraft,
+    setThresholdDraft,
+    updateThresholdDraftValue,
+    handleSaveThreshold,
+    isSavingThreshold,
+  } = useInventoryAlerts(
+    lowStockThreshold,
+    selectedStoreId,
+    updateLowStockThreshold,
+    pushToast,
+    setError,
+  );
 
   const smartImport = useSmartImportManager({
     smartImportInventory,
@@ -171,257 +233,7 @@ export function useInventoryLayoutState(): InventoryLayoutState {
     setError,
   });
 
-  const refreshVariants = useCallback(async () => {
-    if (!inventoryModule.enableVariants) {
-      setVariants([]);
-      return;
-    }
-    try {
-      setVariantsLoading(true);
-      const data = await inventoryService.fetchVariants(inventoryModule.token, {
-        storeId: inventoryModule.selectedStoreId ?? undefined,
-        includeInactive: variantsIncludeInactive,
-      });
-      setVariants(data);
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "No fue posible obtener las variantes del inventario.";
-      setError(message);
-      pushToast({ message, variant: "error" });
-    } finally {
-      setVariantsLoading(false);
-    }
-  }, [
-    inventoryModule.enableVariants,
-    inventoryModule.selectedStoreId,
-    inventoryModule.token,
-    pushToast,
-    setError,
-    variantsIncludeInactive,
-  ]);
-
-  const refreshBundles = useCallback(async () => {
-    if (!inventoryModule.enableBundles) {
-      setBundles([]);
-      return;
-    }
-    try {
-      setBundlesLoading(true);
-      const data = await inventoryService.fetchBundles(inventoryModule.token, {
-        storeId: inventoryModule.selectedStoreId ?? undefined,
-        includeInactive: bundlesIncludeInactive,
-      });
-      setBundles(data);
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "No fue posible obtener los combos configurados.";
-      setError(message);
-      pushToast({ message, variant: "error" });
-    } finally {
-      setBundlesLoading(false);
-    }
-  }, [
-    inventoryModule.enableBundles,
-    inventoryModule.selectedStoreId,
-    inventoryModule.token,
-    bundlesIncludeInactive,
-    pushToast,
-    setError,
-  ]);
-
-  useEffect(() => {
-    void refreshVariants();
-  }, [refreshVariants]);
-
-  useEffect(() => {
-    void refreshBundles();
-  }, [refreshBundles]);
-
-  const handleCreateVariant = useCallback(
-    async (deviceId: number, payload: ProductVariantCreateInput, reason: string) => {
-      if (!inventoryModule.enableVariants) {
-        return;
-      }
-      try {
-        await inventoryService.createVariant(
-          inventoryModule.token,
-          deviceId,
-          payload,
-          reason,
-        );
-        pushToast({ message: "Variante registrada correctamente.", variant: "success" });
-        await refreshVariants();
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : "No fue posible registrar la variante.";
-        setError(message);
-        pushToast({ message, variant: "error" });
-      }
-    },
-    [inventoryModule.enableVariants, inventoryModule.token, pushToast, refreshVariants, setError],
-  );
-
-  const handleUpdateVariant = useCallback(
-    async (
-      variantId: number,
-      payload: ProductVariantUpdateInput,
-      reason: string,
-    ) => {
-      if (!inventoryModule.enableVariants) {
-        return;
-      }
-      try {
-        await inventoryService.updateVariant(
-          inventoryModule.token,
-          variantId,
-          payload,
-          reason,
-        );
-        pushToast({ message: "Variante actualizada.", variant: "success" });
-        await refreshVariants();
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : "No fue posible actualizar la variante.";
-        setError(message);
-        pushToast({ message, variant: "error" });
-      }
-    },
-    [inventoryModule.enableVariants, inventoryModule.token, pushToast, refreshVariants, setError],
-  );
-
-  const handleArchiveVariant = useCallback(
-    async (variantId: number, reason: string) => {
-      if (!inventoryModule.enableVariants) {
-        return;
-      }
-      try {
-        await inventoryService.archiveVariant(
-          inventoryModule.token,
-          variantId,
-          reason,
-        );
-        pushToast({ message: "Variante archivada.", variant: "success" });
-        await refreshVariants();
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : "No fue posible archivar la variante.";
-        setError(message);
-        pushToast({ message, variant: "error" });
-      }
-    },
-    [inventoryModule.enableVariants, inventoryModule.token, pushToast, refreshVariants, setError],
-  );
-
-  const handleCreateBundle = useCallback(
-    async (payload: ProductBundleCreateInput, reason: string) => {
-      if (!inventoryModule.enableBundles) {
-        return;
-      }
-      const resolvedStoreId =
-        payload.store_id ?? inventoryModule.selectedStoreId ?? undefined;
-      const bundlePayload =
-        resolvedStoreId !== undefined ? { ...payload, store_id: resolvedStoreId } : payload;
-      try {
-        await inventoryService.createBundle(
-          inventoryModule.token,
-          bundlePayload,
-          reason,
-        );
-        pushToast({ message: "Combo creado correctamente.", variant: "success" });
-        await refreshBundles();
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : "No fue posible registrar el combo.";
-        setError(message);
-        pushToast({ message, variant: "error" });
-      }
-    },
-    [
-      inventoryModule.enableBundles,
-      inventoryModule.selectedStoreId,
-      inventoryModule.token,
-      pushToast,
-      refreshBundles,
-      setError,
-    ],
-  );
-
-  const handleUpdateBundle = useCallback(
-    async (
-      bundleId: number,
-      payload: ProductBundleUpdateInput,
-      reason: string,
-    ) => {
-      if (!inventoryModule.enableBundles) {
-        return;
-      }
-      try {
-        await inventoryService.updateBundle(
-          inventoryModule.token,
-          bundleId,
-          payload,
-          reason,
-        );
-        pushToast({ message: "Combo actualizado.", variant: "success" });
-        await refreshBundles();
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : "No fue posible actualizar el combo.";
-        setError(message);
-        pushToast({ message, variant: "error" });
-      }
-    },
-    [inventoryModule.enableBundles, inventoryModule.token, pushToast, refreshBundles, setError],
-  );
-
-  const handleArchiveBundle = useCallback(
-    async (bundleId: number, reason: string) => {
-      if (!inventoryModule.enableBundles) {
-        return;
-      }
-      try {
-        await inventoryService.archiveBundle(
-          inventoryModule.token,
-          bundleId,
-          reason,
-        );
-        pushToast({ message: "Combo archivado.", variant: "success" });
-        await refreshBundles();
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : "No fue posible archivar el combo.";
-        setError(message);
-        pushToast({ message, variant: "error" });
-      }
-    },
-    [inventoryModule.enableBundles, inventoryModule.token, pushToast, refreshBundles, setError],
-  );
-
-  // Consumidores obtienen funcionalidades de importación inteligente desde `smartImport` a través del contexto.
-
-  useEffect(() => {
-    setInventoryQuery("");
-    setEstadoFilter("TODOS");
-    if (location.pathname.startsWith("/dashboard/inventory")) {
-      setGlobalSearchTerm("");
-    }
-  }, [location.pathname, selectedStoreId, setGlobalSearchTerm]);
+  // --- Effects ---
 
   useEffect(() => {
     if (!enablePriceLists && location.pathname.includes("/listas")) {
@@ -429,55 +241,12 @@ export function useInventoryLayoutState(): InventoryLayoutState {
     }
   }, [enablePriceLists, location.pathname, navigate]);
 
-  useEffect(() => {
-    if (location.pathname.startsWith("/dashboard/inventory")) {
-      setInventoryQuery(globalSearchTerm);
-    }
-  }, [globalSearchTerm, location.pathname]);
-
-  useEffect(() => {
-    setThresholdDraft(lowStockThreshold);
-  }, [lowStockThreshold]);
+  // --- Derived State ---
 
   const lastBackup = backupHistory.at(0) ?? null;
   const lastRefreshDisplay = lastInventoryRefresh
     ? lastInventoryRefresh.toLocaleString("es-HN")
     : "En espera de la primera actualización";
-
-  const filteredDevices = useMemo(() => {
-    const normalizedQuery = inventoryQuery.trim().toLowerCase();
-    return devices.filter((device) => {
-      if (estadoFilter !== "TODOS" && device.estado_comercial !== estadoFilter) {
-        return false;
-      }
-      if (!normalizedQuery) {
-        return true;
-      }
-      const haystack: Array<string | null | undefined> = [
-        device.sku,
-        device.name,
-        device.imei,
-        device.serial,
-        device.modelo,
-        device.marca,
-        device.color,
-        device.estado_comercial,
-        device.categoria,
-        device.condicion,
-        device.estado,
-        device.ubicacion,
-        device.descripcion,
-        device.proveedor,
-        device.capacidad,
-      ];
-      return haystack.some((value) => {
-        if (!value) {
-          return false;
-        }
-        return value.toLowerCase().includes(normalizedQuery);
-      });
-    });
-  }, [devices, estadoFilter, inventoryQuery]);
 
   const storeNameById = useMemo(() => {
     const mapping = new Map<number, string>();
@@ -485,36 +254,14 @@ export function useInventoryLayoutState(): InventoryLayoutState {
     return mapping;
   }, [stores]);
 
-  const [labelingDevice, setLabelingDevice] = useState<Device | null>(null);
-  const [labelingStoreId, setLabelingStoreId] = useState<number | null>(null);
-  const [labelingStoreName, setLabelingStoreName] = useState<string | null>(null);
-  const [isLabelPrinterOpen, setIsLabelPrinterOpen] = useState(false);
-
-  const openLabelPrinter = useCallback(
-    (target: Device) => {
-      const resolvedStoreId = target.store_id ?? selectedStoreId ?? null;
-      setLabelingDevice(target);
-      setLabelingStoreId(resolvedStoreId);
-      const resolvedName =
-        (resolvedStoreId != null ? storeNameById.get(resolvedStoreId) : null) ??
-        target.store_name ??
-        selectedStore?.name ??
-        null;
-      setLabelingStoreName(resolvedName);
-      setIsLabelPrinterOpen(true);
-    },
-    [selectedStoreId, selectedStore, storeNameById],
-  );
-
-  const closeLabelPrinter = useCallback(() => {
-    setIsLabelPrinterOpen(false);
-    setLabelingDevice(null);
-  }, []);
-
-  const highlightedDevices = useMemo(
-    () => new Set(lowStockDevices.map((entry) => entry.device_id)),
-    [lowStockDevices],
-  );
+  const {
+    labelingDevice,
+    labelingStoreId,
+    labelingStoreName,
+    isLabelPrinterOpen,
+    openLabelPrinter,
+    closeLabelPrinter,
+  } = useInventoryLabeling(selectedStore, selectedStoreId, storeNameById);
 
   const categoryChartData = useMemo(
     () =>
@@ -523,7 +270,7 @@ export function useInventoryLayoutState(): InventoryLayoutState {
         .map((entry) => ({
           label: entry.label || "Sin categoría",
           value: entry.value,
-        })), // [PACK36-inventory-state]
+        })),
     [stockByCategory],
   );
 
@@ -532,318 +279,18 @@ export function useInventoryLayoutState(): InventoryLayoutState {
     [categoryChartData],
   );
 
-  const closeEditDialog = useCallback(() => {
-    setIsEditDialogOpen(false);
-    setEditingDevice(null);
-  }, []);
-
-  const requestSnapshotDownload = useCallback(
-    async (downloader: (reason: string) => Promise<void>, successMessage: string) => {
-      const defaultReason = selectedStore
-        ? `Descarga inventario ${selectedStore.name}`
-        : "Descarga inventario corporativo";
-      const reason = promptCorporateReason(defaultReason);
-      if (reason === null) {
-        pushToast({ message: "Acción cancelada: se requiere motivo corporativo.", variant: "info" });
-        return;
+  const resolveLowStockSeverity = useCallback(
+    (quantity: number): "critical" | "warning" | "notice" => {
+      if (quantity <= 1) {
+        return "critical";
       }
-      if (reason.length < 5) {
-        const message = "El motivo corporativo debe tener al menos 5 caracteres.";
-        setError(message);
-        pushToast({ message, variant: "error" });
-        return;
+      if (quantity <= 3) {
+        return "warning";
       }
-      try {
-        await downloader(reason);
-        pushToast({ message: successMessage, variant: "success" });
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : "No fue posible descargar el reporte de inventario.";
-        setError(message);
-        pushToast({ message, variant: "error" });
-      }
+      return "notice";
     },
-    [pushToast, selectedStore, setError],
+    [],
   );
-
-  const handleDownloadReportClick = useCallback(async () => {
-    await requestSnapshotDownload(downloadInventoryReport, "PDF de inventario descargado");
-  }, [downloadInventoryReport, requestSnapshotDownload]);
-
-  const handleDownloadCsvClick = useCallback(async () => {
-    await requestSnapshotDownload(downloadInventoryCsv, "CSV de inventario descargado");
-  }, [downloadInventoryCsv, requestSnapshotDownload]);
-
-  const handleExportCatalogClick = useCallback(async () => {
-    if (!selectedStoreId) {
-      const message = "Selecciona una sucursal para exportar el catálogo.";
-      setError(message);
-      pushToast({ message, variant: "error" });
-      return;
-    }
-    setExportingCatalog(true);
-    try {
-      const deviceFilters: DeviceListFilters = {};
-      const normalizedQuery = inventoryQuery.trim();
-      if (normalizedQuery) {
-        deviceFilters.search = normalizedQuery;
-      }
-      if (estadoFilter !== "TODOS") {
-        deviceFilters.estado = estadoFilter;
-      }
-      await requestSnapshotDownload(
-        (reason) => exportCatalogCsv(deviceFilters, reason),
-        "Catálogo CSV exportado",
-      );
-    } finally {
-      setExportingCatalog(false);
-    }
-  }, [estadoFilter, exportCatalogCsv, inventoryQuery, pushToast, requestSnapshotDownload, selectedStoreId, setError]);
-
-  const handleImportCatalogSubmit = useCallback(async () => {
-    if (!catalogFile) {
-      const message = "Selecciona un archivo CSV antes de importar.";
-      setError(message);
-      pushToast({ message, variant: "error" });
-      return;
-    }
-    const defaultReason = selectedStore
-      ? `Importar catálogo ${selectedStore.name}`
-      : "Importar catálogo corporativo";
-    const reason = promptCorporateReason(defaultReason);
-    if (reason === null) {
-      pushToast({ message: "Acción cancelada: se requiere motivo corporativo.", variant: "info" });
-      return;
-    }
-    const normalizedReason = reason.trim();
-    if (normalizedReason.length < 5) {
-      const message = "Ingresa un motivo corporativo de al menos 5 caracteres.";
-      setError(message);
-      pushToast({ message, variant: "error" });
-      return;
-    }
-    setImportingCatalog(true);
-    try {
-      const summary = await importCatalogCsv(catalogFile, normalizedReason);
-      setLastImportSummary(summary);
-      pushToast({
-        message: `Catálogo actualizado: ${summary.created} nuevos, ${summary.updated} modificados`,
-        variant: "success",
-      });
-      setCatalogFile(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "No fue posible importar el catálogo corporativo.";
-      setError(message);
-      pushToast({ message, variant: "error" });
-    } finally {
-      setImportingCatalog(false);
-    }
-  }, [catalogFile, importCatalogCsv, pushToast, selectedStore, setError]);
-
-  const updateThresholdDraftValue = useCallback((value: number) => {
-    if (Number.isNaN(value)) {
-      return;
-    }
-    const clamped = Math.max(0, Math.min(100, value));
-    setThresholdDraft(clamped);
-  }, []);
-
-  const handleSaveThreshold = useCallback(async () => {
-    if (!selectedStoreId) {
-      const message = "Selecciona una sucursal para ajustar el umbral de alertas.";
-      setError(message);
-      pushToast({ message, variant: "error" });
-      return;
-    }
-    setIsSavingThreshold(true);
-    try {
-      await updateLowStockThreshold(selectedStoreId, thresholdDraft);
-      pushToast({ message: "Umbral de stock bajo actualizado", variant: "success" });
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "No fue posible guardar el nuevo umbral.";
-      setError(message);
-      pushToast({ message, variant: "error" });
-      setThresholdDraft(lowStockThreshold);
-    } finally {
-      setIsSavingThreshold(false);
-    }
-  }, [
-    lowStockThreshold,
-    pushToast,
-    selectedStoreId,
-    setError,
-    thresholdDraft,
-    updateLowStockThreshold,
-  ]);
-
-  const handleSubmitDeviceUpdates = useCallback(
-    async (updates: DeviceUpdateInput, reason: string) => {
-      if (!editingDevice) {
-        return;
-      }
-      try {
-        await handleDeviceUpdate(editingDevice.id, updates, reason);
-        closeEditDialog();
-        await smartImport.refreshPendingDevices();
-        void refreshSummary();
-      } catch {
-        // Errores gestionados en el contexto de dashboard.
-      }
-    },
-    [closeEditDialog, editingDevice, handleDeviceUpdate, smartImport, refreshSummary],
-  );
-
-  const resolvePendingFields = useCallback(
-    (device: Device): string[] => {
-      const missing: string[] = [];
-      const isEmpty = (value: string | null | undefined) => !value || value.trim().length === 0;
-      if (isEmpty(device.marca)) {
-        missing.push("Marca");
-      }
-      if (isEmpty(device.modelo)) {
-        missing.push("Modelo");
-      }
-      if (isEmpty(device.color)) {
-        missing.push("Color");
-      }
-      if (!device.capacidad && (device.capacidad_gb == null || device.capacidad_gb === 0)) {
-        missing.push("Capacidad");
-      }
-      if (isEmpty(device.ubicacion)) {
-        missing.push("Ubicación");
-      }
-      if (isEmpty(device.proveedor)) {
-        missing.push("Proveedor");
-      }
-      if (isEmpty(device.imei)) {
-        missing.push("IMEI");
-      }
-      if (!storeNameById.get(device.store_id)) {
-        missing.push("Sucursal");
-      }
-      return missing;
-    },
-    [storeNameById],
-  );
-
-  const downloadSmartResultCsv = useCallback(() => {
-    const result = smartImport.smartImportResult;
-    if (!result) {
-      return;
-    }
-    const lines = [
-      "Campo,Valor",
-      `Total procesados,${result.total_procesados}`,
-      `Nuevos,${result.nuevos}`,
-      `Actualizados,${result.actualizados}`,
-      `Registros incompletos,${result.registros_incompletos}`,
-      `Tiendas nuevas,${result.tiendas_nuevas.join(" | ") || "Ninguna"}`,
-    ];
-    if (result.columnas_faltantes.length > 0) {
-      lines.push(
-        `Columnas faltantes,"${result.columnas_faltantes.join(" | ").replace(/"/g, '""')}"`,
-      );
-    } else {
-      lines.push("Columnas faltantes,N/A");
-    }
-    if (result.advertencias.length > 0) {
-      result.advertencias.forEach((warning, index) => {
-        lines.push(
-          `Advertencia ${index + 1},"${warning.replace(/"/g, '""')}"`,
-        );
-      });
-    } else {
-      lines.push("Advertencias,Ninguna");
-    }
-    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "importacion_inteligente_resumen.csv";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  }, [smartImport.smartImportResult]);
-
-  const buildSmartSummaryPdf = useCallback((summary: string) => {
-    const sanitizedLines = summary
-      .split("\n")
-      .map((line) => line.replace(/([()\\])/g, "\\$1"));
-    const streamLines = ["BT", "/F1 12 Tf", "50 800 Td"];
-    sanitizedLines.forEach((line, index) => {
-      if (index === 0) {
-        streamLines.push(`(${line}) Tj`);
-      } else {
-        streamLines.push("T*");
-        streamLines.push(`(${line}) Tj`);
-      }
-    });
-    streamLines.push("ET");
-    const header = "%PDF-1.4\n";
-    const objects = [
-      "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
-      "2 0 obj << /Type /Pages /Count 1 /Kids [3 0 R] >> endobj",
-      "3 0 obj << /Type /Page /Parent 2 0 R /Resources << /Font << /F1 4 0 R >> >> /MediaBox [0 0 595 842] /Contents 5 0 R >> endobj",
-      "4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj",
-    ];
-    const stream = streamLines.join("\n");
-    const contentObject = `5 0 obj << /Length ${stream.length + 1} >> stream\n${stream}\nendstream endobj`;
-    const body = `${objects.join("\n")}\n${contentObject}`;
-
-    const entries = [...objects, contentObject];
-    const offsets: number[] = [];
-    let cursor = header.length;
-    for (const entry of entries) {
-      offsets.push(cursor);
-      cursor += entry.length + 1;
-    }
-
-    const xrefEntries = offsets
-      .map((offset) => `${offset.toString().padStart(10, "0")} 00000 n `)
-      .join("\n");
-    const xref = `xref\n0 ${offsets.length + 1}\n0000000000 65535 f \n${xrefEntries}\n`;
-    const xrefPosition = header.length + body.length + 1;
-    const trailer = `trailer << /Size ${offsets.length + 1} /Root 1 0 R >>\nstartxref\n${xrefPosition}\n%%EOF`;
-    return new Blob([header, body, "\n", xref, trailer], { type: "application/pdf" });
-  }, []);
-
-  const downloadSmartResultPdf = useCallback(() => {
-    const result = smartImport.smartImportResult;
-    if (!result) {
-      return;
-    }
-    const blob = buildSmartSummaryPdf(result.resumen);
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "importacion_inteligente_resumen.pdf";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  }, [buildSmartSummaryPdf, smartImport.smartImportResult]);
-
-  const resolveLowStockSeverity = useCallback((quantity: number): "critical" | "warning" | "notice" => {
-    if (quantity <= 1) {
-      return "critical";
-    }
-    if (quantity <= 3) {
-      return "warning";
-    }
-    return "notice";
-  }, []);
 
   const lowStockStats = useMemo(() => {
     let critical = 0;
@@ -860,13 +307,13 @@ export function useInventoryLayoutState(): InventoryLayoutState {
   }, [lowStockDevices, resolveLowStockSeverity]);
 
   const statusCards = useMemo<StatusCard[]>(() => {
-      const refreshBadge: StatusBadge = lastInventoryRefresh
-        ? { tone: "success", text: "Auto" }
-        : { tone: "warning", text: "Sin datos" };
+    const refreshBadge: StatusBadge = lastInventoryRefresh
+      ? { tone: "success", text: "Auto" }
+      : { tone: "warning", text: "Sin datos" };
 
-      const versionBadge: StatusBadge = updateStatus?.is_update_available
-        ? { tone: "warning", text: `Actualizar a ${updateStatus.latest_version}` }
-        : { tone: "success", text: "Sistema al día" };
+    const versionBadge: StatusBadge = updateStatus?.is_update_available
+      ? { tone: "warning", text: `Actualizar a ${updateStatus.latest_version}` }
+      : { tone: "success", text: "Sistema al día" };
 
     return [
       {
@@ -939,18 +386,13 @@ export function useInventoryLayoutState(): InventoryLayoutState {
     updateStatus,
   ]);
 
-  let moduleStatus: "ok" | "warning" | "critical" = "ok";
-  let moduleStatusLabel = "Inventario estable";
+  // Use computed status from hook, but override if loading (as per original logic)
+  let moduleStatus = computedModuleStatus;
+  let moduleStatusLabel = computedModuleStatusLabel;
 
   if (loading) {
     moduleStatus = "warning";
     moduleStatusLabel = "Actualizando inventario";
-  } else if (lowStockStats.critical > 0) {
-    moduleStatus = "critical";
-    moduleStatusLabel = `${lowStockStats.critical} dispositivos en nivel crítico`;
-  } else if (lowStockStats.warning > 0) {
-    moduleStatus = "warning";
-    moduleStatusLabel = `${lowStockStats.warning} dispositivos con stock bajo`;
   }
 
   const triggerDownloadReport = useCallback(() => {
@@ -981,67 +423,118 @@ export function useInventoryLayoutState(): InventoryLayoutState {
     void handleImportCatalogSubmit();
   }, [handleImportCatalogSubmit]);
 
-  const activeTab = resolveActiveTab(location.pathname, enablePriceLists);
-
-  const availableTabs = useMemo(
-    () =>
-      INVENTORY_TABS.filter((tab) => enablePriceLists || tab.id !== "listas"),
-    [enablePriceLists],
-  );
-
   const tabOptions = useMemo(
     () =>
-      availableTabs.map((tab) => ({
+      tabs.map((tab) => ({
         id: tab.id,
         label: tab.label,
         icon: tab.icon,
+        href: tab.path,
       })),
-    [availableTabs],
+    [tabs],
   );
 
-  const handleTabChange = useCallback(
-    (tabId: InventoryTabId) => {
-      const target = availableTabs.find((tab) => tab.id === tabId);
-      if (!target) {
-        return;
-      }
-      navigate(target.path, { replace: false });
+  // Note: handleSubmitDeviceUpdates is now handled by useInventoryEdit hook (handleEditSubmit)
+  // We need to wrap it to include the smartImport refresh logic that was in the original file
+  const handleSubmitDeviceUpdates = useCallback(
+    async (updates: DeviceUpdateInput, reason: string) => {
+      await handleEditSubmit(updates, reason);
+      // These were called after update in the original file
+      await smartImport.refreshPendingDevices();
+      void refreshSummary();
     },
-    [availableTabs, navigate],
+    [handleEditSubmit, smartImport, refreshSummary],
   );
 
-  const contextValue = useMemo<InventoryLayoutContextValue>(
+  const resolvePendingFields = useCallback(
+    (device: Device): string[] => {
+      const missing: string[] = [];
+      const isEmpty = (value: string | null | undefined) => !value || value.trim().length === 0;
+      if (isEmpty(device.marca)) {
+        missing.push("Marca");
+      }
+      if (isEmpty(device.modelo)) {
+        missing.push("Modelo");
+      }
+      if (isEmpty(device.color)) {
+        missing.push("Color");
+      }
+      if (!device.capacidad && (device.capacidad_gb == null || device.capacidad_gb === 0)) {
+        missing.push("Capacidad");
+      }
+      if (isEmpty(device.ubicacion)) {
+        missing.push("Ubicación");
+      }
+      if (isEmpty(device.proveedor)) {
+        missing.push("Proveedor");
+      }
+      if (isEmpty(device.imei)) {
+        missing.push("IMEI");
+      }
+      if (!storeNameById.get(device.store_id)) {
+        missing.push("Sucursal");
+      }
+      return missing;
+    },
+    [storeNameById],
+  );
+
+  // --- Split Context Values ---
+
+  const searchValue = useMemo<InventorySearchContextValue>(
+    () => ({
+      inventoryQuery,
+      setInventoryQuery,
+      estadoFilter,
+      setEstadoFilter,
+      filteredDevices,
+      highlightedDeviceIds: highlightedDevices,
+    }),
+    [
+      inventoryQuery,
+      setInventoryQuery,
+      estadoFilter,
+      setEstadoFilter,
+      filteredDevices,
+      highlightedDevices,
+    ],
+  );
+
+  const metricsValue = useMemo<InventoryMetricsContextValue>(
+    () => ({
+      statusCards,
+      storeValuationSnapshot,
+      lastBackup,
+      lastRefreshDisplay,
+      totalCategoryUnits,
+      categoryChartData,
+      moduleStatus,
+      moduleStatusLabel,
+      lowStockStats,
+    }),
+    [
+      statusCards,
+      storeValuationSnapshot,
+      lastBackup,
+      lastRefreshDisplay,
+      totalCategoryUnits,
+      categoryChartData,
+      moduleStatus,
+      moduleStatusLabel,
+      lowStockStats,
+    ],
+  );
+
+  const actionsValue = useMemo<InventoryActionsContextValue>(
     () => ({
       module: inventoryModule,
       smartImport,
-      search: {
-        inventoryQuery,
-        setInventoryQuery,
-        estadoFilter,
-        setEstadoFilter,
-        filteredDevices,
-        highlightedDeviceIds: highlightedDevices,
-      },
       editing: {
         editingDevice,
-        openEditDialog: (device: Device) => {
-          setEditingDevice(device);
-          setIsEditDialogOpen(true);
-        },
+        openEditDialog,
         closeEditDialog,
         isEditDialogOpen,
         handleSubmitDeviceUpdates,
-      },
-      metrics: {
-        statusCards,
-        storeValuationSnapshot,
-        lastBackup,
-        lastRefreshDisplay,
-        totalCategoryUnits,
-        categoryChartData,
-        moduleStatus,
-        moduleStatusLabel,
-        lowStockStats,
       },
       downloads: {
         triggerRefreshSummary,
@@ -1049,8 +542,8 @@ export function useInventoryLayoutState(): InventoryLayoutState {
         triggerDownloadCsv,
         triggerExportCatalog,
         triggerImportCatalog,
-        downloadSmartResultCsv,
-        downloadSmartResultPdf,
+        downloadSmartResultCsv: smartImport.downloadSmartResultCsv,
+        downloadSmartResultPdf: smartImport.downloadSmartResultPdf,
         triggerRefreshSupplierOverview,
         triggerRefreshRecentMovements,
       },
@@ -1078,7 +571,7 @@ export function useInventoryLayoutState(): InventoryLayoutState {
         open: isLabelPrinterOpen,
         device: labelingDevice,
         storeId: labelingStoreId,
-        storeName: labelingStoreName,
+        storeName: labelingStoreName ?? undefined,
         openLabelPrinter,
         closeLabelPrinter,
       },
@@ -1120,30 +613,16 @@ export function useInventoryLayoutState(): InventoryLayoutState {
     [
       inventoryModule,
       smartImport,
-      inventoryQuery,
-      estadoFilter,
-      filteredDevices,
-      highlightedDevices,
       editingDevice,
+      openEditDialog,
       closeEditDialog,
       isEditDialogOpen,
       handleSubmitDeviceUpdates,
-      statusCards,
-      storeValuationSnapshot,
-      lastBackup,
-      lastRefreshDisplay,
-      totalCategoryUnits,
-      categoryChartData,
-      moduleStatus,
-      moduleStatusLabel,
-      lowStockStats,
       triggerRefreshSummary,
       triggerDownloadReport,
       triggerDownloadCsv,
       triggerExportCatalog,
       triggerImportCatalog,
-      downloadSmartResultCsv,
-      downloadSmartResultPdf,
       triggerRefreshSupplierOverview,
       triggerRefreshRecentMovements,
       catalogFile,
@@ -1190,10 +669,35 @@ export function useInventoryLayoutState(): InventoryLayoutState {
       handleUpdateBundle,
       handleArchiveBundle,
       setBundlesIncludeInactive,
+      setCatalogFile,
+      setThresholdDraft,
     ],
   );
 
+  // Construct legacy context value from split values
+  const contextValue = useMemo<InventoryLayoutContextValue>(
+    () => ({
+      module: actionsValue.module,
+      smartImport: actionsValue.smartImport,
+      search: searchValue,
+      editing: actionsValue.editing,
+      metrics: metricsValue,
+      downloads: actionsValue.downloads,
+      catalog: actionsValue.catalog,
+      alerts: actionsValue.alerts,
+      helpers: actionsValue.helpers,
+      labeling: actionsValue.labeling,
+      reservations: actionsValue.reservations,
+      variants: actionsValue.variants,
+      bundles: actionsValue.bundles,
+    }),
+    [searchValue, metricsValue, actionsValue],
+  );
+
   return {
+    searchValue,
+    metricsValue,
+    actionsValue,
     contextValue,
     tabOptions,
     activeTab,
@@ -1207,4 +711,3 @@ export function useInventoryLayoutState(): InventoryLayoutState {
     handleSubmitDeviceUpdates,
   };
 }
-

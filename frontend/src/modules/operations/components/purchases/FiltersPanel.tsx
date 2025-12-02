@@ -1,5 +1,6 @@
 import type { FormEvent } from "react";
-import type { PurchaseVendor, UserAccount } from "../../../../api";
+import type { PurchaseVendor } from "@api/purchases";
+import type { UserAccount } from "@api/users";
 import type { PurchaseRecordFilters } from "../../../../types/purchases";
 
 type PurchasesFiltersPanelProps = {

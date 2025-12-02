@@ -1,6 +1,6 @@
 // [PACK22-POS-HOOK-START]
 import { useCallback, useRef, useState } from "react";
-import type { CartLineInput, Product, PaymentInput, Totals } from "../../../services/sales";
+import type { CartLineInput, Product, PaymentInput, Totals, CheckoutRequest } from "../../../services/sales";
 import { calcTotalsLocal, asCheckoutRequest } from "../utils/totals";
 import { SalesPOS } from "../../../services/sales";
 
@@ -13,7 +13,7 @@ export function usePOS() {
   const [totals, setTotals] = useState<Totals>(() => calcTotalsLocal([]));
   const [loading, setLoading] = useState(false);
   const [banner, setBanner] = useState<PosBanner | null>(null);
-  type OfflineItem = { ts: number; dto: any };
+  type OfflineItem = { ts: number; dto: CheckoutRequest };
   const [pendingOffline, setPendingOffline] = useState<OfflineItem[]>(() => {
     try { return JSON.parse(localStorage.getItem("sm_offline_sales") || "[]") as OfflineItem[]; }
     catch { return []; }
@@ -79,7 +79,7 @@ export function usePOS() {
       const dto = asCheckoutRequest(lines, payments, customerId ?? undefined);
       const t = await SalesPOS.priceDraft(dto);
       setTotals(t);
-    } catch (e: any) {
+    } catch (e: unknown) {
       // Silencioso: el cálculo local mantiene la UI operativa
   console.warn("priceDraft fallback local", e);
       setBanner({ type: "warn", msg: "No fue posible sincronizar totales con el servidor (usando cálculo local)." });
@@ -95,7 +95,7 @@ export function usePOS() {
       const r = await SalesPOS.holdSale(dto);
       setBanner({ type: "success", msg: `Venta en espera guardada (#${r.holdId}).` });
       return r.holdId;
-    } catch (e: any) {
+    } catch (e: unknown) {
       setBanner({ type: "error", msg: "No se pudo guardar venta en espera." });
       throw e;
     } finally {
@@ -111,7 +111,7 @@ export function usePOS() {
       setPayments(dto.payments || []);
       setCustomerId(dto.customerId || null);
       await priceDraft();
-    } catch (e: any) {
+    } catch (e: unknown) {
       setBanner({ type: "error", msg: "No se pudo recuperar venta en espera." });
       throw e;
     } finally {
@@ -128,7 +128,7 @@ export function usePOS() {
       setPayments([]);
       setBanner({ type: "success", msg: `Venta #${r.number} realizada.` });
       return r;
-    } catch (e: any) {
+    } catch (e: unknown) {
       // Offline mínimo: guardar intento en localStorage para reintentar
       try {
         const q = JSON.parse(localStorage.getItem("sm_offline_sales") || "[]") as OfflineItem[];
@@ -136,7 +136,10 @@ export function usePOS() {
         localStorage.setItem("sm_offline_sales", JSON.stringify(q));
         setPendingOffline(q);
         setBanner({ type: "warn", msg: "Sin conexión. Venta en cola offline para reintento." });
-      } catch {}
+      } catch (storageError) {
+        console.error("Failed to save offline sale to localStorage", storageError);
+        setBanner({ type: "error", msg: "Error crítico: No se pudo guardar la venta offline." });
+      }
       throw e;
     } finally {
       setLoading(false);

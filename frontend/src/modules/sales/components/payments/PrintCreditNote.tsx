@@ -33,44 +33,52 @@ function PrintCreditNote({ business, creditNote }: PrintCreditNoteProps) {
   const items = Array.isArray(creditNote?.items) ? creditNote?.items ?? [] : [];
 
   return (
-    <div style={{ width: 680, margin: "0 auto", padding: 16, background: "#ffffff", color: "#111827", fontFamily: "Inter, system-ui, sans-serif" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+    <div className="print-credit-note">
+      <div className="print-credit-note-header">
         <div>
-          <div style={{ fontWeight: 700, fontSize: 20 }}>{business?.name ?? "SOFTMOBILE"}</div>
-          {business?.address ? <div style={{ fontSize: 12 }}>{business.address}</div> : null}
-          {business?.phone ? <div style={{ fontSize: 12 }}>Tel. {business.phone}</div> : null}
-          {business?.taxId ? <div style={{ fontSize: 12 }}>RFC: {business.taxId}</div> : null}
+          <div className="print-credit-note-business-name">{business?.name ?? "SOFTMOBILE"}</div>
+          {business?.address ? (
+            <div className="print-credit-note-text-sm">{business.address}</div>
+          ) : null}
+          {business?.phone ? (
+            <div className="print-credit-note-text-sm">Tel. {business.phone}</div>
+          ) : null}
+          {business?.taxId ? (
+            <div className="print-credit-note-text-sm">RFC: {business.taxId}</div>
+          ) : null}
         </div>
-        <div style={{ textAlign: "right" }}>
-          <div style={{ fontWeight: 700, fontSize: 16 }}>NOTA DE CRÉDITO</div>
-          <div style={{ fontSize: 12 }}>Número: {creditNote?.number ?? "—"}</div>
-          <div style={{ fontSize: 12 }}>Fecha: {creditNote?.date ? dateFormatter.format(new Date(creditNote.date)) : "—"}</div>
-          <div style={{ fontSize: 12 }}>Cliente: {creditNote?.customer ?? "—"}</div>
+        <div className="print-credit-note-meta">
+          <div className="print-credit-note-title">NOTA DE CRÉDITO</div>
+          <div className="print-credit-note-text-sm">Número: {creditNote?.number ?? "—"}</div>
+          <div className="print-credit-note-text-sm">
+            Fecha: {creditNote?.date ? dateFormatter.format(new Date(creditNote.date)) : "—"}
+          </div>
+          <div className="print-credit-note-text-sm">Cliente: {creditNote?.customer ?? "—"}</div>
         </div>
       </div>
 
-      <hr style={{ margin: "16px 0", borderColor: "#e2e8f0" }} />
+      <hr className="print-credit-note-divider" />
 
-      <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
+      <table className="print-credit-note-table">
         <thead>
           <tr>
-            <th style={{ textAlign: "left", paddingBottom: 8, borderBottom: "1px solid #e2e8f0" }}>Descripción</th>
-            <th style={{ textAlign: "right", paddingBottom: 8, borderBottom: "1px solid #e2e8f0" }}>Cant.</th>
-            <th style={{ textAlign: "right", paddingBottom: 8, borderBottom: "1px solid #e2e8f0" }}>Monto</th>
+            <th className="print-credit-note-th">Descripción</th>
+            <th className="print-credit-note-th-right">Cant.</th>
+            <th className="print-credit-note-th-right">Monto</th>
           </tr>
         </thead>
         <tbody>
           {items.length > 0 ? (
             items.map((item, index) => (
               <tr key={`${item.name}-${index}`}>
-                <td style={{ padding: "8px 0", borderBottom: "1px solid #f1f5f9" }}>{item.name}</td>
-                <td style={{ padding: "8px 0", textAlign: "right", borderBottom: "1px solid #f1f5f9" }}>{item.qty}</td>
-                <td style={{ padding: "8px 0", textAlign: "right", borderBottom: "1px solid #f1f5f9" }}>{currency.format(item.amount)}</td>
+                <td className="print-credit-note-td">{item.name}</td>
+                <td className="print-credit-note-td-right">{item.qty}</td>
+                <td className="print-credit-note-td-right">{currency.format(item.amount)}</td>
               </tr>
             ))
           ) : (
             <tr>
-              <td colSpan={3} style={{ padding: 12, textAlign: "center", color: "#64748b" }}>
+              <td colSpan={3} className="print-credit-note-empty">
                 Sin conceptos cargados
               </td>
             </tr>
@@ -78,12 +86,13 @@ function PrintCreditNote({ business, creditNote }: PrintCreditNoteProps) {
         </tbody>
       </table>
 
-      <div style={{ textAlign: "right", fontWeight: 700, fontSize: 15, marginTop: 16 }}>
+      <div className="print-credit-note-total">
         Total: {currency.format(Math.max(0, creditNote?.total ?? 0))}
       </div>
 
-      <div style={{ marginTop: 16, fontSize: 11, color: "#475569", lineHeight: 1.4 }}>
-        Esta nota de crédito puede aplicarse a compras futuras o solicitarse como reembolso de acuerdo con las políticas de la empresa.
+      <div className="print-credit-note-footer">
+        Esta nota de crédito puede aplicarse a compras futuras o solicitarse como reembolso de
+        acuerdo con las políticas de la empresa.
       </div>
     </div>
   );

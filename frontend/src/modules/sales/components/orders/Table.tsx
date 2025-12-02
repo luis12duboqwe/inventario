@@ -34,27 +34,27 @@ function Table({
   const allSelected = data.length > 0 && data.every((row) => selected.includes(row.id));
 
   if (loading) {
-    return <div style={{ padding: 12 }}>Cargando…</div>;
+    return <div className="orders-table-loading">Cargando…</div>;
   }
 
   if (!data.length) {
-    return <div style={{ padding: 12, color: "#9ca3af" }}>Sin resultados</div>;
+    return <div className="orders-table-empty">Sin resultados</div>;
   }
 
   return (
-    <div style={{ overflow: "auto", borderRadius: 12, border: "1px solid rgba(255, 255, 255, 0.08)" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+    <div className="orders-table-container">
+      <table className="orders-table">
         <thead>
-          <tr style={{ background: "rgba(255, 255, 255, 0.03)" }}>
-            <th style={{ textAlign: "center", padding: 10, width: 36 }}>
+          <tr className="orders-table-header-row">
+            <th className="orders-table-th--checkbox">
               <input type="checkbox" checked={allSelected} onChange={onToggleSelectAll} />
             </th>
-            <th style={{ textAlign: "left", padding: 10 }}>Fecha</th>
-            <th style={{ textAlign: "left", padding: 10 }}>#</th>
-            <th style={{ textAlign: "left", padding: 10 }}>Cliente</th>
-            <th style={{ textAlign: "center", padding: 10 }}>Items</th>
-            <th style={{ textAlign: "right", padding: 10 }}>Total</th>
-            <th style={{ textAlign: "left", padding: 10 }}>Estado</th>
+            <th className="orders-table-th">Fecha</th>
+            <th className="orders-table-th">#</th>
+            <th className="orders-table-th">Cliente</th>
+            <th className="orders-table-th orders-table-th--center">Items</th>
+            <th className="orders-table-th orders-table-th--right">Total</th>
+            <th className="orders-table-th">Estado</th>
           </tr>
         </thead>
         <tbody>
@@ -62,21 +62,26 @@ function Table({
             <tr
               key={row.id}
               onClick={() => onRowClick?.(row)}
-              style={{ cursor: onRowClick ? "pointer" : "default" }}
+              className={onRowClick ? "orders-table-row--clickable" : ""}
             >
-              <td style={{ textAlign: "center", padding: 10 }} onClick={(event) => event.stopPropagation()}>
+              <td
+                className="orders-table-td orders-table-td--center"
+                onClick={(event) => event.stopPropagation()}
+              >
                 <input
                   type="checkbox"
                   checked={selected.includes(row.id)}
                   onChange={() => onToggleSelect?.(row.id)}
                 />
               </td>
-              <td style={{ padding: 10 }}>{row.date}</td>
-              <td style={{ padding: 10 }}>{row.number || "-"}</td>
-              <td style={{ padding: 10 }}>{row.customer}</td>
-              <td style={{ padding: 10, textAlign: "center" }}>{row.itemsCount}</td>
-              <td style={{ padding: 10, textAlign: "right" }}>{Intl.NumberFormat().format(row.total)}</td>
-              <td style={{ padding: 10 }}>
+              <td className="orders-table-td">{row.date}</td>
+              <td className="orders-table-td">{row.number || "-"}</td>
+              <td className="orders-table-td">{row.customer}</td>
+              <td className="orders-table-td orders-table-td--center">{row.itemsCount}</td>
+              <td className="orders-table-td orders-table-td--right">
+                {Intl.NumberFormat().format(row.total)}
+              </td>
+              <td className="orders-table-td">
                 <StatusBadge value={row.status} />
               </td>
             </tr>

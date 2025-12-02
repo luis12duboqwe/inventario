@@ -1,4 +1,4 @@
-import type { CustomerLedgerEntry } from "../api";
+import type { CustomerLedgerEntry } from "@api/customers";
 
 export type CustomerFormState = {
   name: string;

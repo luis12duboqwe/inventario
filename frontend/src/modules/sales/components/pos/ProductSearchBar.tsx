@@ -8,8 +8,9 @@ type Props = {
 
 export default function ProductSearchBar({ value, onChange, onSearch }: Props) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
+    <div className="pos-product-search-bar">
       <input
+        id="pos-product-search"
         placeholder="Buscar SKU / IMEI / nombre"
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -18,12 +19,9 @@ export default function ProductSearchBar({ value, onChange, onSearch }: Props) {
             onSearch?.(value);
           }
         }}
-        style={{ padding: 10, borderRadius: 10 }}
+        className="pos-product-search-input"
       />
-      <button
-        onClick={() => onSearch?.(value)}
-        style={{ padding: "10px 14px", borderRadius: 10 }}
-      >
+      <button onClick={() => onSearch?.(value)} className="pos-product-search-btn">
         Buscar
       </button>
     </div>

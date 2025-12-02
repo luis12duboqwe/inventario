@@ -27,7 +27,7 @@ function StockAlertsWidget() {
       try {
         setIsLoading(true);
         const response = await getInventoryAlerts(token, {
-          storeId: selectedStoreId ?? undefined,
+          ...(selectedStoreId ? { storeId: selectedStoreId } : {}),
         });
         if (!isMounted) {
           return;
@@ -102,11 +102,13 @@ function StockAlertsWidget() {
                 <span className="muted-text">
                   {alert.name} · {alert.store_name}
                 </span>
-                <span className="muted-text">Severidad: {resolveSeverityLabel(alert.severity)}</span>
+                <span className="muted-text">
+                  Severidad: {resolveSeverityLabel(alert.severity)}
+                </span>
                 <div className="stock-alert-tags">
                   <span className="stock-tag tag-minimum">Mínimo {alert.minimum_stock}</span>
                   <span className="stock-tag tag-reorder">Reorden {alert.reorder_point}</span>
-                  {alert.reorder_gap > 0 ? (
+                  {(alert.reorder_gap ?? 0) > 0 ? (
                     <span className="stock-tag tag-gap">Faltan {alert.reorder_gap} uds</span>
                   ) : (
                     <span className="stock-tag tag-gap safe">En rango</span>
@@ -117,8 +119,8 @@ function StockAlertsWidget() {
                         alert.projected_days <= 3
                           ? "critical"
                           : alert.projected_days <= 7
-                            ? "warning"
-                            : "notice"
+                          ? "warning"
+                          : "notice"
                       }`}
                     >
                       {alert.projected_days}d restantes
@@ -127,7 +129,10 @@ function StockAlertsWidget() {
                     <span className="stock-tag tag-forecast notice">Sin pronóstico</span>
                   )}
                   {alert.insights.slice(0, 2).map((insight, index) => (
-                    <span key={`${alert.device_id}-widget-insight-${index}`} className="stock-tag tag-insight">
+                    <span
+                      key={`${alert.device_id}-widget-insight-${index}`}
+                      className="stock-tag tag-insight"
+                    >
                       {insight}
                     </span>
                   ))}

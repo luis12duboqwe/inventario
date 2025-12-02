@@ -19,7 +19,7 @@ import {
   type SalesByProductItem,
   type SalesSummaryReport,
   type SalesReportFilters,
-} from "@/services/api/reports";
+} from "@api/reports";
 import { downloadText } from "@/lib/download";
 import { toCsv } from "@/lib/csv";
 

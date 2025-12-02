@@ -24,31 +24,28 @@ export default function QuoteEditor({ value, onChange, onAddLine }: Props) {
   const lines = Array.isArray(current.lines) ? current.lines : [];
 
   return (
-    <div style={{ display: "grid", gap: 10 }}>
+    <div className="quote-editor-container">
       <input
         placeholder="Cliente"
         value={current.customer ?? ""}
         onChange={(event) => onChange({ ...current, customer: event.target.value })}
-        style={{ padding: 8, borderRadius: 8 }}
+        className="quote-editor-input"
       />
       <textarea
         placeholder="Notas"
         value={current.note ?? ""}
         onChange={(event) => onChange({ ...current, note: event.target.value })}
-        style={{ padding: 8, borderRadius: 8, minHeight: 80 }}
+        className="quote-editor-textarea"
       />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ fontWeight: 700 }}>Líneas</div>
-        <button onClick={onAddLine} style={{ padding: "6px 10px", borderRadius: 8 }}>
+      <div className="quote-editor-header">
+        <div className="quote-editor-title">Líneas</div>
+        <button onClick={onAddLine} className="quote-editor-button">
           Agregar
         </button>
       </div>
-      <div style={{ display: "grid", gap: 8 }}>
+      <div className="quote-editor-lines">
         {lines.map((line) => (
-          <div
-            key={line.id}
-            style={{ display: "grid", gridTemplateColumns: "1fr 100px 120px", gap: 8 }}
-          >
+          <div key={line.id} className="quote-editor-line-row">
             <input
               placeholder="Producto"
               value={line.name}
@@ -60,7 +57,7 @@ export default function QuoteEditor({ value, onChange, onAddLine }: Props) {
                   ),
                 })
               }
-              style={{ padding: 8, borderRadius: 8 }}
+              className="quote-editor-input"
             />
             <input
               type="number"
@@ -69,13 +66,11 @@ export default function QuoteEditor({ value, onChange, onAddLine }: Props) {
                 onChange({
                   ...current,
                   lines: lines.map((item) =>
-                    item.id === line.id
-                      ? { ...item, qty: Number(event.target.value ?? 0) }
-                      : item,
+                    item.id === line.id ? { ...item, qty: Number(event.target.value ?? 0) } : item,
                   ),
                 })
               }
-              style={{ padding: 8, borderRadius: 8 }}
+              className="quote-editor-input"
             />
             <input
               type="number"
@@ -90,7 +85,7 @@ export default function QuoteEditor({ value, onChange, onAddLine }: Props) {
                   ),
                 })
               }
-              style={{ padding: 8, borderRadius: 8 }}
+              className="quote-editor-input"
             />
           </div>
         ))}

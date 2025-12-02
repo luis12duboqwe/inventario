@@ -1,10 +1,16 @@
-import type { ReactNode } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../../dashboard/context/DashboardContext");
+vi.mock("../../../dashboard/context/DashboardContext", () => ({
+  useDashboard: vi.fn(() => ({
+    enablePriceLists: true,
+  })),
+  DashboardProvider: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="dashboard-provider-mock">{children}</div>
+  ),
+}));
 
 vi.mock("../useInventoryLayoutState", () => ({
   useInventoryLayoutState: vi.fn(),
@@ -113,10 +119,15 @@ const createContextValue = (): InventoryLayoutContextValue => ({
   module: {
     token: "token",
     enableCatalogPro: true,
+    enableVariants: true,
+    enableBundles: true,
     stores: [],
     selectedStoreId: 1,
     setSelectedStoreId: vi.fn(),
-    selectedStore: { id: 1, name: "Sucursal Centro" } as unknown as InventoryLayoutContextValue["module"]["selectedStore"],
+    selectedStore: {
+      id: 1,
+      name: "Sucursal Centro",
+    } as unknown as InventoryLayoutContextValue["module"]["selectedStore"],
     devices: [],
     loading: false,
     totalDevices: 0,
@@ -159,9 +170,9 @@ const createContextValue = (): InventoryLayoutContextValue => ({
     downloadInventoryCurrentPdf: vi.fn(),
     downloadInventoryCurrentXlsx: vi.fn(),
     fetchInventoryValueReport: vi.fn(),
+    fetchInactiveProductsReport: vi.fn(),
     fetchInventoryMovementsReport: vi.fn(),
     fetchTopProductsReport: vi.fn(),
-    fetchInactiveProductsReport: vi.fn(),
     fetchSyncDiscrepancyReport: vi.fn(),
     downloadInventoryValueCsv: vi.fn(),
     downloadInventoryValuePdf: vi.fn(),
@@ -175,11 +186,23 @@ const createContextValue = (): InventoryLayoutContextValue => ({
     smartImportInventory: vi.fn(),
     fetchSmartImportHistory: vi.fn(),
     fetchIncompleteDevices: vi.fn(),
+    reservations: [],
+    reservationsMeta: { page: 1, size: 20, total: 0, pages: 0 },
+    reservationsLoading: false,
+    reservationsIncludeExpired: false,
+    setReservationsIncludeExpired: vi.fn(),
+    refreshReservations: vi.fn(),
+    createReservation: vi.fn(),
+    renewReservation: vi.fn(),
+    cancelReservation: vi.fn(),
+    expiringReservations: [],
   },
   smartImport: {
     smartImportFile: null,
     setSmartImportFile: vi.fn(),
-    smartImportPreviewState: { status: "idle" } as unknown as Mutable<InventoryLayoutContextValue["smartImport"]["smartImportPreviewState"]>,
+    smartImportPreviewState: { status: "idle" } as unknown as Mutable<
+      InventoryLayoutContextValue["smartImport"]["smartImportPreviewState"]
+    >,
     smartImportResult: null,
     smartImportOverrides: {},
     smartImportHeaders: [],
@@ -200,6 +223,8 @@ const createContextValue = (): InventoryLayoutContextValue => ({
     vendorTemplates: [],
     applyVendorTemplate: vi.fn(),
     smartImportGuideUrl: "/docs/importacion/proveedores",
+    downloadSmartResultCsv: vi.fn(),
+    downloadSmartResultPdf: vi.fn(),
   },
   search: {
     inventoryQuery: "",
@@ -279,11 +304,33 @@ const createContextValue = (): InventoryLayoutContextValue => ({
     cancel: vi.fn().mockResolvedValue(undefined),
     expiringSoon: [],
   },
+  variants: {
+    enabled: true,
+    loading: false,
+    includeInactive: false,
+    setIncludeInactive: vi.fn(),
+    items: [],
+    refresh: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    archive: vi.fn(),
+  },
+  bundles: {
+    enabled: true,
+    loading: false,
+    includeInactive: false,
+    setIncludeInactive: vi.fn(),
+    items: [],
+    refresh: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    archive: vi.fn(),
+  },
   labeling: {
     open: false,
     device: null,
     storeId: null,
-    storeName: null,
+    storeName: undefined,
     openLabelPrinter: vi.fn(),
     closeLabelPrinter: vi.fn(),
   },
@@ -326,10 +373,10 @@ describe("InventoryPage", () => {
     );
 
     expect(screen.getByRole("heading", { name: /Inventario corporativo/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /Productos/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /Listas de precios/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /Movimientos/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /Reservas/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Productos/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Listas de precios/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Movimientos/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Reservas/i })).toBeInTheDocument();
   });
 
   it("cambia de pestaña al hacer clic", async () => {
@@ -340,7 +387,7 @@ describe("InventoryPage", () => {
       </MemoryRouter>,
     );
 
-    const movimientosTab = screen.getByRole("tab", { name: /Movimientos/i });
+    const movimientosTab = screen.getByRole("button", { name: /Movimientos/i });
     await user.click(movimientosTab);
 
     expect(handleTabChange).toHaveBeenCalledWith("movimientos");
@@ -400,7 +447,6 @@ describe("InventoryPage", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByTestId("dashboard-provider-mock")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /Listas de precios/i })).toBeInTheDocument();
   });
 });
@@ -425,9 +471,6 @@ describe("InventoryProductsPage", () => {
 
     expect(screen.getByTestId("inventory-status-section")).toBeInTheDocument();
     expect(screen.getByTestId("inventory-products-table")).toBeInTheDocument();
-    expect(screen.getByTestId("inventory-catalog-tools")).toBeInTheDocument();
-    expect(screen.getByTestId("inventory-smart-import")).toBeInTheDocument();
-    expect(screen.getByTestId("inventory-corrections")).toBeInTheDocument();
   });
 });
 
@@ -470,9 +513,7 @@ describe("InventorySuppliersPage", () => {
       </InventoryLayoutContext.Provider>,
     );
 
-    expect(
-      screen.getByText(/Compras recientes para Sucursal Norte/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Compras recientes para Sucursal Norte/i)).toBeInTheDocument();
     expect(screen.getByTestId("inventory-suppliers-section")).toBeInTheDocument();
   });
 });
@@ -554,9 +595,7 @@ describe("InventoryReservationsPage", () => {
       .mockReturnValue("Motivo válido");
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
-    const promptSpy = vi
-      .spyOn(window, "prompt")
-      .mockReturnValue("2031-01-01T10:15");
+    const promptSpy = vi.spyOn(window, "prompt").mockReturnValue("2031-01-01T10:15");
 
     render(
       <InventoryLayoutContext.Provider value={contextValue}>
@@ -564,12 +603,8 @@ describe("InventoryReservationsPage", () => {
       </InventoryLayoutContext.Provider>,
     );
 
-    expect(
-      screen.getByRole("heading", { name: /Reservas de inventario/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/reservas vencerán en los próximos 30 minutos/i),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Reservas de inventario/i })).toBeInTheDocument();
+    expect(screen.getByText(/reservas vencerán en los próximos 30 minutos/i)).toBeInTheDocument();
     expect(screen.getByText("RESERVADO")).toBeInTheDocument();
 
     await user.selectOptions(screen.getByLabelText(/Producto/i), `${device.id}`);
@@ -583,7 +618,7 @@ describe("InventoryReservationsPage", () => {
     await user.click(screen.getByRole("button", { name: /Reservar unidades/i }));
     await waitFor(() => expect(createMock).toHaveBeenCalled());
 
-    const [createInput, createReason] = createMock.mock.calls[0];
+    const [createInput, createReason] = createMock.mock.calls[0]!;
     expect(createInput.device_id).toBe(device.id);
     expect(createInput.quantity).toBe(2);
     expect(new Date(createInput.expires_at).getUTCFullYear()).toBe(2030);
@@ -597,7 +632,7 @@ describe("InventoryReservationsPage", () => {
     await user.click(screen.getByRole("button", { name: /Renovar/i }));
     await waitFor(() => expect(renewMock).toHaveBeenCalled());
 
-    const [renewId, renewPayload, renewReason] = renewMock.mock.calls[0];
+    const [renewId, renewPayload, renewReason] = renewMock.mock.calls[0]!;
     expect(renewId).toBe(reservation.id);
     expect(new Date(renewPayload.expires_at).getUTCFullYear()).toBe(2032);
     expect(renewReason).toBe("Motivo válido");

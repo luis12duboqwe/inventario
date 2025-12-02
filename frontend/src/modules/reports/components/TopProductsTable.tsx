@@ -1,6 +1,6 @@
 // [PACK29-*] Tabla de productos con mejor desempeño
 import ScrollableTable from "@/shared/components/ScrollableTable";
-import type { SalesByProductItem } from "@/services/api/reports";
+import type { SalesByProductItem } from "@api/reports";
 
 export type TopProductsTableProps = {
   products?: SalesByProductItem[];

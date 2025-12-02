@@ -7,12 +7,12 @@ import {
   DeviceLabelDownload,
   requestDeviceLabel,
   triggerDeviceLabelPrint,
-} from "../../../api";
+} from "@api/inventory";
 import { useAuth } from "../../../auth/useAuth";
 
 type Props = {
   open?: boolean;
-  onClose?: () => void;
+  onClose?: (() => void) | undefined;
   storeId: number | null;
   storeName?: string | null;
   deviceId?: string | null;
@@ -96,7 +96,10 @@ export default function LabelGenerator({
   }, []);
 
   const parsedStoreId = React.useMemo(() => normalizeNumeric(storeId), [normalizeNumeric, storeId]);
-  const parsedDeviceId = React.useMemo(() => normalizeNumeric(deviceId), [deviceId, normalizeNumeric]);
+  const parsedDeviceId = React.useMemo(
+    () => normalizeNumeric(deviceId),
+    [deviceId, normalizeNumeric],
+  );
 
   const tokenFallback = React.useMemo(
     () => (process.env.NODE_ENV === "test" ? "token-123" : null),
@@ -252,7 +255,13 @@ export default function LabelGenerator({
               Se enviará como encabezado <code>X-Reason</code> (mínimo 5 caracteres).
             </span>
           </label>
-          <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+          <div
+            style={{
+              display: "grid",
+              gap: 8,
+              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            }}
+          >
             <label style={{ display: "grid", gap: 4, fontSize: 14 }}>
               <span style={{ color: "#cbd5f5" }}>Formato de etiqueta</span>
               <select
@@ -328,7 +337,12 @@ export default function LabelGenerator({
                 <iframe
                   title="Vista previa de etiqueta"
                   src={previewUrl}
-                  style={{ width: "100%", height: 360, border: "1px solid rgba(56, 189, 248, 0.3)", borderRadius: 8 }}
+                  style={{
+                    width: "100%",
+                    height: 360,
+                    border: "1px solid rgba(56, 189, 248, 0.3)",
+                    borderRadius: 8,
+                  }}
                 />
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                   <a
@@ -437,7 +451,9 @@ export default function LabelGenerator({
                     {
                       format,
                       template,
-                      connector: commandsPayload.connector,
+                      ...(commandsPayload.connector !== undefined
+                        ? { connector: commandsPayload.connector }
+                        : {}),
                     },
                   );
                   setDirectMessage(response.message);

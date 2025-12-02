@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import type { ContactHistoryEntry } from "@api/types";
 import type {
-  ContactHistoryEntry,
   Customer,
   CustomerAccountsReceivable,
   CustomerDashboardMetrics,
@@ -10,7 +10,7 @@ import type {
   CustomerPayload,
   CustomerPortfolioReport,
   CustomerSummary,
-} from "../../../api";
+} from "@api/customers";
 import {
   appendCustomerNote,
   createCustomer,
@@ -28,7 +28,7 @@ import {
   registerCustomerPayment,
   downloadCustomerStatement,
   updateCustomer,
-} from "../../../api";
+} from "@api/customers";
 import { normalizeRtn, RTN_ERROR_MESSAGE } from "../utils/rtn";
 
 import type {
@@ -634,7 +634,7 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
         customer.id,
         {
           request_type: "consent",
-          details: details || undefined,
+          ...(details ? { details } : {}),
           consent: consentEntries,
         },
         reason
@@ -688,7 +688,7 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
         customer.id,
         {
           request_type: "anonymization",
-          details: details || undefined,
+          ...(details ? { details } : {}),
           mask_fields: maskFields,
         },
         reason

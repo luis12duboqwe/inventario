@@ -14,28 +14,12 @@ function SummaryCards({ items }: SummaryCardsProps) {
   const data = Array.isArray(items) ? items : [];
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
-        gap: 12,
-      }}
-    >
+    <div className="orders-list-summary-cards">
       {data.map((card, index) => (
-        <div
-          key={`${card.label}-${index}`}
-          style={{
-            padding: 12,
-            borderRadius: 12,
-            background: "rgba(255, 255, 255, 0.04)",
-            border: "1px solid rgba(255, 255, 255, 0.08)",
-            display: "grid",
-            gap: 4,
-          }}
-        >
-          <span style={{ fontSize: 12, color: "#94a3b8" }}>{card.label}</span>
-          <strong style={{ fontSize: 22 }}>{card.value}</strong>
-          {card.hint ? <span style={{ fontSize: 11, color: "#64748b" }}>{card.hint}</span> : null}
+        <div key={`${card.label}-${index}`} className="orders-list-summary-card">
+          <span className="orders-list-summary-card__label">{card.label}</span>
+          <strong className="orders-list-summary-card__value">{card.value}</strong>
+          {card.hint ? <span className="orders-list-summary-card__hint">{card.hint}</span> : null}
         </div>
       ))}
     </div>

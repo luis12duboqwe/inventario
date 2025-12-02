@@ -8,7 +8,7 @@ import {
   updateUser,
   updateUserStatus,
   updateUserRoles,
-} from "../../../api";
+} from "@api/users";
 
 export const usersService = {
   createUser,

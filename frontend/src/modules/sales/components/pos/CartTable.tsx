@@ -26,20 +26,20 @@ type Props = {
 export default function CartTable({ items, onInc, onDec, onRemove, onEditDiscount }: Props) {
   const data = Array.isArray(items) ? items : [];
 
-  if (!data.length) return <div style={{ padding: 12, color: "#9ca3af" }}>Carrito vacío</div>;
+  if (!data.length) return <div className="pos-cart-empty-message">Carrito vacío</div>;
 
   return (
-    <div style={{ overflow: "auto", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+    <div className="pos-cart-table-container">
+      <table className="pos-cart-table">
         <thead>
-          <tr style={{ background: "rgba(255,255,255,0.03)" }}>
-            <th style={{ textAlign: "left", padding: 10 }}>SKU</th>
-            <th style={{ textAlign: "left", padding: 10 }}>Producto</th>
-            <th style={{ textAlign: "right", padding: 10 }}>Precio</th>
-            <th style={{ textAlign: "center", padding: 10 }}>Cant.</th>
-            <th style={{ textAlign: "right", padding: 10 }}>Desc.</th>
-            <th style={{ textAlign: "right", padding: 10 }}>Subtotal</th>
-            <th style={{ textAlign: "center", padding: 10 }}>Acciones</th>
+          <tr className="pos-cart-table-header">
+            <th className="pos-cart-table-th">SKU</th>
+            <th className="pos-cart-table-th">Producto</th>
+            <th className="pos-cart-table-th-right">Precio</th>
+            <th className="pos-cart-table-th-center">Cant.</th>
+            <th className="pos-cart-table-th-right">Desc.</th>
+            <th className="pos-cart-table-th-right">Subtotal</th>
+            <th className="pos-cart-table-th-center">Acciones</th>
           </tr>
         </thead>
         <tbody>
@@ -48,50 +48,35 @@ export default function CartTable({ items, onInc, onDec, onRemove, onEditDiscoun
             const subtotal = r.qty * r.price - discount;
             return (
               <tr key={r.id}>
-                <td style={{ padding: 10 }}>{r.sku}</td>
-                <td style={{ padding: 10 }}>{r.name}</td>
-                <td style={{ padding: 10, textAlign: "right" }}>{formatter.format(r.price)}</td>
-                <td style={{ padding: 10, textAlign: "center" }}>
-                  <div style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                <td className="pos-cart-table-td">{r.sku}</td>
+                <td className="pos-cart-table-td">{r.name}</td>
+                <td className="pos-cart-table-td-right">{formatter.format(r.price)}</td>
+                <td className="pos-cart-table-td-center">
+                  <div className="pos-cart-qty-control">
                     <button
                       onClick={() => onDec?.(r.id)}
-                      style={{ padding: "4px 8px", borderRadius: 8 }}
+                      className="pos-cart-qty-button"
                       disabled={r.qty <= 1}
                     >
                       -
                     </button>
                     <span>{r.qty}</span>
-                    <button onClick={() => onInc?.(r.id)} style={{ padding: "4px 8px", borderRadius: 8 }}>
+                    <button onClick={() => onInc?.(r.id)} className="pos-cart-qty-button">
                       +
                     </button>
                   </div>
                 </td>
-                <td style={{ padding: 10, textAlign: "right" }}>
+                <td className="pos-cart-table-td-right">
                   <button
                     onClick={() => onEditDiscount?.(r.id)}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: 8,
-                      background: "rgba(255,255,255,0.08)",
-                      color: "#e5e7eb",
-                      border: 0,
-                    }}
+                    className="pos-cart-discount-button"
                   >
                     {discount ? `-${formatter.format(discount)}` : "Agregar"}
                   </button>
                 </td>
-                <td style={{ padding: 10, textAlign: "right" }}>{formatter.format(subtotal)}</td>
-                <td style={{ padding: 10, textAlign: "center" }}>
-                  <button
-                    onClick={() => onRemove?.(r.id)}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: 8,
-                      background: "#b91c1c",
-                      color: "#fff",
-                      border: 0,
-                    }}
-                  >
+                <td className="pos-cart-table-td-right">{formatter.format(subtotal)}</td>
+                <td className="pos-cart-table-td-center">
+                  <button onClick={() => onRemove?.(r.id)} className="pos-cart-remove-button">
                     Quitar
                   </button>
                 </td>

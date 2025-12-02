@@ -1,12 +1,12 @@
 import { FormEvent, useMemo, useState } from "react";
-import type { CatalogDevice, Device, DeviceSearchFilters } from "../../../api";
-import { searchCatalogDevices } from "../../../api";
+import type { CatalogDevice, Device, DeviceSearchFilters } from "@api/inventory";
+import { searchCatalogDevices } from "@api/inventory";
 
 type Props = {
   token: string;
 };
 
-type AdvancedFiltersState = DeviceSearchFilters & {
+type AdvancedFiltersState = Omit<DeviceSearchFilters, "estado_comercial"> & {
   estado_comercial?: NonNullable<Device["estado_comercial"]> | "";
 };
 
@@ -57,8 +57,8 @@ function AdvancedSearch({ token }: Props) {
     if (filters.condicion?.trim()) {
       payload.condicion = filters.condicion.trim();
     }
-    if (filters.estado_comercial && filters.estado_comercial !== "") {
-      payload.estado_comercial = filters.estado_comercial;
+    if (filters.estado_comercial) {
+      payload.estado_comercial = filters.estado_comercial as Device["estado_comercial"];
     }
     if (filters.estado?.trim()) {
       payload.estado = filters.estado.trim();
@@ -117,7 +117,9 @@ function AdvancedSearch({ token }: Props) {
     <section className="card catalog-card fade-in">
       <header className="card-header">
         <h2 className="accent-title">Búsqueda avanzada de dispositivos</h2>
-        <p className="card-subtitle">IMEI y serie únicos, coincidencias por marca, modelo, color y capacidad.</p>
+        <p className="card-subtitle">
+          IMEI y serie únicos, coincidencias por marca, modelo, color y capacidad.
+        </p>
       </header>
       <form className="catalog-form" onSubmit={handleSubmit}>
         <div className="form-grid">
@@ -128,7 +130,9 @@ function AdvancedSearch({ token }: Props) {
               value={filters.imei ?? ""}
               maxLength={18}
               placeholder="Hasta 18 dígitos"
-              onChange={(event) => setFilters((state) => ({ ...state, imei: event.target.value.trim() }))}
+              onChange={(event) =>
+                setFilters((state) => ({ ...state, imei: event.target.value.trim() }))
+              }
             />
           </label>
           <label>
@@ -138,7 +142,9 @@ function AdvancedSearch({ token }: Props) {
               value={filters.serial ?? ""}
               maxLength={120}
               placeholder="Número de serie"
-              onChange={(event) => setFilters((state) => ({ ...state, serial: event.target.value.trim() }))}
+              onChange={(event) =>
+                setFilters((state) => ({ ...state, serial: event.target.value.trim() }))
+              }
             />
           </label>
           <label>
@@ -175,7 +181,9 @@ function AdvancedSearch({ token }: Props) {
               type="text"
               value={filters.modelo ?? ""}
               maxLength={120}
-              onChange={(event) => setFilters((state) => ({ ...state, modelo: event.target.value }))}
+              onChange={(event) =>
+                setFilters((state) => ({ ...state, modelo: event.target.value }))
+              }
             />
           </label>
           <label>
@@ -193,7 +201,9 @@ function AdvancedSearch({ token }: Props) {
               type="text"
               value={filters.categoria ?? ""}
               maxLength={80}
-              onChange={(event) => setFilters((state) => ({ ...state, categoria: event.target.value }))}
+              onChange={(event) =>
+                setFilters((state) => ({ ...state, categoria: event.target.value }))
+              }
             />
           </label>
           <label>
@@ -202,7 +212,9 @@ function AdvancedSearch({ token }: Props) {
               type="text"
               value={filters.condicion ?? ""}
               maxLength={60}
-              onChange={(event) => setFilters((state) => ({ ...state, condicion: event.target.value }))}
+              onChange={(event) =>
+                setFilters((state) => ({ ...state, condicion: event.target.value }))
+              }
             />
           </label>
           <label>
@@ -212,7 +224,9 @@ function AdvancedSearch({ token }: Props) {
               onChange={(event) =>
                 setFilters((state) => ({
                   ...state,
-                  estado_comercial: event.target.value as AdvancedFiltersState["estado_comercial"],
+                  estado_comercial: event.target.value as
+                    | NonNullable<Device["estado_comercial"]>
+                    | "",
                 }))
               }
             >
@@ -229,7 +243,9 @@ function AdvancedSearch({ token }: Props) {
               type="text"
               value={filters.estado ?? ""}
               maxLength={40}
-              onChange={(event) => setFilters((state) => ({ ...state, estado: event.target.value }))}
+              onChange={(event) =>
+                setFilters((state) => ({ ...state, estado: event.target.value }))
+              }
             />
           </label>
           <label>
@@ -238,7 +254,9 @@ function AdvancedSearch({ token }: Props) {
               type="text"
               value={filters.ubicacion ?? ""}
               maxLength={120}
-              onChange={(event) => setFilters((state) => ({ ...state, ubicacion: event.target.value }))}
+              onChange={(event) =>
+                setFilters((state) => ({ ...state, ubicacion: event.target.value }))
+              }
             />
           </label>
           <label>
@@ -247,7 +265,9 @@ function AdvancedSearch({ token }: Props) {
               type="text"
               value={filters.proveedor ?? ""}
               maxLength={120}
-              onChange={(event) => setFilters((state) => ({ ...state, proveedor: event.target.value }))}
+              onChange={(event) =>
+                setFilters((state) => ({ ...state, proveedor: event.target.value }))
+              }
             />
           </label>
           <label>
@@ -255,7 +275,9 @@ function AdvancedSearch({ token }: Props) {
             <input
               type="date"
               value={filters.fecha_ingreso_desde ?? ""}
-              onChange={(event) => setFilters((state) => ({ ...state, fecha_ingreso_desde: event.target.value }))}
+              onChange={(event) =>
+                setFilters((state) => ({ ...state, fecha_ingreso_desde: event.target.value }))
+              }
             />
           </label>
           <label>
@@ -263,7 +285,9 @@ function AdvancedSearch({ token }: Props) {
             <input
               type="date"
               value={filters.fecha_ingreso_hasta ?? ""}
-              onChange={(event) => setFilters((state) => ({ ...state, fecha_ingreso_hasta: event.target.value }))}
+              onChange={(event) =>
+                setFilters((state) => ({ ...state, fecha_ingreso_hasta: event.target.value }))
+              }
             />
           </label>
         </div>

@@ -2,20 +2,11 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { CatalogDevice } from "../../../../api";
+import type { CatalogDevice } from "@api/inventory";
 
 const searchCatalogDevicesMock = vi.hoisted(() => vi.fn());
 
-const apiModuleId = vi.hoisted(
-  () => new URL("../../../../api.ts", import.meta.url).pathname,
-);
-
-vi.mock("../../../../api", () => ({
-  __esModule: true,
-  searchCatalogDevices: searchCatalogDevicesMock,
-}));
-
-vi.mock(apiModuleId, () => ({
+vi.mock("@api/inventory", () => ({
   __esModule: true,
   searchCatalogDevices: searchCatalogDevicesMock,
 }));
@@ -34,9 +25,7 @@ describe("AdvancedSearch", () => {
     const submitButton = screen.getByRole("button", { name: /buscar/i });
     await user.click(submitButton);
 
-    expect(
-      await screen.findByText("Ingresa al menos un criterio de búsqueda"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Ingresa al menos un criterio de búsqueda")).toBeInTheDocument();
     expect(searchCatalogDevicesMock).not.toHaveBeenCalled();
   });
 
@@ -98,9 +87,7 @@ describe("AdvancedSearch", () => {
     expect(screen.getByText("iPhone 15 Pro")).toBeInTheDocument();
     expect(screen.getByText("Negro")).toBeInTheDocument();
     expect(screen.getByText("Smartphones")).toBeInTheDocument();
-    expect(
-      screen.queryByText("Ingresa al menos un criterio de búsqueda"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Ingresa al menos un criterio de búsqueda")).not.toBeInTheDocument();
   });
 
   it("envía el filtro de estado comercial cuando se selecciona", async () => {
@@ -122,4 +109,3 @@ describe("AdvancedSearch", () => {
     });
   });
 });
-

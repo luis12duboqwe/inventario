@@ -1,22 +1,15 @@
 import { isAxiosError } from "axios";
-import {
-  createContext,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
-import type { AuthProfile, Credentials } from "../api";
+import type { AuthProfile, Credentials } from "@api/types";
 import {
   UNAUTHORIZED_EVENT,
   getCurrentUser,
   login as loginRequest,
   logout as logoutRequest,
   refreshAccessToken,
-} from "../services/api/auth";
-import { getAuthToken } from "../services/api/http";
+} from "@api/auth";
+import { getAuthToken } from "@api/http";
 import { AuthzProvider, type CurrentUser as AuthzUser, type Role } from "./useAuthz";
 
 // [PACK28-auth-provider]
@@ -123,8 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         setUser(null);
         syncAccessToken(null);
-        const message =
-          error instanceof Error ? error.message : "No fue posible iniciar sesión.";
+        const message = error instanceof Error ? error.message : "No fue posible iniciar sesión.";
         setLastError(message);
         throw error;
       } finally {

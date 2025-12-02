@@ -11,18 +11,12 @@ const METHODS: POSPaymentMethod[] = ["CASH", "CARD", "MIXED"];
 
 function PaymentMethods({ method, onChange }: POSPaymentMethodsProps) {
   return (
-    <div style={{ display: "flex", gap: 8 }}>
+    <div className="pos-payment-methods">
       {METHODS.map((option) => (
         <button
           key={option}
           onClick={() => onChange(option)}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 8,
-            background: method === option ? "#2563eb" : "rgba(255, 255, 255, 0.08)",
-            color: "#fff",
-            border: 0,
-          }}
+          className={method === option ? "pos-payment-method-btn-active" : "pos-payment-method-btn"}
         >
           {option}
         </button>

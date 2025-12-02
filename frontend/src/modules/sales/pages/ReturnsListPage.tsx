@@ -5,13 +5,14 @@ import { Link } from "react-router-dom";
 import { SalesReturns } from "../../../services/sales";
 import type { ReturnDoc, ReturnListParams } from "../../../services/sales";
 // [PACK23-RETURNS-LIST-IMPORTS-END]
-import { FiltersBar, SidePanel, SummaryCards, Table } from "../components/common";
+import { FiltersBar, SidePanel, Table } from "../components/common";
 // [PACK26-RETURNS-PERMS-START]
 import { useAuthz, PERMS } from "../../../auth/useAuthz";
 // [PACK26-RETURNS-PERMS-END]
 // [PACK27-INJECT-EXPORT-RETURNS-START]
 import ExportDropdown from "@/components/ExportDropdown";
 // [PACK27-INJECT-EXPORT-RETURNS-END]
+import { Skeleton } from "@components/ui/Skeleton";
 
 type ReturnRow = {
   id: string;
@@ -49,6 +50,7 @@ function ReturnsListPage() {
     EXCHANGE: "Cambio",
     WARRANTY: "Garantía",
     OTHER: "Otro",
+    BUYER_REMORSE: "Remordimiento",
   };
 
   const rows: ReturnRow[] = items.map((doc) => ({
@@ -59,13 +61,12 @@ function ReturnsListPage() {
     items: doc.lines?.length ?? 0,
     total: formatCurrency(doc.totalCredit),
     actions: (
-      <Link to={`/sales/returns/${doc.id}`} style={{ color: "#38bdf8" }}>
+      <Link to={`/sales/returns/${doc.id}`} className="sales-link-action">
         Ver
       </Link>
     ),
   }));
 
-  const creditTotal = items.reduce((sum, item) => sum + (item.totalCredit || 0), 0);
   const pages = Math.max(1, Math.ceil(total / pageSize) || 1);
 
   const fetchReturns = useCallback(
@@ -103,8 +104,8 @@ function ReturnsListPage() {
   function formatDate(date: string) {
     return date;
   }
-  function formatCurrency(value: any) {
-    return value;
+  function formatCurrency(value: number) {
+    return String(value);
   }
   function onSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -117,13 +118,13 @@ function ReturnsListPage() {
 
   return (
     <div data-testid="returns-list">
-      <form onSubmit={onSearch} style={{ flex: "1 1 320px" }}>
+      <form onSubmit={onSearch} className="returns-list-form">
         <FiltersBar>
           <input
             placeholder="#RET/Cliente/IMEI"
             value={q}
             onChange={(event) => setQ(event.target.value)}
-            style={{ padding: 8, borderRadius: 8 }}
+            className="returns-list-input"
           />
           <select
             value={reason ?? ""}
@@ -132,7 +133,7 @@ function ReturnsListPage() {
               setPage(1);
               setReason(value ? (value as ReturnDoc["reason"]) : undefined);
             }}
-            style={{ padding: 8, borderRadius: 8 }}
+            className="returns-list-input"
           >
             <option value="">Todos los motivos</option>
             {Object.entries(reasonLabels).map(([key, label]) => (
@@ -141,47 +142,35 @@ function ReturnsListPage() {
               </option>
             ))}
           </select>
-          <button
-            type="submit"
-            style={{
-              padding: "8px 16px",
-              borderRadius: 8,
-              background: "#38bdf8",
-              color: "#0f172a",
-              border: "none",
-            }}
-            disabled={loading}
-          >
+          <button type="submit" className="returns-list-btn-search" disabled={loading}>
             Buscar
           </button>
         </FiltersBar>
       </form>
       <ExportDropdown entity="returns" currentItems={items} />
-      <Table
-        cols={columns}
-        rows={rows}
-        onRowClick={(row) => {
-          const rowId = String((row as ReturnRow).id ?? "");
-          const found = items.find((item) => String(item.id) === rowId);
-          setSelectedRow(found ?? null);
-        }}
-      />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ color: "#9ca3af" }}>
+      {loading ? (
+        <Skeleton lines={10} />
+      ) : (
+        <Table
+          cols={columns}
+          rows={rows}
+          onRowClick={(row) => {
+            const rowId = String((row as ReturnRow).id ?? "");
+            const found = items.find((item) => String(item.id) === rowId);
+            setSelectedRow(found ?? null);
+          }}
+        />
+      )}
+      <div className="returns-list-pagination">
+        <span className="returns-list-pagination-info">
           Página {page} de {pages}
         </span>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div className="returns-list-pagination-actions">
           <button
             type="button"
             onClick={() => setPage((current) => Math.max(1, current - 1))}
             disabled={loading || page <= 1}
-            style={{
-              padding: "6px 12px",
-              borderRadius: 8,
-              background: "rgba(56,189,248,0.12)",
-              color: "#e0f2fe",
-              border: "none",
-            }}
+            className="returns-list-btn-page"
           >
             Anterior
           </button>
@@ -189,13 +178,7 @@ function ReturnsListPage() {
             type="button"
             onClick={() => setPage((current) => (current < pages ? current + 1 : current))}
             disabled={loading || page >= pages}
-            style={{
-              padding: "6px 12px",
-              borderRadius: 8,
-              background: "rgba(56,189,248,0.12)",
-              color: "#e0f2fe",
-              border: "none",
-            }}
+            className="returns-list-btn-page"
           >
             Siguiente
           </button>

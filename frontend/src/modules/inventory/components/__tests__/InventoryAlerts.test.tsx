@@ -30,6 +30,14 @@ describe("InventoryAlerts", () => {
             unit_price: 120,
             inventory_value: 120,
             severity: "critical",
+            minimum_stock: 5,
+            reorder_point: 10,
+            reorder_gap: 9,
+            projected_days: 1,
+            average_daily_sales: 1,
+            trend: "stable",
+            confidence: 0.9,
+            insights: [],
           },
           {
             device_id: 2,
@@ -41,6 +49,14 @@ describe("InventoryAlerts", () => {
             unit_price: 90,
             inventory_value: 270,
             severity: "warning",
+            minimum_stock: 5,
+            reorder_point: 10,
+            reorder_gap: 7,
+            projected_days: 3,
+            average_daily_sales: 1,
+            trend: "stable",
+            confidence: 0.9,
+            insights: [],
           },
         ]}
         summary={{ total: 2, critical: 1, warning: 1, notice: 0 }}
@@ -128,6 +144,8 @@ describe("InventoryAlerts", () => {
             minimum_stock: 1,
             reorder_point: 2,
             reorder_gap: 0,
+            trend: null,
+            confidence: null,
             insights: [],
           },
         ]}

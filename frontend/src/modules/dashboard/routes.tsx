@@ -2,24 +2,33 @@ import { Suspense, memo, type ReactNode, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import NotFound from "../../components/feedback/NotFound";
 import { lazyWithRetry } from "../../shared/utils/lazyWithRetry";
+import { Skeleton } from "@components/ui/Skeleton";
 
 const DashboardLayout = lazyWithRetry(() => import("./layout/DashboardLayout"));
 
 const InventoryLayout = lazyWithRetry(() => import("../inventory/pages/InventoryLayout"));
 // Usar las variantes *Page para permitir mocks de pruebas y loaders dedicados
 const InventoryProducts = lazyWithRetry(() => import("../inventory/pages/InventoryProductsPage"));
-const InventoryPriceLists = lazyWithRetry(() => import("../inventory/pages/InventoryPriceListsPage"));
+const InventoryPriceLists = lazyWithRetry(
+  () => import("../inventory/pages/InventoryPriceListsPage"),
+);
 const InventoryMoves = lazyWithRetry(() => import("../inventory/pages/InventoryMovementsPage"));
 const InventorySuppliers = lazyWithRetry(() => import("../inventory/pages/InventorySuppliersPage"));
 const InventoryAlerts = lazyWithRetry(() => import("../inventory/pages/InventoryAlertsPage"));
-const InventoryReservations = lazyWithRetry(() => import("../inventory/pages/InventoryReservationsPage"));
+const InventoryReservations = lazyWithRetry(
+  () => import("../inventory/pages/InventoryReservationsPage"),
+);
 const OperationsLayout = lazyWithRetry(() => import("../operations/pages/OperationsLayout"));
 const OperationsPOS = lazyWithRetry(() => import("../operations/pages/OperationsPOS"));
 const OperationsPurchases = lazyWithRetry(() => import("../operations/pages/OperationsPurchases"));
 const OperationsReturns = lazyWithRetry(() => import("../operations/pages/OperationsReturns"));
 const OperationsTransfers = lazyWithRetry(() => import("../operations/pages/OperationsTransfers"));
-const OperationsWarranties = lazyWithRetry(() => import("../operations/pages/OperationsWarranties"));
-const OperationsDiagnostics = lazyWithRetry(() => import("../operations/pages/OperationsDiagnostics"));
+const OperationsWarranties = lazyWithRetry(
+  () => import("../operations/pages/OperationsWarranties"),
+);
+const OperationsDiagnostics = lazyWithRetry(
+  () => import("../operations/pages/OperationsDiagnostics"),
+);
 const OperationsBundles = lazyWithRetry(() => import("../operations/pages/OperationsBundles"));
 const OperationsDte = lazyWithRetry(() => import("../operations/pages/OperationsDte"));
 const AnalyticsPage = lazyWithRetry(() => import("../analytics/pages/AnalyticsPage"));
@@ -42,7 +51,8 @@ const GlobalReportsPage = lazyWithRetry(() => import("../reports/pages/GlobalRep
 // [PACK29-*] Ruta autónoma de reportes operativos
 const SalesReportsRoutes = lazyWithRetry(() => import("../reports/routes"));
 const SalesModuleRoutes = lazyWithRetry(() => import("../sales/routes"));
-import AppErrorBoundary from "../../shared/components/AppErrorBoundary"; // [PACK36-dashboard-routes]
+import AppErrorBoundary from "@components/ui/AppErrorBoundary"; // [PACK36-dashboard-routes]
+import RequireRole from "../../router/guards/RequireRole";
 
 type DashboardRoutesProps = {
   theme: "dark" | "light";
@@ -80,9 +90,12 @@ function resolveInitialModule(): string {
 
 const ModuleLoader = memo(function ModuleLoader() {
   return (
-    <div className="loading-overlay" role="status" aria-live="polite">
-      <span className="spinner" aria-hidden="true" />
-      <span>Cargando panel…</span>
+    <div className="module-content space-y-6 p-6">
+      <div className="space-y-2">
+        <Skeleton className="h-8 w-1/3 rounded-md" />
+        <Skeleton className="h-4 w-1/2 rounded-md" />
+      </div>
+      <Skeleton className="h-64 w-full rounded-xl" />
     </div>
   );
 });
@@ -91,18 +104,22 @@ const ModuleBoundary = memo(function ModuleBoundary({ children }: { children: Re
   return <Suspense fallback={<ModuleLoader />}>{children}</Suspense>;
 });
 
-const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, onLogout }: DashboardRoutesProps) {
+const DashboardRoutes = memo(function DashboardRoutes({
+  theme,
+  onToggleTheme,
+  onLogout,
+}: DashboardRoutesProps) {
   const [initialModule] = useState(resolveInitialModule);
 
   return (
     <Routes>
-        <Route
-          element={
-            <ModuleBoundary>
-              {/* [PACK36-dashboard-routes] */}
-              <AppErrorBoundary
-                variant="inline"
-                title="Dashboard no disponible"
+      <Route
+        element={
+          <ModuleBoundary>
+            {/* [PACK36-dashboard-routes] */}
+            <AppErrorBoundary
+              variant="inline"
+              title="Dashboard no disponible"
               description="Actualiza la página o vuelve más tarde mientras restablecemos el panel."
             >
               <DashboardLayout theme={theme} onToggleTheme={onToggleTheme} onLogout={onLogout} />
@@ -176,23 +193,25 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
           }
         />
         <Route
-          path="/sales/*"
+          path="sales/*"
           element={
             <ModuleBoundary>
-              {/* [PACK36-dashboard-routes] */}
-              <AppErrorBoundary
-                variant="inline"
-                title="Ventas corporativas en pausa"
-                description="Recarga el módulo de ventas o intenta más tarde."
-              >
-                <SalesModuleRoutes />
-              </AppErrorBoundary>
+              <RequireRole roles={["ADMIN", "GERENTE"]}>
+                {/* [PACK36-dashboard-routes] */}
+                <AppErrorBoundary
+                  variant="inline"
+                  title="Ventas corporativas en pausa"
+                  description="Recarga el módulo de ventas o intenta más tarde."
+                >
+                  <SalesModuleRoutes />
+                </AppErrorBoundary>
+              </RequireRole>
             </ModuleBoundary>
           }
         />
         {/* // [PACK29-*] Soporte para /reports/* fuera del dashboard principal */}
         <Route
-          path="/reports/*"
+          path="reports/*"
           element={
             <ModuleBoundary>
               {/* [PACK36-dashboard-routes] */}

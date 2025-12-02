@@ -161,7 +161,7 @@ export interface ReturnDoc {
   id: ID;
   number: string;
   date: string;
-  reason: "DEFECT" | "BUYER_REMORSE" | "WARRANTY" | "OTHER";
+  reason: "DEFECT" | "BUYER_REMORSE" | "WARRANTY" | "OTHER" | "EXCHANGE";
   lines: ReturnLine[];
   totalCredit: number;
   customerName?: string;

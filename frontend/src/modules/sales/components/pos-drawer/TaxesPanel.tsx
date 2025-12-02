@@ -15,14 +15,14 @@ function TaxesPanel({ rows }: POSTaxesPanelProps) {
   const data = Array.isArray(rows) ? rows : [];
 
   return (
-    <div style={{ padding: 8, borderRadius: 8, border: "1px solid rgba(255, 255, 255, 0.08)", display: "grid", gap: 6 }}>
-      <span style={{ fontSize: 12, color: "#94a3b8" }}>Impuestos</span>
+    <div className="pos-taxes-panel">
+      <span className="pos-taxes-title">Impuestos</span>
       {data.length === 0 ? (
-        <span style={{ color: "#9ca3af" }}>—</span>
+        <span className="pos-taxes-empty">—</span>
       ) : (
-        <div style={{ display: "grid", gap: 4 }}>
+        <div className="pos-taxes-list">
           {data.map((row, index) => (
-            <div key={`${row.label}-${index}`} style={{ display: "flex", justifyContent: "space-between" }}>
+            <div key={`${row.label}-${index}`} className="pos-taxes-row">
               <span>{row.label}</span>
               <span>{currency.format(row.amount)}</span>
             </div>

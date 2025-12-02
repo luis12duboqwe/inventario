@@ -1,7 +1,7 @@
 import { FormEvent, useState } from "react";
-import type { Credentials } from "../../services/api/auth";
-import Button from "./ui/Button";
-import TextField from "./ui/TextField";
+import type { Credentials } from "@api/auth";
+import Button from "@components/ui/Button";
+import TextField from "@components/ui/TextField";
 
 type Props = {
   loading: boolean;

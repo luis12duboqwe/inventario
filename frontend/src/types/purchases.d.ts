@@ -16,6 +16,7 @@ export type PurchaseRecordForm = {
 };
 
 export type PurchaseRecordDraftItem = {
+  tempId: string;
   productId: number | null;
   quantity: number;
   unitCost: number;

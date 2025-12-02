@@ -59,6 +59,10 @@ vi.mock("../../modules/inventory/pages/components/DeviceEditDialog", () => ({
   default: () => null,
 }));
 
+vi.mock("../../shared/components/ui/Skeleton", () => ({
+  Skeleton: () => <div data-testid="loading-skeleton">Cargando panel…</div>,
+}));
+
 vi.mock("../../components/common/Loader", () => ({
   __esModule: true,
   default: ({ message }: { message?: string }) => <div>{message ?? "Cargando"}</div>,
@@ -230,9 +234,7 @@ const renderDashboardRoute = (initialPath: string) =>
       <Routes>
         <Route
           path="/dashboard/*"
-          element={
-            <DashboardRoutes theme="dark" onToggleTheme={() => {}} onLogout={() => {}} />
-          }
+          element={<DashboardRoutes theme="dark" onToggleTheme={() => {}} onLogout={() => {}} />}
         />
       </Routes>
     </MemoryRouter>,
@@ -283,16 +285,14 @@ describe("Rutas de inventario", () => {
     renderDashboardRoute("/dashboard/inventory/productos");
 
     await waitFor(() => expect(resolveInventoryModule).not.toBeNull());
-    expect(screen.getByText("Cargando panel…")).toBeInTheDocument();
+    expect(screen.getAllByText("Cargando panel…")[0]).toBeInTheDocument();
 
     await act(async () => {
       resolveInventoryModule?.();
     });
 
     await waitFor(() => expect(resolveInventoryChild["Inventario: Productos"]).toBeDefined());
-    await expect(
-      screen.findByText("Cargando vista de inventario…"),
-    ).resolves.toBeInTheDocument();
+    await expect(screen.findByText("Cargando vista de inventario…")).resolves.toBeInTheDocument();
 
     await act(async () => {
       resolveInventoryChild["Inventario: Productos"]?.();
@@ -304,16 +304,14 @@ describe("Rutas de inventario", () => {
     renderDashboardRoute("/dashboard/inventory/movimientos");
 
     await waitFor(() => expect(resolveInventoryModule).not.toBeNull());
-    expect(screen.getByText("Cargando panel…")).toBeInTheDocument();
+    expect(screen.getAllByText("Cargando panel…")[0]).toBeInTheDocument();
 
     await act(async () => {
       resolveInventoryModule?.();
     });
 
     await waitFor(() => expect(resolveInventoryChild["Inventario: Movimientos"]).toBeDefined());
-    await expect(
-      screen.findByText("Cargando vista de inventario…"),
-    ).resolves.toBeInTheDocument();
+    await expect(screen.findByText("Cargando vista de inventario…")).resolves.toBeInTheDocument();
 
     await act(async () => {
       resolveInventoryChild["Inventario: Movimientos"]?.();

@@ -1,4 +1,6 @@
-import type { Customer, Device, Store } from "../api";
+import type { Customer } from "@api/customers";
+import type { Device } from "@api/inventory";
+import type { Store } from "@api/stores";
 
 type RepairPartForm = {
   deviceId: number | null;
@@ -19,7 +21,10 @@ type RepairForm = {
   deviceModel: string;
   imei: string;
   deviceDescription: string;
+  problemDescription: string;
   notes: string;
+  estimatedCost: number;
+  depositAmount: number;
   laborCost: number;
   parts: RepairPartForm[];
 };

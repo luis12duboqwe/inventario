@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.engine import reflection
+
 
 # revision identifiers, used by Alembic.
 revision = "20251126_add_supervisor_pin_hash"
@@ -19,7 +19,7 @@ depends_on = None
 
 def upgrade() -> None:
     bind = op.get_bind()
-    inspector = reflection.Inspector.from_engine(bind)
+    inspector = sa.inspect(bind)
     tables = {t.lower(): t for t in inspector.get_table_names()}
     usuarios_table = tables.get("usuarios")
     if usuarios_table is None:
@@ -33,7 +33,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     bind = op.get_bind()
-    inspector = reflection.Inspector.from_engine(bind)
+    inspector = sa.inspect(bind)
     tables = {t.lower(): t for t in inspector.get_table_names()}
     usuarios_table = tables.get("usuarios")
     if usuarios_table is None:

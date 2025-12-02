@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 
-import type { Store } from "../../../../api";
+import type { Store } from "@api/stores";
 import type { ModuleStatus } from "../../../../shared/components/ModuleHeader";
 
 type RepairsLayoutContextValue = {

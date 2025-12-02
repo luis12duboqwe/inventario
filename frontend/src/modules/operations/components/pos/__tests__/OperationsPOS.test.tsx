@@ -15,6 +15,13 @@ vi.mock("../../../hooks/useOperationsModule", () => ({
   useOperationsModule: () => moduleState,
 }));
 
+vi.mock("../../../../dashboard/context/DashboardContext", () => ({
+  useDashboard: () => ({
+    token: "token-123",
+    pushToast: vi.fn(),
+  }),
+}));
+
 vi.mock("../../../../../services/api/pos", () => ({
   closePosSession: vi.fn(async () => ({
     session_id: 1,
@@ -104,4 +111,3 @@ describe("OperationsPOS", () => {
     expect(screen.queryByText(/Totales/)).not.toBeInTheDocument();
   });
 });
-

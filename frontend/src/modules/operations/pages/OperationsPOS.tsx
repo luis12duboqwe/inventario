@@ -15,14 +15,14 @@ import {
   type PosSalePaymentEntry,
   type PosSessionSummary,
   type PosTaxInfo,
-} from "../../../services/api/pos";
+} from "@api/pos";
 import CashPanel from "../components/pos/CashPanel";
 import CartTable, { type CartLine } from "../components/pos/CartTable";
 import PaymentsPanel, { type PaymentLine } from "../components/pos/PaymentsPanel";
 import ReceiptViewer from "../components/pos/ReceiptViewer";
 import SalesHistory from "../components/pos/SalesHistory";
 import { useOperationsModule } from "../hooks/useOperationsModule";
-import CreditSchedule from "../../pos/components/CreditSchedule";
+import { CreditSchedule } from "../components/pos/CreditSchedule";
 
 type StoreSummary = {
   id: number;
@@ -38,7 +38,9 @@ export default function OperationsPOS() {
   const { token, stores, selectedStoreId, enablePurchasesSales } = useOperationsModule();
 
   const storeOptions = useMemo<StoreSummary[]>(() => stores ?? [], [stores]);
-  const [activeStoreId, setActiveStoreId] = useState<number | null>(selectedStoreId ?? storeOptions[0]?.id ?? null);
+  const [activeStoreId, setActiveStoreId] = useState<number | null>(
+    selectedStoreId ?? storeOptions[0]?.id ?? null,
+  );
 
   const [session, setSession] = useState<PosSessionSummary | null>(null);
   const [sessionLoading, setSessionLoading] = useState(false);
@@ -59,7 +61,9 @@ export default function OperationsPOS() {
 
   useEffect(() => {
     if (!token) return;
-    listPosTaxes(token, "Listar impuestos POS").then(setTaxes).catch(() => setTaxes([]));
+    listPosTaxes(token, "Listar impuestos POS")
+      .then(setTaxes)
+      .catch(() => setTaxes([]));
   }, [token]);
 
   const refreshSession = useCallback(
@@ -79,7 +83,7 @@ export default function OperationsPOS() {
         setSessionLoading(false);
       }
     },
-    [token]
+    [token],
   );
 
   useEffect(() => {
@@ -116,7 +120,7 @@ export default function OperationsPOS() {
   const handleUpdateCartItem = (
     id: string,
     update: Partial<CartLine>,
-    options?: { clear?: ReadonlyArray<keyof CartLine> }
+    options?: { clear?: ReadonlyArray<keyof CartLine> },
   ) => {
     setCartItems((prev) =>
       prev.map((item) => {
@@ -133,7 +137,7 @@ export default function OperationsPOS() {
           }
         }
         return next;
-      })
+      }),
     );
   };
 
@@ -146,7 +150,9 @@ export default function OperationsPOS() {
   };
 
   const handleUpdatePayment = (id: string, update: Partial<PaymentLine>) => {
-    setPayments((prev) => prev.map((payment) => (payment.id === id ? { ...payment, ...update } : payment)));
+    setPayments((prev) =>
+      prev.map((payment) => (payment.id === id ? { ...payment, ...update } : payment)),
+    );
   };
 
   const handleRemovePayment = (id: string) => {
@@ -162,9 +168,8 @@ export default function OperationsPOS() {
       setSaleError("Agrega al menos un artículo al carrito.");
       return;
     }
-    const normalizedPayments: PosSalePaymentEntry[] = (payments.length > 0
-      ? payments
-      : [{ id: createId(), method: "EFECTIVO", amount: totalDue }]
+    const normalizedPayments: PosSalePaymentEntry[] = (
+      payments.length > 0 ? payments : [{ id: createId(), method: "EFECTIVO", amount: totalDue }]
     ).map((entry) => ({ method: entry.method, amount: entry.amount }));
 
     const items: PosSaleItemRequest[] = cartItems.map((ci) => {
@@ -244,18 +249,39 @@ export default function OperationsPOS() {
     }
   };
 
-  const handleOpenSession = async ({ amount, notes, reason }: { amount: number; notes: string; reason: string }) => {
+  const handleOpenSession = async ({
+    amount,
+    notes,
+    reason,
+  }: {
+    amount: number;
+    notes: string;
+    reason: string;
+  }) => {
     if (!token || !activeStoreId) return;
     await openPosSession(token, { branchId: activeStoreId, openingAmount: amount, notes }, reason);
     await refreshSession(activeStoreId, "Apertura de caja");
   };
 
-  const handleCloseSession = async ({ amount, notes, reason }: { amount: number; notes: string; reason: string }) => {
+  const handleCloseSession = async ({
+    amount,
+    notes,
+    reason,
+  }: {
+    amount: number;
+    notes: string;
+    reason: string;
+  }) => {
     if (!token || !session) return;
     await closePosSession(
       token,
-      { sessionId: session.session_id, closingAmount: amount, notes, payments: { EFECTIVO: amount } },
-      reason
+      {
+        sessionId: session.session_id,
+        closingAmount: amount,
+        notes,
+        payments: { EFECTIVO: amount },
+      },
+      reason,
     );
     await refreshSession(session.branch_id, "Cierre de caja");
   };
@@ -287,7 +313,8 @@ export default function OperationsPOS() {
       <div className="operations-pos-disabled">
         <h2>POS / Caja</h2>
         <p className="muted-text">
-          Activa el flag corporativo <code>SOFTMOBILE_ENABLE_PURCHASES_SALES</code> para utilizar el punto de venta.
+          Activa el flag corporativo <code>SOFTMOBILE_ENABLE_PURCHASES_SALES</code> para utilizar el
+          punto de venta.
         </p>
       </div>
     );
@@ -299,7 +326,8 @@ export default function OperationsPOS() {
         <div>
           <h2>POS / Caja</h2>
           <p className="muted-text">
-            Gestiona la caja diaria, captura ventas con impuestos y genera devoluciones sin salir de la misma pantalla.
+            Gestiona la caja diaria, captura ventas con impuestos y genera devoluciones sin salir de
+            la misma pantalla.
           </p>
         </div>
       </header>
@@ -318,7 +346,9 @@ export default function OperationsPOS() {
             onOpenSession={handleOpenSession}
             onCloseSession={handleCloseSession}
             refreshing={sessionLoading}
-            onRefresh={() => activeStoreId && refreshSession(activeStoreId, "Actualizar caja manual")}
+            onRefresh={() =>
+              activeStoreId && refreshSession(activeStoreId, "Actualizar caja manual")
+            }
             error={sessionError}
           />
 
@@ -353,7 +383,11 @@ export default function OperationsPOS() {
             </dl>
             <label className="pos-note-field">
               <span>Notas de la venta</span>
-              <textarea value={saleNote} onChange={(event) => setSaleNote(event.target.value)} rows={2} />
+              <textarea
+                value={saleNote}
+                onChange={(event) => setSaleNote(event.target.value)}
+                rows={2}
+              />
             </label>
             <label className="pos-note-field">
               <span>Motivo corporativo</span>

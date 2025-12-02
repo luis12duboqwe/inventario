@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from "react";
 // [PACK26-CASH-PERMS-START]
-import { DisableIfNoPerm, PERMS } from "../../../auth/useAuthz";
 // [PACK26-CASH-PERMS-END]
 import FlowAuditCard from "../../../shared/components/FlowAuditCard";
 
@@ -15,7 +14,7 @@ const INITIAL_TOTALS: Totals = { cash: 0, card: 0, transfer: 0, other: 0 };
 
 export function CashClosePage() {
   const [theoretical] = useState<Totals>(INITIAL_TOTALS); // TODO(wire)
-  const [counted, setCounted] = useState<Totals>(INITIAL_TOTALS);
+  const [counted] = useState<Totals>(INITIAL_TOTALS);
 
   const computedTheoreticalTotal = useMemo(
     () => theoretical.cash + theoretical.card + theoretical.transfer + theoretical.other,
@@ -39,11 +38,7 @@ export function CashClosePage() {
   );
 
   return (
-    <div
-      data-testid="cash-close"
-      className="operations-subpage"
-      style={{ display: "grid", gap: 12 }}
-    >
+    <div data-testid="cash-close" className="operations-subpage cash-close-grid">
       <FlowAuditCard
         title="Cierre de caja auditado"
         subtitle="Reordenamos los pasos para capturar montos y validar diferencias sin romper la grilla"
@@ -87,13 +82,13 @@ export function CashClosePage() {
         ]}
       />
       {/* Bloque placeholder mientras se integran formularios */}
-      <div id="cash-close-counted" style={{ display: "grid", gap: 8 }}>
-        <h3 style={{ margin: 0 }}>Conteo rápido</h3>
-        <p style={{ fontSize: 12, color: "#94a3b8" }}>
+      <div id="cash-close-counted" className="cash-close-grid">
+        <h3 className="customer-detail-title">Conteo rápido</h3>
+        <p className="cash-close-card-hint">
           Placeholder temporal para levantar la aplicación. Integraremos inputs detallados en
           iteración posterior.
         </p>
-        <div style={{ fontSize: 12, color: "#38bdf8" }}>
+        <div className="cash-close-card-value cash-close-summary-text">
           Teórico: {computedTheoreticalTotal} | Contado: {computedCountedTotal} | Diferencia:{" "}
           {diff.total}
         </div>

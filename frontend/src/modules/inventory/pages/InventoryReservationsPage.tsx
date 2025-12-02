@@ -2,7 +2,7 @@ import { FormEvent, useMemo, useState } from "react";
 
 import { useInventoryLayout } from "./context/InventoryLayoutContext";
 import { promptCorporateReason } from "../../../utils/corporateReason";
-import type { InventoryReservation } from "../../../api";
+import type { InventoryReservation } from "@api/inventory";
 
 function formatDateTime(value: string): string {
   if (!value) {
@@ -12,7 +12,7 @@ function formatDateTime(value: string): string {
     return new Date(value).toLocaleString("es-HN", {
       hour12: false,
     });
-  } catch (error) {
+  } catch {
     return value;
   }
 }
@@ -38,10 +38,15 @@ function parseDateInput(value: string): string | null {
 }
 
 function ReservationStatusBadge({ reservation }: { reservation: InventoryReservation }) {
-  const variant = reservation.status === "RESERVADO" ? "badge--info" : reservation.status === "CONSUMIDO" ? "badge--success" : reservation.status === "CANCELADO" ? "badge--muted" : "badge--warning";
-  return (
-    <span className={`badge ${variant}`}>{reservation.status}</span>
-  );
+  const variant =
+    reservation.status === "RESERVADO"
+      ? "badge--info"
+      : reservation.status === "CONSUMIDO"
+      ? "badge--success"
+      : reservation.status === "CANCELADO"
+      ? "badge--muted"
+      : "badge--warning";
+  return <span className={`badge ${variant}`}>{reservation.status}</span>;
 }
 
 const DEFAULT_REASON_CREATE = "Reserva temporal de inventario";
@@ -101,7 +106,9 @@ function InventoryReservationsPage(): JSX.Element {
   };
 
   const handleRenew = async (reservation: InventoryReservation) => {
-    const defaultValue = toInputValue(new Date(new Date(reservation.expires_at).getTime() + 60 * 60 * 1000));
+    const defaultValue = toInputValue(
+      new Date(new Date(reservation.expires_at).getTime() + 60 * 60 * 1000),
+    );
     const newExpiration = window.prompt(
       "Nueva fecha y hora de expiración (formato AAAA-MM-DDTHH:MM)",
       defaultValue,
@@ -161,7 +168,8 @@ function InventoryReservationsPage(): JSX.Element {
           <div>
             <h2 className="panel__title">Reservas de inventario</h2>
             <p className="panel__subtitle">
-              Bloquea unidades críticas antes de confirmar ventas o transferencias. Las reservas se liberan automáticamente al expirar.
+              Bloquea unidades críticas antes de confirmar ventas o transferencias. Las reservas se
+              liberan automáticamente al expirar.
             </p>
           </div>
           <div className="panel__actions">
@@ -177,7 +185,8 @@ function InventoryReservationsPage(): JSX.Element {
         </header>
         {reservations.expiringSoon.length > 0 && (
           <div className="alert alert--warning" role="status">
-            <strong>{reservations.expiringSoon.length}</strong> reservas vencerán en los próximos 30 minutos.
+            <strong>{reservations.expiringSoon.length}</strong> reservas vencerán en los próximos 30
+            minutos.
           </div>
         )}
         <form className="reservation-form" onSubmit={handleSubmitReservation}>
@@ -248,7 +257,8 @@ function InventoryReservationsPage(): JSX.Element {
                 </tr>
               ) : (
                 reservations.items.map((reservation) => {
-                  const device = reservation.device ?? devices.find((item) => item.id === reservation.device_id);
+                  const device =
+                    reservation.device ?? devices.find((item) => item.id === reservation.device_id);
                   const canManage = reservation.status === "RESERVADO";
                   const working = actingReservationId === reservation.id;
                   return (
@@ -292,7 +302,8 @@ function InventoryReservationsPage(): JSX.Element {
         </div>
         <footer className="table-footer">
           <div>
-            Página {reservations.meta.page} de {Math.max(reservations.meta.pages, 1)} — {reservations.meta.total} reservas
+            Página {reservations.meta.page} de {Math.max(reservations.meta.pages, 1)} —{" "}
+            {reservations.meta.total} reservas
           </div>
           <div className="table-pagination">
             <button
@@ -306,7 +317,11 @@ function InventoryReservationsPage(): JSX.Element {
             <button
               type="button"
               className="button button--ghost"
-              onClick={() => handleChangePage(Math.min(reservations.meta.page + 1, Math.max(reservations.meta.pages, 1)))}
+              onClick={() =>
+                handleChangePage(
+                  Math.min(reservations.meta.page + 1, Math.max(reservations.meta.pages, 1)),
+                )
+              }
               disabled={reservations.meta.page >= reservations.meta.pages || reservations.loading}
             >
               Siguiente

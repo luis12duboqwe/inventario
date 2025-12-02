@@ -4,33 +4,26 @@ export type StatusBadgeProps = {
   value: "DRAFT" | "OPEN" | "COMPLETED" | "CANCELLED" | string;
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  DRAFT: "#6b7280",
-  OPEN: "#0ea5e9",
-  COMPLETED: "#16a34a",
-  CANCELLED: "#b91c1c",
-};
-
 function StatusBadge({ value }: StatusBadgeProps) {
-  const background = STATUS_COLORS[value] ?? "#6b7280";
+  let modifierClass = "";
+  switch (value) {
+    case "DRAFT":
+      modifierClass = "orders-list-status-badge--draft";
+      break;
+    case "OPEN":
+      modifierClass = "orders-list-status-badge--open";
+      break;
+    case "COMPLETED":
+      modifierClass = "orders-list-status-badge--completed";
+      break;
+    case "CANCELLED":
+      modifierClass = "orders-list-status-badge--cancelled";
+      break;
+    default:
+      modifierClass = "";
+  }
 
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        padding: "2px 8px",
-        borderRadius: 999,
-        background,
-        color: "#0b1220",
-        fontSize: 12,
-        fontWeight: 700,
-        textTransform: "uppercase",
-      }}
-    >
-      {value}
-    </span>
-  );
+  return <span className={`orders-list-status-badge ${modifierClass}`}>{value}</span>;
 }
 
 export default StatusBadge;

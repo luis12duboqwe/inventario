@@ -18,13 +18,7 @@ type Props = {
 function FiltersPanel({ value, onChange }: Props) {
   const v = value || {};
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(6, minmax(160px, 1fr))",
-        gap: 8,
-      }}
-    >
+    <div className="orders-filters-panel">
       <input
         placeholder="Buscar (cliente, #factura, ref)"
         value={v.query || ""}
@@ -38,7 +32,7 @@ function FiltersPanel({ value, onChange }: Props) {
           }
           onChange(next);
         }}
-        style={{ padding: 8, borderRadius: 8 }}
+        className="orders-filters-input"
       />
       <select
         value={v.status || "ALL"}
@@ -52,7 +46,7 @@ function FiltersPanel({ value, onChange }: Props) {
           }
           onChange(next);
         }}
-        style={{ padding: 8, borderRadius: 8 }}
+        className="orders-filters-input"
       >
         <option value="ALL">Todos</option>
         <option value="DRAFT">Borrador</option>
@@ -74,7 +68,7 @@ function FiltersPanel({ value, onChange }: Props) {
           }
           onChange(next);
         }}
-        style={{ padding: 8, borderRadius: 8 }}
+        className="orders-filters-input"
       />
       <input
         type="date"
@@ -89,7 +83,7 @@ function FiltersPanel({ value, onChange }: Props) {
           }
           onChange(next);
         }}
-        style={{ padding: 8, borderRadius: 8 }}
+        className="orders-filters-input"
       />
       <input
         type="date"
@@ -104,7 +98,7 @@ function FiltersPanel({ value, onChange }: Props) {
           }
           onChange(next);
         }}
-        style={{ padding: 8, borderRadius: 8 }}
+        className="orders-filters-input"
       />
       <div />
     </div>

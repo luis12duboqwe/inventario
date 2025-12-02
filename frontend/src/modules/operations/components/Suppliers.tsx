@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ContactHistoryEntry } from "@api/types";
+import type { Store } from "@api/inventory";
 import type {
-  ContactHistoryEntry,
-  Store,
   Supplier,
   SupplierAccountsPayableResponse,
   SupplierAccountsPayableSupplier,
@@ -9,7 +9,7 @@ import type {
   SupplierBatchPayload,
   SupplierPayload,
   SupplierContact,
-} from "../../../api";
+} from "@api/suppliers";
 import {
   createSupplier,
   createSupplierBatch,
@@ -21,7 +21,7 @@ import {
   listSuppliers,
   updateSupplier,
   updateSupplierBatch,
-} from "../../../api";
+} from "@api/suppliers";
 import { normalizeRtn, RTN_ERROR_MESSAGE } from "../utils/rtn";
 
 type Props = {
@@ -96,23 +96,20 @@ function Suppliers({ token, stores }: Props) {
   const [batchForm, setBatchForm] = useState<SupplierBatchForm>(createInitialBatchForm);
   const [batchEditingId, setBatchEditingId] = useState<number | null>(null);
   const [loadingBatches, setLoadingBatches] = useState(false);
-  const [accountsPayable, setAccountsPayable] =
-    useState<SupplierAccountsPayableResponse | null>(null);
+  const [accountsPayable, setAccountsPayable] = useState<SupplierAccountsPayableResponse | null>(
+    null,
+  );
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const currencyFormatter = useMemo(
     () => new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" }),
-    []
+    [],
   );
 
   const refreshSuppliers = useCallback(
     async (query?: string) => {
       try {
         setLoading(true);
-        const data = await listSuppliers(
-          token,
-          query && query.length > 0 ? query : undefined,
-          200
-        );
+        const data = await listSuppliers(token, query && query.length > 0 ? query : undefined, 200);
         setSuppliers(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : "No fue posible cargar proveedores.");
@@ -120,7 +117,7 @@ function Suppliers({ token, stores }: Props) {
         setLoading(false);
       }
     },
-    [token]
+    [token],
   );
 
   const refreshAccountsPayable = useCallback(async () => {
@@ -132,7 +129,7 @@ function Suppliers({ token, stores }: Props) {
       setError(
         err instanceof Error
           ? err.message
-          : "No fue posible cargar el resumen de cuentas por pagar."
+          : "No fue posible cargar el resumen de cuentas por pagar.",
       );
     } finally {
       setLoadingAccounts(false);
@@ -147,15 +144,13 @@ function Suppliers({ token, stores }: Props) {
         setBatches(data);
       } catch (err) {
         setError(
-          err instanceof Error
-            ? err.message
-            : "No fue posible cargar los lotes del proveedor."
+          err instanceof Error ? err.message : "No fue posible cargar los lotes del proveedor.",
         );
       } finally {
         setLoadingBatches(false);
       }
     },
-    [token]
+    [token],
   );
 
   useEffect(() => {
@@ -173,7 +168,7 @@ function Suppliers({ token, stores }: Props) {
 
   const totalDebt = useMemo(
     () => suppliers.reduce((acc, supplier) => acc + (supplier.outstanding_debt ?? 0), 0),
-    [suppliers]
+    [suppliers],
   );
 
   const storeLookup = useMemo(() => {
@@ -186,9 +181,7 @@ function Suppliers({ token, stores }: Props) {
     if (!accountsPayable) {
       return new Map<number, SupplierAccountsPayableSupplier>();
     }
-    return new Map(
-      accountsPayable.suppliers.map((item) => [item.supplier_id, item] as const)
-    );
+    return new Map(accountsPayable.suppliers.map((item) => [item.supplier_id, item] as const));
   }, [accountsPayable]);
 
   const updateForm = (updates: Partial<SupplierForm>) => {
@@ -225,7 +218,9 @@ function Suppliers({ token, stores }: Props) {
       return;
     }
     const reason = askReason(
-      editingId ? "Motivo corporativo para actualizar al proveedor" : "Motivo corporativo para registrar al proveedor"
+      editingId
+        ? "Motivo corporativo para actualizar al proveedor"
+        : "Motivo corporativo para registrar al proveedor",
     );
     if (!reason) {
       return;
@@ -252,10 +247,10 @@ function Suppliers({ token, stores }: Props) {
       contactName || contactRole || email || phone
         ? [
             {
-              name: contactName || undefined,
-              position: contactRole || undefined,
-              email: email || undefined,
-              phone: phone || undefined,
+              name: contactName || null,
+              position: contactRole || null,
+              email: email || null,
+              phone: phone || null,
             },
           ]
         : [];
@@ -270,7 +265,7 @@ function Suppliers({ token, stores }: Props) {
         if (normalizedRtn) {
           payload.rtn = normalizedRtn;
         } else if (rawRtn.length === 0) {
-          payload.rtn = undefined;
+          payload.rtn = null;
         }
         payload.payment_terms = paymentTerms;
         payload.contact_name = contactName;
@@ -339,7 +334,9 @@ function Suppliers({ token, stores }: Props) {
       await refreshSuppliers(trimmed.length >= 2 ? trimmed : undefined);
       await refreshAccountsPayable();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No fue posible guardar la información del proveedor.");
+      setError(
+        err instanceof Error ? err.message : "No fue posible guardar la información del proveedor.",
+      );
     }
   };
 
@@ -421,7 +418,7 @@ function Suppliers({ token, stores }: Props) {
   const handleAdjustDebt = async (supplier: Supplier) => {
     const amountRaw = window.prompt(
       "Nuevo saldo pendiente",
-      String(Number(supplier.outstanding_debt ?? 0).toFixed(2))
+      String(Number(supplier.outstanding_debt ?? 0).toFixed(2)),
     );
     if (amountRaw === null) {
       return;
@@ -442,7 +439,9 @@ function Suppliers({ token, stores }: Props) {
       await refreshSuppliers(trimmed.length >= 2 ? trimmed : undefined);
       await refreshAccountsPayable();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No fue posible ajustar la cuenta del proveedor.");
+      setError(
+        err instanceof Error ? err.message : "No fue posible ajustar la cuenta del proveedor.",
+      );
     }
   };
 
@@ -482,7 +481,9 @@ function Suppliers({ token, stores }: Props) {
         await refreshBatches(selectedSupplierId);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No fue posible eliminar el lote del proveedor.");
+      setError(
+        err instanceof Error ? err.message : "No fue posible eliminar el lote del proveedor.",
+      );
     }
   };
 
@@ -508,7 +509,7 @@ function Suppliers({ token, stores }: Props) {
     const reason = askReason(
       batchEditingId
         ? "Motivo corporativo para actualizar el lote del proveedor"
-        : "Motivo corporativo para registrar el lote del proveedor"
+        : "Motivo corporativo para registrar el lote del proveedor",
     );
     if (!reason) {
       return;
@@ -545,7 +546,9 @@ function Suppliers({ token, stores }: Props) {
       resetBatchForm();
       await refreshBatches(selectedSupplierId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No fue posible guardar el lote del proveedor.");
+      setError(
+        err instanceof Error ? err.message : "No fue posible guardar el lote del proveedor.",
+      );
     }
   };
 
@@ -564,7 +567,9 @@ function Suppliers({ token, stores }: Props) {
       URL.revokeObjectURL(url);
       setMessage("Exportación CSV de proveedores generada.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No fue posible exportar el CSV de proveedores.");
+      setError(
+        err instanceof Error ? err.message : "No fue posible exportar el CSV de proveedores.",
+      );
     } finally {
       setExporting(false);
     }
@@ -574,14 +579,19 @@ function Suppliers({ token, stores }: Props) {
     <section className="card wide">
       <h2>Proveedores estratégicos</h2>
       <p className="card-subtitle">
-        Centraliza información de proveedores, notas de servicio y saldos pendientes para compras y reparaciones.
+        Centraliza información de proveedores, notas de servicio y saldos pendientes para compras y
+        reparaciones.
       </p>
       {message ? <div className="alert success">{message}</div> : null}
       {error ? <div className="alert error">{error}</div> : null}
       <form className="form-grid" onSubmit={handleSubmit}>
         <label>
           Nombre del proveedor
-          <input value={form.name} onChange={(event) => updateForm({ name: event.target.value })} required />
+          <input
+            value={form.name}
+            onChange={(event) => updateForm({ name: event.target.value })}
+            required
+          />
         </label>
         <label>
           RTN
@@ -601,7 +611,10 @@ function Suppliers({ token, stores }: Props) {
         </label>
         <label>
           Contacto
-          <input value={form.contactName} onChange={(event) => updateForm({ contactName: event.target.value })} />
+          <input
+            value={form.contactName}
+            onChange={(event) => updateForm({ contactName: event.target.value })}
+          />
         </label>
         <label>
           Cargo del contacto
@@ -622,11 +635,17 @@ function Suppliers({ token, stores }: Props) {
         </label>
         <label>
           Teléfono
-          <input value={form.phone} onChange={(event) => updateForm({ phone: event.target.value })} />
+          <input
+            value={form.phone}
+            onChange={(event) => updateForm({ phone: event.target.value })}
+          />
         </label>
         <label className="wide">
           Dirección
-          <input value={form.address} onChange={(event) => updateForm({ address: event.target.value })} />
+          <input
+            value={form.address}
+            onChange={(event) => updateForm({ address: event.target.value })}
+          />
         </label>
         <label>
           Saldo pendiente
@@ -674,7 +693,12 @@ function Suppliers({ token, stores }: Props) {
               Cancelar edición
             </button>
           ) : null}
-          <button type="button" className="btn btn--secondary" onClick={handleExport} disabled={exporting}>
+          <button
+            type="button"
+            className="btn btn--secondary"
+            onClick={handleExport}
+            disabled={exporting}
+          >
             {exporting ? "Exportando..." : "Exportar CSV"}
           </button>
         </div>
@@ -695,7 +719,13 @@ function Suppliers({ token, stores }: Props) {
         </div>
         <div>
           <span className="muted-text">Saldo pendiente</span>
-          <strong>${totalDebt.toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+          <strong>
+            $
+            {totalDebt.toLocaleString("es-HN", {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}
+          </strong>
         </div>
         <div>
           <span className="muted-text">Saldo total CxP</span>
@@ -750,7 +780,8 @@ function Suppliers({ token, stores }: Props) {
                 <tr key={bucket.label}>
                   <td>{bucket.label}</td>
                   <td>
-                    ${bucket.amount.toLocaleString("es-HN", {
+                    $
+                    {bucket.amount.toLocaleString("es-HN", {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     })}
@@ -832,19 +863,39 @@ function Suppliers({ token, stores }: Props) {
                     <td>{lastHistory}</td>
                     <td>
                       <div className="actions-row">
-                        <button type="button" className="btn btn--link" onClick={() => handleEdit(supplier)}>
+                        <button
+                          type="button"
+                          className="btn btn--link"
+                          onClick={() => handleEdit(supplier)}
+                        >
                           Editar
                         </button>
-                        <button type="button" className="btn btn--link" onClick={() => handleAddNote(supplier)}>
+                        <button
+                          type="button"
+                          className="btn btn--link"
+                          onClick={() => handleAddNote(supplier)}
+                        >
                           Nota
                         </button>
-                        <button type="button" className="btn btn--link" onClick={() => handleAdjustDebt(supplier)}>
+                        <button
+                          type="button"
+                          className="btn btn--link"
+                          onClick={() => handleAdjustDebt(supplier)}
+                        >
                           Ajustar saldo
                         </button>
-                        <button type="button" className="btn btn--link" onClick={() => handleSelectBatches(supplier)}>
+                        <button
+                          type="button"
+                          className="btn btn--link"
+                          onClick={() => handleSelectBatches(supplier)}
+                        >
                           Lotes
                         </button>
-                        <button type="button" className="btn btn--link" onClick={() => handleDelete(supplier)}>
+                        <button
+                          type="button"
+                          className="btn btn--link"
+                          onClick={() => handleDelete(supplier)}
+                        >
                           Eliminar
                         </button>
                       </div>
@@ -861,8 +912,8 @@ function Suppliers({ token, stores }: Props) {
         {selectedSupplierId ? (
           <>
             <p className="muted-text">
-              Gestiona los lotes registrados para <strong>{selectedSupplierName}</strong> y mantén actualizado el costo
-              promedio de inventario.
+              Gestiona los lotes registrados para <strong>{selectedSupplierName}</strong> y mantén
+              actualizado el costo promedio de inventario.
             </p>
             <form className="form-grid" onSubmit={handleBatchSubmit}>
               <label>
@@ -988,16 +1039,28 @@ function Suppliers({ token, stores }: Props) {
                         <td>{batch.batch_code}</td>
                         <td>{batch.model_name}</td>
                         <td>{batch.purchase_date}</td>
-                        <td>{batch.store_id ? storeLookup.get(batch.store_id) ?? `#${batch.store_id}` : "—"}</td>
+                        <td>
+                          {batch.store_id
+                            ? storeLookup.get(batch.store_id) ?? `#${batch.store_id}`
+                            : "—"}
+                        </td>
                         <td>{batch.device_id ?? "—"}</td>
                         <td>{currencyFormatter.format(batch.unit_cost)}</td>
                         <td>{batch.quantity}</td>
                         <td>
                           <div className="actions-row">
-                            <button type="button" className="btn btn--link" onClick={() => handleBatchEdit(batch)}>
+                            <button
+                              type="button"
+                              className="btn btn--link"
+                              onClick={() => handleBatchEdit(batch)}
+                            >
                               Editar
                             </button>
-                            <button type="button" className="btn btn--link" onClick={() => handleBatchDelete(batch)}>
+                            <button
+                              type="button"
+                              className="btn btn--link"
+                              onClick={() => handleBatchDelete(batch)}
+                            >
                               Eliminar
                             </button>
                           </div>
@@ -1010,7 +1073,9 @@ function Suppliers({ token, stores }: Props) {
             )}
           </>
         ) : (
-          <p className="muted-text">Selecciona un proveedor para administrar sus lotes y costos asociados.</p>
+          <p className="muted-text">
+            Selecciona un proveedor para administrar sus lotes y costos asociados.
+          </p>
         )}
       </div>
     </section>

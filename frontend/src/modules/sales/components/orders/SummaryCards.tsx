@@ -13,28 +13,12 @@ type Props = {
 function SummaryCards({ items }: Props) {
   const data = Array.isArray(items) ? items : [];
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(4, minmax(160px, 1fr))",
-        gap: 12,
-      }}
-    >
+    <div className="orders-summary-cards">
       {data.map((card, index) => (
-        <div
-          key={`order-summary-${index}`}
-          style={{
-            padding: 12,
-            borderRadius: 12,
-            background: "rgba(255, 255, 255, 0.04)",
-            border: "1px solid rgba(255, 255, 255, 0.08)",
-          }}
-        >
-          <div style={{ fontSize: 12, color: "#9ca3af" }}>{card.label}</div>
-          <div style={{ fontSize: 22 }}>{card.value}</div>
-          {card.hint ? (
-            <div style={{ fontSize: 11, color: "#94a3b8" }}>{card.hint}</div>
-          ) : null}
+        <div key={`order-summary-${index}`} className="orders-summary-card">
+          <div className="orders-summary-card-label">{card.label}</div>
+          <div className="orders-summary-card-value">{card.value}</div>
+          {card.hint ? <div className="orders-summary-card-hint">{card.hint}</div> : null}
         </div>
       ))}
     </div>

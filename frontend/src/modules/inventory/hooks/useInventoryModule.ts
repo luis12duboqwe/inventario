@@ -11,8 +11,8 @@ import type {
   InventoryReservationInput,
   InventoryReservationRenewInput,
   MovementReportEntry,
-  SupplierBatchOverviewItem,
-} from "../../../api";
+} from "@api/inventory";
+import type { SupplierBatchOverviewItem } from "@api/suppliers";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 import { inventoryService } from "../services/inventoryService";
 

@@ -11,22 +11,13 @@ function ChangeDue({ total, cash }: POSChangeDueProps) {
   const change = Math.max(0, (cash ?? 0) - (total ?? 0));
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(2, 1fr)",
-        gap: 4,
-        padding: 8,
-        borderRadius: 8,
-        border: "1px solid rgba(255, 255, 255, 0.08)",
-      }}
-    >
+    <div className="pos-change-due">
       <span>Total</span>
-      <span style={{ textAlign: "right" }}>{currency.format(total ?? 0)}</span>
+      <span className="pos-change-due-value">{currency.format(total ?? 0)}</span>
       <span>Efectivo</span>
-      <span style={{ textAlign: "right" }}>{currency.format(cash ?? 0)}</span>
+      <span className="pos-change-due-value">{currency.format(cash ?? 0)}</span>
       <strong>Cambio</strong>
-      <strong style={{ textAlign: "right" }}>{currency.format(change)}</strong>
+      <strong className="pos-change-due-total">{currency.format(change)}</strong>
     </div>
   );
 }

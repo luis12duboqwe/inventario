@@ -8,11 +8,8 @@ import {
   PurchasesToolbar,
 } from "./purchases";
 import FlowAuditCard, { type FlowAuditFlow } from "../../../shared/components/FlowAuditCard";
-import type { PurchaseOrder } from "../../../api";
-import {
-  usePurchasesController,
-  type PurchasesControllerParams,
-} from "./usePurchasesController";
+import type { PurchaseOrder } from "@api/purchases";
+import { usePurchasesController, type PurchasesControllerParams } from "./usePurchasesController";
 
 const statusLabels: Record<PurchaseOrder["status"], string> = {
   BORRADOR: "Borrador",
@@ -107,7 +104,8 @@ function Purchases(props: Props) {
     {
       id: "ordenes",
       title: "Órdenes y recepciones",
-      summary: "Arranca un borrador, agrega dispositivos y confirma la recepción parcial sin salir de la grilla.",
+      summary:
+        "Arranca un borrador, agrega dispositivos y confirma la recepción parcial sin salir de la grilla.",
       steps: [
         "Filtra por sucursal o proveedor y limpia filtros con un clic cuando cambies de lote.",
         "Genera el borrador, agrega artículos y aplica la plantilla si existe un acuerdo recurrente.",
@@ -118,7 +116,10 @@ function Purchases(props: Props) {
           id: "ir-ordenes",
           label: "Ir a órdenes",
           tooltip: "Saltar al panel de órdenes y recepciones",
-          onClick: () => document.getElementById("purchases-orders-panel")?.scrollIntoView({ behavior: "smooth" }),
+          onClick: () =>
+            document
+              .getElementById("purchases-orders-panel")
+              ?.scrollIntoView({ behavior: "smooth" }),
         },
         {
           id: "limpiar-filtros-compras",
@@ -131,7 +132,8 @@ function Purchases(props: Props) {
     {
       id: "proveedores",
       title: "Proveedores y pagos",
-      summary: "Conserva el histórico, exporta y activa/inactiva proveedores con motivo corporativo.",
+      summary:
+        "Conserva el histórico, exporta y activa/inactiva proveedores con motivo corporativo.",
       steps: [
         "Actualiza datos del proveedor y revisa su historial antes de registrar pagos.",
         "Alterna el estado activo/inactivo y exporta el portafolio con un clic.",
@@ -142,7 +144,10 @@ function Purchases(props: Props) {
           id: "ir-proveedores",
           label: "Ir a proveedores",
           tooltip: "Desplázate al panel lateral de proveedores",
-          onClick: () => document.getElementById("purchases-vendors-panel")?.scrollIntoView({ behavior: "smooth" }),
+          onClick: () =>
+            document
+              .getElementById("purchases-vendors-panel")
+              ?.scrollIntoView({ behavior: "smooth" }),
         },
         {
           id: "reset-proveedores",
@@ -193,7 +198,8 @@ function Purchases(props: Props) {
       <section className="card" id="purchases-list">
         <h2>Listado general de compras</h2>
         <p className="card-subtitle">
-          Consulta todas las compras registradas y filtra por proveedor, fechas o usuario responsable.
+          Consulta todas las compras registradas y filtra por proveedor, fechas o usuario
+          responsable.
         </p>
         <PurchasesFiltersPanel
           filtersDraft={recordFiltersDraft}
@@ -235,10 +241,7 @@ function Purchases(props: Props) {
           onVendorEdit={handleVendorEdit}
           onVendorSelect={handleSelectVendor}
           onVendorToggleStatus={(vendor) =>
-            handleVendorStatusToggle(
-              vendor,
-              vendor.estado === "activo" ? "inactivo" : "activo",
-            )
+            handleVendorStatusToggle(vendor, vendor.estado === "activo" ? "inactivo" : "activo")
           }
           onVendorHistoryFiltersSubmit={handleVendorHistoryFiltersSubmit}
           onVendorHistoryFiltersReset={handleVendorHistoryFiltersReset}
@@ -248,7 +251,9 @@ function Purchases(props: Props) {
 
       <section className="card">
         <h2>Estadísticas de compras</h2>
-        <p className="card-subtitle">Visualiza los totales mensuales y los proveedores con mayor participación.</p>
+        <p className="card-subtitle">
+          Visualiza los totales mensuales y los proveedores con mayor participación.
+        </p>
         <PurchasesSummaryCards
           statistics={statistics}
           loading={statsLoading}
@@ -280,7 +285,7 @@ function Purchases(props: Props) {
           onApplyTemplate={handleApplyTemplate}
           onExecuteTemplate={handleExecuteTemplate}
           getTemplateSupplier={getTemplateSupplier}
-          onReceive={handleReceive}
+          onReceive={(order) => handleReceive(order, devices)}
           onReturn={handleReturn}
           onCancel={handleCancel}
         />

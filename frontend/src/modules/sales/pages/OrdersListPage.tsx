@@ -120,7 +120,11 @@ const ORDERS_DATA: OrderRecord[] = [
 const currency = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
 
 function OrdersListPage() {
-  const [filters, setFilters] = useState<OrderFilters>({ status: "ALL", payment: "ALL", channel: "ALL" });
+  const [filters, setFilters] = useState<OrderFilters>({
+    status: "ALL",
+    payment: "ALL",
+    channel: "ALL",
+  });
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [activeRow, setActiveRow] = useState<OrderRow | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -158,7 +162,14 @@ function OrdersListPage() {
       const haystack = `${order.customer} ${order.number}`.toLowerCase();
       return haystack.includes(normalizedQuery);
     });
-  }, [filters.channel, filters.dateFrom, filters.dateTo, filters.payment, filters.query, filters.status]);
+  }, [
+    filters.channel,
+    filters.dateFrom,
+    filters.dateTo,
+    filters.payment,
+    filters.query,
+    filters.status,
+  ]);
 
   const summaryCards = useMemo(() => {
     const count = filteredRows.length;
@@ -169,8 +180,16 @@ function OrdersListPage() {
 
     return [
       { label: "Órdenes", value: count, hint: `${paidCount} pagadas` },
-      { label: "Ingresos", value: currency.format(totalAmount), hint: `Promedio ${currency.format(average)}` },
-      { label: "Pendientes", value: openCount, hint: `${((openCount / Math.max(count, 1)) * 100).toFixed(0)}%` },
+      {
+        label: "Ingresos",
+        value: currency.format(totalAmount),
+        hint: `Promedio ${currency.format(average)}`,
+      },
+      {
+        label: "Pendientes",
+        value: openCount,
+        hint: `${((openCount / Math.max(count, 1)) * 100).toFixed(0)}%`,
+      },
       {
         label: "Seleccionadas",
         value: selectedIds.length,
@@ -181,28 +200,41 @@ function OrdersListPage() {
 
   const rows: OrderRow[] = useMemo(
     () =>
-      filteredRows.map(({ id, number, date, customer, itemsCount, total, paid, status, paymentStatus, channel }) => {
-        const row: OrderRow = {
+      filteredRows.map(
+        ({
           id,
+          number,
           date,
+          customer,
           itemsCount,
           total,
           paid,
           status,
           paymentStatus,
           channel,
-        };
+        }) => {
+          const row: OrderRow = {
+            id,
+            date,
+            itemsCount,
+            total,
+            paid,
+            status,
+            paymentStatus,
+            channel,
+          };
 
-        if (number) {
-          row.number = number;
-        }
+          if (number) {
+            row.number = number;
+          }
 
-        if (customer) {
-          row.customer = customer;
-        }
+          if (customer) {
+            row.customer = customer;
+          }
 
-        return row;
-      }),
+          return row;
+        },
+      ),
     [filteredRows],
   );
 
@@ -260,23 +292,11 @@ function OrdersListPage() {
   };
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
+    <div className="orders-list-container">
       <OrdersFiltersBar value={filters} onChange={handleFiltersChange} />
       <OrdersSummaryCards items={summaryCards} />
 
-      {message ? (
-        <div
-          style={{
-            padding: 12,
-            borderRadius: 12,
-            border: "1px solid rgba(56, 189, 248, 0.4)",
-            background: "rgba(56, 189, 248, 0.08)",
-            color: "#bae6fd",
-          }}
-        >
-          {message}
-        </div>
-      ) : null}
+      {message ? <div className="orders-list-message">{message}</div> : null}
 
       <OrdersListBulkActions
         selectedCount={selectedIds.length}
@@ -287,16 +307,22 @@ function OrdersListPage() {
         onImport={() => setImportOpen(true)}
       />
 
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-        <button onClick={() => setEmailOpen(true)} style={{ padding: "8px 12px", borderRadius: 8 }}>
+      <div className="orders-list-actions">
+        <button
+          onClick={() => setEmailOpen(true)}
+          className="orders-list-button orders-list-button-default"
+        >
           Enviar recibo
         </button>
-        <button onClick={() => setReturnOpen(true)} style={{ padding: "8px 12px", borderRadius: 8 }}>
+        <button
+          onClick={() => setReturnOpen(true)}
+          className="orders-list-button orders-list-button-default"
+        >
           Procesar devolución
         </button>
         <button
           onClick={() => setCaptureOpen(true)}
-          style={{ padding: "8px 12px", borderRadius: 8, background: "#22c55e", color: "#0b1220", border: 0 }}
+          className="orders-list-button orders-list-button-primary"
         >
           Registrar pago manual
         </button>
@@ -318,9 +344,21 @@ function OrdersListPage() {
       <OrdersImportModal open={importOpen} onClose={() => setImportOpen(false)} />
       <OrdersExportModal open={exportOpen} onClose={() => setExportOpen(false)} />
       <OrdersEmailInvoiceModal open={emailOpen} onClose={() => setEmailOpen(false)} />
-      <OrdersCancelModal open={cancelOpen} onClose={() => setCancelOpen(false)} onConfirm={handleBulkCancel} />
-      <OrdersReturnModal open={returnOpen} onClose={() => setReturnOpen(false)} onSubmit={handleBulkRefund} />
-      <OrdersPaymentCaptureModal open={captureOpen} onClose={() => setCaptureOpen(false)} onSubmit={handleCapturePayment} />
+      <OrdersCancelModal
+        open={cancelOpen}
+        onClose={() => setCancelOpen(false)}
+        onConfirm={handleBulkCancel}
+      />
+      <OrdersReturnModal
+        open={returnOpen}
+        onClose={() => setReturnOpen(false)}
+        onSubmit={handleBulkRefund}
+      />
+      <OrdersPaymentCaptureModal
+        open={captureOpen}
+        onClose={() => setCaptureOpen(false)}
+        onSubmit={handleCapturePayment}
+      />
     </div>
   );
 }

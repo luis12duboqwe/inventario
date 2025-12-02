@@ -45,11 +45,11 @@ export default function LabelPrinter({
 
   return (
     <LabelGenerator
-      open={open}
+      open={!!open}
       onClose={onClose}
       storeId={normalizedStoreId as number | null}
       storeName={normalizedStoreName}
-      deviceId={normalizedDeviceId as string | number | null}
+      deviceId={normalizedDeviceId !== null ? String(normalizedDeviceId) : null}
       deviceName={normalizedDeviceName}
       sku={normalizedSku}
     />

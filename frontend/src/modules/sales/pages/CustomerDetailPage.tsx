@@ -12,7 +12,7 @@ import { useAuthz, PERMS, RequirePerm } from "../../../auth/useAuthz";
 import { logUI } from "../../../services/audit";
 // [PACK26-CUSTOMERS-DETAIL-PERMS-END]
 // [PACK25-SKELETON-USE-START]
-import { Skeleton } from "@/ui/Skeleton";
+import { Skeleton } from "@components/ui/Skeleton";
 // [PACK25-SKELETON-USE-END]
 import { readQueue } from "@/services/offline";
 import { flushOffline, safeCreateCustomer, safeUpdateCustomer } from "../utils/offline";
@@ -27,7 +27,14 @@ type CustomerProfile = {
   notes: string;
 };
 
-const emptyProfile: CustomerProfile = { name: "", email: "", phone: "", tier: "", notes: "", tags: [] };
+const emptyProfile: CustomerProfile = {
+  name: "",
+  email: "",
+  phone: "",
+  tier: "",
+  notes: "",
+  tags: [],
+};
 
 export function CustomerDetailPage() {
   const { can, user } = useAuthz();
@@ -39,7 +46,7 @@ export function CustomerDetailPage() {
   const [data, setData] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [errors, setErrors] = useState<Record<string,string>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
   // [PACK23-CUSTOMERS-DETAIL-STATE-END]
   const [form, setForm] = useState<CustomerProfile>(emptyProfile);
   const [pendingOffline, setPendingOffline] = useState(0);
@@ -94,7 +101,7 @@ export function CustomerDetailPage() {
 
   // [PACK23-CUSTOMERS-DETAIL-SAVE-START]
   function validate(d: Partial<Customer>) {
-    const e: Record<string,string> = {};
+    const e: Record<string, string> = {};
     if (!required(d.name)) e.name = "Requerido";
     if (!emailish(d.email)) e.email = "Email inválido";
     if (!phoneish(d.phone)) e.phone = "Teléfono inválido";
@@ -174,7 +181,6 @@ export function CustomerDetailPage() {
   const unauthorized = unauthorizedView || unauthorizedCreate;
   // [PACK26-CUSTOMERS-DETAIL-GUARD-END]
 
-
   const handleFlush = useCallback(async () => {
     setFlushing(true);
     try {
@@ -208,26 +214,32 @@ export function CustomerDetailPage() {
   }, [data, detailCardValueMemo, id, loading]);
 
   return (
-    <div style={{ display: "grid", gap: 16, maxWidth: 600 }}>
+    <div className="customer-detail-container customer-detail-container-limited">
       {unauthorized ? (
         <div>No autorizado</div>
       ) : (
         <>
           {pendingOffline > 0 ? (
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span style={{ color: "#fbbf24" }}>Pendientes offline: {pendingOffline}</span>
+            <div className="customer-detail-offline-bar">
+              <span className="customer-detail-offline-text">
+                Pendientes offline: {pendingOffline}
+              </span>
               <button
                 type="button"
                 onClick={handleFlush}
                 disabled={flushing}
-                style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "rgba(56,189,248,0.16)", color: "#e0f2fe" }}
+                className="customers-list-button customers-list-button-secondary customer-detail-retry-btn"
               >
                 {flushing ? "Reintentando…" : "Reintentar pendientes"}
               </button>
             </div>
           ) : null}
-          {flushMessage ? <div style={{ color: "#9ca3af", fontSize: 12 }}>{flushMessage}</div> : null}
-          {offlineNotice ? <div style={{ color: "#fbbf24", fontSize: 13 }}>{offlineNotice}</div> : null}
+          {flushMessage ? (
+            <div className="customer-detail-flush-message">{flushMessage}</div>
+          ) : null}
+          {offlineNotice ? (
+            <div className="customer-detail-offline-notice">{offlineNotice}</div>
+          ) : null}
           {headerSection}
           <form
             onSubmit={(event) => {
@@ -241,69 +253,84 @@ export function CustomerDetailPage() {
                 tags: form.tags,
               });
             }}
-            style={{ display: "grid", gap: 12 }}
+            className="customer-detail-grid"
           >
-            <div>
-              <label style={{ display: "block", marginBottom: 4 }}>Nombre</label>
+            <div className="customer-detail-info-group">
+              <label htmlFor="customer-name" className="customer-detail-label">
+                Nombre
+              </label>
               <input
+                id="customer-name"
                 value={form.name}
                 onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-                style={{ padding: 8, borderRadius: 8, width: "100%" }}
+                className="customer-detail-input"
                 disabled={loading || saving}
               />
-              {errors.name && <span style={{ color: "#f87171", fontSize: 12 }}>{errors.name}</span>}
+              {errors.name && <span className="customer-detail-error">{errors.name}</span>}
             </div>
-            <div>
-              <label style={{ display: "block", marginBottom: 4 }}>Email</label>
+            <div className="customer-detail-info-group">
+              <label htmlFor="customer-email" className="customer-detail-label">
+                Email
+              </label>
               <input
+                id="customer-email"
                 value={form.email ?? ""}
                 onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))}
-                style={{ padding: 8, borderRadius: 8, width: "100%" }}
+                className="customer-detail-input"
                 disabled={loading || saving}
                 type="email"
               />
-              {errors.email && <span style={{ color: "#f87171", fontSize: 12 }}>{errors.email}</span>}
+              {errors.email && <span className="customer-detail-error">{errors.email}</span>}
             </div>
-            <div>
-              <label style={{ display: "block", marginBottom: 4 }}>Teléfono</label>
+            <div className="customer-detail-info-group">
+              <label htmlFor="customer-phone" className="customer-detail-label">
+                Teléfono
+              </label>
               <input
+                id="customer-phone"
                 value={form.phone ?? ""}
                 onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))}
-                style={{ padding: 8, borderRadius: 8, width: "100%" }}
+                className="customer-detail-input"
                 disabled={loading || saving}
               />
-              {errors.phone && <span style={{ color: "#f87171", fontSize: 12 }}>{errors.phone}</span>}
+              {errors.phone && <span className="customer-detail-error">{errors.phone}</span>}
             </div>
-            <div>
-              <label style={{ display: "block", marginBottom: 4 }}>Tier</label>
+            <div className="customer-detail-info-group">
+              <label htmlFor="customer-tier" className="customer-detail-label">
+                Tier
+              </label>
               <input
+                id="customer-tier"
                 value={form.tier ?? ""}
                 onChange={(event) => setForm((prev) => ({ ...prev, tier: event.target.value }))}
-                style={{ padding: 8, borderRadius: 8, width: "100%" }}
+                className="customer-detail-input"
                 disabled={loading || saving}
               />
             </div>
-            <div>
-              <label style={{ display: "block", marginBottom: 4 }}>Notas</label>
+            <div className="customer-detail-info-group">
+              <label htmlFor="customer-notes" className="customer-detail-label">
+                Notas
+              </label>
               <textarea
+                id="customer-notes"
                 value={form.notes ?? ""}
                 onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
-                style={{ padding: 8, borderRadius: 8, minHeight: 100, width: "100%" }}
+                className="customer-detail-textarea"
                 disabled={loading || saving}
               />
             </div>
             <RequirePerm perm={actionPerm} fallback={null}>
               <button
                 type="submit"
-                style={{ padding: "10px 16px", borderRadius: 8, background: "#38bdf8", color: "#0f172a", border: "none", fontWeight: 600 }}
+                className="customers-list-button customers-list-button-primary customer-detail-submit-btn"
                 disabled={saving || loading}
               >
                 {saving ? "Guardando…" : isCreateMode ? "Crear cliente" : "Actualizar cliente"}
               </button>
             </RequirePerm>
           </form>
-          <div style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 12 }}>
-            <div style={{ fontWeight: 700 }}>Historial de compras</div>
+          <div className="customer-detail-card">
+            <div className="customer-detail-history-title">Historial de compras</div>
             {/* TODO(wire) tabla de ventas del cliente */}
           </div>
         </>

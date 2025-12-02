@@ -1,8 +1,8 @@
 // [PACK25-LAZY-IMPORTS-START]
 import React, { lazy } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
-import { SuspenseGate } from "@/ui/SuspenseGate"; // [PACK37-frontend]
-import { ErrorBoundary } from "@/ui/ErrorBoundary"; // [PACK37-frontend]
+import { SuspenseGate } from "@components/ui/SuspenseGate"; // [PACK37-frontend]
+import AppErrorBoundary from "@components/ui/AppErrorBoundary"; // [PACK37-frontend]
 
 const SalesDashboardPage = lazy(() => import("./pages/SalesDashboardPage"));
 const POSPage = lazy(() => import("./pages/POSPage"));
@@ -18,8 +18,14 @@ const CashClosePage = lazy(() => import("./pages/CashClosePage"));
 export default function SalesRoutes() {
   // [PACK25-LAZY-ROUTES-START]
   return (
-    <ErrorBoundary>
-      <SuspenseGate fallback={<div style={{ padding: 16 }}><h3>Cargando Ventas…</h3></div>}>
+    <AppErrorBoundary variant="inline" title="Error en Ventas">
+      <SuspenseGate
+        fallback={
+          <div className="sales-loading-fallback">
+            <h3>Cargando Ventas…</h3>
+          </div>
+        }
+      >
         <Routes>
           <Route index element={<SalesDashboardPage />} />
           <Route path="pos" element={<POSPage />} />
@@ -33,7 +39,7 @@ export default function SalesRoutes() {
           <Route path="*" element={<Navigate to="." replace />} />
         </Routes>
       </SuspenseGate>
-    </ErrorBoundary>
+    </AppErrorBoundary>
   );
   // [PACK25-LAZY-ROUTES-END]
 }

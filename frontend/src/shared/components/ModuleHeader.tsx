@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 import { motion } from "framer-motion";
 
-import PageHeader, { type PageHeaderStatus } from "./ui/PageHeader";
+import PageHeader, { type PageHeaderStatus } from "@components/ui/PageHeader";
 
 export type ModuleStatus = "ok" | "warning" | "critical";
 

@@ -2,12 +2,16 @@ import {
   createPurchaseOrder,
   receivePurchaseOrder,
   registerPurchaseReturn,
+} from "@api/purchases";
+import {
   createSale,
   registerSaleReturn,
+} from "@api/sales";
+import {
   createTransferOrder,
   dispatchTransferOrder,
   receiveTransferOrder,
-} from "../../../api";
+} from "@api/transfers";
 
 export const operationsService = {
   createPurchaseOrder,
