@@ -22,7 +22,7 @@ vi.mock("../../../../dashboard/context/DashboardContext", () => ({
   }),
 }));
 
-vi.mock("../../../../../services/api/pos", () => ({
+vi.mock("@api/pos", () => ({
   closePosSession: vi.fn(async () => ({
     session_id: 1,
     branch_id: 1,
