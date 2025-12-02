@@ -10,26 +10,20 @@ export type OrderActionsBarProps = {
 
 function ActionsBar({ onPrint, onPDF, onMarkPaid, onRefund, onCancel }: OrderActionsBarProps) {
   return (
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-      <button
-        onClick={onMarkPaid}
-        style={{ padding: "8px 12px", borderRadius: 8, background: "#22c55e", color: "#0b1220", border: 0 }}
-      >
+    <div className="order-actions-bar">
+      <button onClick={onMarkPaid} className="order-actions-btn-primary">
         Marcar pagado
       </button>
-      <button onClick={onRefund} style={{ padding: "8px 12px", borderRadius: 8 }}>
+      <button onClick={onRefund} className="order-actions-btn">
         Reembolsar
       </button>
-      <button
-        onClick={onCancel}
-        style={{ padding: "8px 12px", borderRadius: 8, background: "#b91c1c", color: "#fff", border: 0 }}
-      >
+      <button onClick={onCancel} className="order-actions-btn-danger">
         Cancelar
       </button>
-      <button onClick={onPrint} style={{ padding: "8px 12px", borderRadius: 8 }}>
+      <button onClick={onPrint} className="order-actions-btn">
         Imprimir
       </button>
-      <button onClick={onPDF} style={{ padding: "8px 12px", borderRadius: 8 }}>
+      <button onClick={onPDF} className="order-actions-btn">
         PDF
       </button>
     </div>

@@ -1,4 +1,4 @@
-import type { PurchaseStatistics } from "../../../../api";
+import type { PurchaseStatistics } from "@api/purchases";
 
 type PurchasesSummaryCardsProps = {
   statistics: PurchaseStatistics | null;
@@ -6,7 +6,11 @@ type PurchasesSummaryCardsProps = {
   currencyFormatter: Intl.NumberFormat;
 };
 
-const PurchasesSummaryCards = ({ statistics, loading, currencyFormatter }: PurchasesSummaryCardsProps) => {
+const PurchasesSummaryCards = ({
+  statistics,
+  loading,
+  currencyFormatter,
+}: PurchasesSummaryCardsProps) => {
   if (loading) {
     return <p className="muted-text">Calculando estadísticas…</p>;
   }
@@ -20,7 +24,9 @@ const PurchasesSummaryCards = ({ statistics, loading, currencyFormatter }: Purch
       <div className="metric-card">
         <h3>Total invertido</h3>
         <p className="metric-primary">{currencyFormatter.format(statistics.total)}</p>
-        <p className="metric-secondary">Impuestos: {currencyFormatter.format(statistics.impuesto)}</p>
+        <p className="metric-secondary">
+          Impuestos: {currencyFormatter.format(statistics.impuesto)}
+        </p>
       </div>
       <div className="metric-card">
         <h3>Órdenes registradas</h3>

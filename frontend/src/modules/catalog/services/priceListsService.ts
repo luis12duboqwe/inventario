@@ -18,7 +18,7 @@ import {
   type PriceListListParams,
   type PriceResolution,
   type PriceResolutionParams,
-} from "../../../api";
+} from "@api/pricing";
 
 export const priceListsService = {
   list: (

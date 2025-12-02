@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 
 import { useInventoryLayout } from "../context/InventoryLayoutContext";
 import { promptCorporateReason } from "../../utils/corporateReason";
@@ -16,9 +16,9 @@ type BundleFormState = {
 type BundleItemDraft = {
   key: number;
   deviceId: string;
-  deviceLabel?: string;
+  deviceLabel?: string | undefined;
   variantId: string;
-  variantLabel?: string;
+  variantLabel?: string | undefined;
   quantity: string;
 };
 
@@ -49,15 +49,15 @@ function InventoryBundlesSection(): JSX.Element | null {
   const [itemDrafts, setItemDrafts] = useState<BundleItemDraft[]>([createEmptyItem(0)]);
   const [nextItemKey, setNextItemKey] = useState(1);
 
-  useEffect(() => {
-    if (formState.editingId) {
-      return;
+  if (!formState.editingId) {
+    const newStoreId = selectedStoreId ? String(selectedStoreId) : "";
+    if (formState.storeId !== newStoreId) {
+      setFormState((state) => ({
+        ...state,
+        storeId: newStoreId,
+      }));
     }
-    setFormState((state) => ({
-      ...state,
-      storeId: selectedStoreId ? String(selectedStoreId) : "",
-    }));
-  }, [selectedStoreId, formState.editingId]);
+  }
 
   const resolvedStoreId = useMemo(() => {
     if (formState.storeId.trim() !== "") {
@@ -74,9 +74,14 @@ function InventoryBundlesSection(): JSX.Element | null {
     return devices.filter((device) => device.store_id === resolvedStoreId);
   }, [devices, resolvedStoreId]);
 
-  if (!enableBundles) {
-    return null;
-  }
+  const deviceOptions = useMemo(
+    () =>
+      availableDevices.map((device) => ({
+        value: String(device.id),
+        label: `${device.sku} · ${device.name}`,
+      })),
+    [availableDevices],
+  );
 
   const resetForm = () => {
     setFormState({
@@ -104,12 +109,12 @@ function InventoryBundlesSection(): JSX.Element | null {
         const safeQuantity = Number.isNaN(quantityValue) || quantityValue <= 0 ? 1 : quantityValue;
         return {
           device_id: Number(item.deviceId),
-          variant_id: item.variantId ? Number(item.variantId) : undefined,
+          variant_id: item.variantId ? Number(item.variantId) : null,
           quantity: safeQuantity,
         };
       })
       .filter(
-        (entry): entry is { device_id: number; variant_id?: number; quantity: number } =>
+        (entry): entry is { device_id: number; variant_id: number | null; quantity: number } =>
           entry !== null,
       );
 
@@ -127,22 +132,22 @@ function InventoryBundlesSection(): JSX.Element | null {
 
     const basePriceInput = formState.basePrice.trim();
     const parsedBasePrice =
-      basePriceInput === "" ? undefined : Number.parseFloat(basePriceInput.replace(",", "."));
+      basePriceInput === "" ? null : Number.parseFloat(basePriceInput.replace(",", "."));
     const sanitizedBasePrice =
-      parsedBasePrice !== undefined && !Number.isNaN(parsedBasePrice) ? parsedBasePrice : undefined;
+      parsedBasePrice !== null && !Number.isNaN(parsedBasePrice) ? parsedBasePrice : null;
 
     const storeIdValue =
       formState.storeId.trim() !== ""
         ? Number.parseInt(formState.storeId, 10)
         : selectedStoreId ?? undefined;
     const sanitizedStoreId =
-      storeIdValue !== undefined && !Number.isNaN(storeIdValue) ? storeIdValue : undefined;
+      storeIdValue !== undefined && !Number.isNaN(storeIdValue) ? storeIdValue : null;
 
     const payloadBase = {
       store_id: sanitizedStoreId,
       name: formState.name.trim(),
       bundle_sku: formState.sku.trim(),
-      description: formState.description.trim() || undefined,
+      description: formState.description.trim() || null,
       base_price: sanitizedBasePrice,
       is_active: formState.isActive,
     };
@@ -266,14 +271,9 @@ function InventoryBundlesSection(): JSX.Element | null {
     );
   };
 
-  const deviceOptions = useMemo(
-    () =>
-      availableDevices.map((device) => ({
-        value: String(device.id),
-        label: `${device.sku} · ${device.name}`,
-      })),
-    [availableDevices],
-  );
+  if (!enableBundles) {
+    return null;
+  }
 
   return (
     <section className="card">
@@ -323,7 +323,7 @@ function InventoryBundlesSection(): JSX.Element | null {
                 <tr key={bundle.id}>
                   <td>{bundle.bundle_sku}</td>
                   <td>{bundle.name}</td>
-                  <td>{bundle.store_id ? storeNameById(bundle.store_id) : "General"}</td>
+                  <td>{bundle.store_id ? storeNameById.get(bundle.store_id) : "General"}</td>
                   <td>{formatCurrency(bundle.base_price)}</td>
                   <td>
                     <ul>
@@ -470,8 +470,9 @@ function InventoryBundlesSection(): JSX.Element | null {
             return (
               <div key={item.key}>
                 <div className="form-row">
-                  <label>Dispositivo</label>
+                  <label htmlFor={`device-${item.key}`}>Dispositivo</label>
                   <select
+                    id={`device-${item.key}`}
                     value={item.deviceId}
                     onChange={(event) => handleItemDeviceChange(item.key, event.target.value)}
                     required
@@ -486,8 +487,9 @@ function InventoryBundlesSection(): JSX.Element | null {
                 </div>
                 {enableVariants ? (
                   <div className="form-row">
-                    <label>Variante (opcional)</label>
+                    <label htmlFor={`variant-${item.key}`}>Variante (opcional)</label>
                     <select
+                      id={`variant-${item.key}`}
                       value={item.variantId}
                       onChange={(event) => handleItemVariantChange(item.key, event.target.value)}
                     >
@@ -501,8 +503,9 @@ function InventoryBundlesSection(): JSX.Element | null {
                   </div>
                 ) : null}
                 <div className="form-row">
-                  <label>Cantidad</label>
+                  <label htmlFor={`quantity-${item.key}`}>Cantidad</label>
                   <input
+                    id={`quantity-${item.key}`}
                     type="number"
                     min="1"
                     value={item.quantity}

@@ -1,16 +1,16 @@
-import { ChangeEvent, useCallback, useMemo, useState } from "react";
-import { MapPin } from "lucide-react";
+import { ChangeEvent, useCallback, useMemo, useState, Fragment } from "react";
+import { MapPin, ChevronDown, ChevronRight, Columns } from "lucide-react";
 import QRCode from "qrcode";
 
 import ScrollableTable from "../../../shared/components/ScrollableTable";
 import { colors } from "../../../theme/designTokens";
 import { emitClientError } from "../../../utils/clientLog";
-import Modal from "../../../shared/components/ui/Modal";
+import Modal from "@components/ui/Modal";
 import {
   Device,
   getInventoryAvailability,
   type InventoryAvailabilityRecord,
-} from "../../../api";
+} from "@api/inventory";
 import { useInventoryLayout } from "../pages/context/InventoryLayoutContext";
 import { formatCurrencyWithUsd } from "@/utils/locale";
 
@@ -38,7 +38,9 @@ const resolveEstadoLabel = (estado?: Device["estado_comercial"]): string => {
   return estadoLabels[estado] ?? DEFAULT_ESTADO_LABEL;
 };
 
-const estadoTone = (estado: Device["estado_comercial"] | undefined): "success" | "info" | "warning" | "danger" => {
+const estadoTone = (
+  estado: Device["estado_comercial"] | undefined,
+): "success" | "info" | "warning" | "danger" => {
   switch (estado) {
     case "A":
       return "info";
@@ -59,14 +61,66 @@ const buildAvailabilityReference = (device: Device): string => {
   return `device:${device.id}`;
 };
 
+type ColumnId =
+  | "expand"
+  | "sku"
+  | "name"
+  | "category"
+  | "model"
+  | "condition"
+  | "status"
+  | "inventory_status"
+  | "location"
+  | "warehouse"
+  | "stores"
+  | "quantity"
+  | "cost"
+  | "price"
+  | "total_value"
+  | "actions";
+
+type ColumnConfig = {
+  id: ColumnId;
+  label: string;
+  sticky?: "left" | "right";
+  alwaysVisible?: boolean;
+  defaultHidden?: boolean;
+};
+
+const COLUMNS: ColumnConfig[] = [
+  { id: "expand", label: "", sticky: "left", alwaysVisible: true },
+  { id: "sku", label: "SKU", sticky: "left", alwaysVisible: true },
+  { id: "name", label: "Nombre", sticky: "left", alwaysVisible: true },
+  { id: "category", label: "Categoría" },
+  { id: "model", label: "Modelo" },
+  { id: "condition", label: "Condición" },
+  { id: "status", label: "Estado" },
+  { id: "inventory_status", label: "Estado inv.", defaultHidden: true },
+  { id: "location", label: "Ubicación", defaultHidden: true },
+  { id: "warehouse", label: "Almacén", defaultHidden: true },
+  { id: "stores", label: "Sucursales" },
+  { id: "quantity", label: "Cantidad" },
+  { id: "cost", label: "Costo compra" },
+  { id: "price", label: "Precio venta" },
+  { id: "total_value", label: "Valor total" },
+  { id: "actions", label: "Acciones", sticky: "right", alwaysVisible: true },
+];
+
 function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDevice }: Props) {
   const [pageSize, setPageSize] = useState(50);
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+  const [visibleColumns, setVisibleColumns] = useState<Set<ColumnId>>(() => {
+    return new Set(COLUMNS.filter((c) => !c.defaultHidden).map((c) => c.id));
+  });
+  const [isColumnSelectorOpen, setIsColumnSelectorOpen] = useState(false);
 
   const pageSizeOptions = useMemo(() => [25, 50, 100, 250], []);
   const {
-    module: { selectedStoreId },
+    module: { selectedStoreId, token },
   } = useInventoryLayout();
-  const [availabilityRecords, setAvailabilityRecords] = useState<Record<string, InventoryAvailabilityRecord>>({});
+  const [availabilityRecords, setAvailabilityRecords] = useState<
+    Record<string, InventoryAvailabilityRecord>
+  >({});
   const [availabilityTarget, setAvailabilityTarget] = useState<Device | null>(null);
   const [availabilityOpen, setAvailabilityOpen] = useState(false);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
@@ -85,6 +139,30 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDev
     setPageSize(Number(event.target.value));
   }, []);
 
+  const toggleRow = useCallback((id: number) => {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleColumn = useCallback((id: ColumnId) => {
+    setVisibleColumns((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
   const handleCloseAvailability = useCallback(() => {
     setAvailabilityOpen(false);
     setAvailabilityError(null);
@@ -101,9 +179,9 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDev
       }
       setAvailabilityLoading(true);
       try {
-        const response = await getInventoryAvailability({
-          skus: device.sku ? [device.sku] : undefined,
-          deviceIds: device.sku ? undefined : [device.id],
+        const response = await getInventoryAvailability(token, {
+          ...(device.sku ? { skus: [device.sku] } : {}),
+          ...(device.sku ? {} : { deviceIds: [device.id] }),
           limit: 10,
         });
         const mapped: Record<string, InventoryAvailabilityRecord> = {};
@@ -121,37 +199,42 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDev
         setAvailabilityLoading(false);
       }
     },
-    [availabilityRecords],
+    [availabilityRecords, token],
   );
 
-  const handlePrintLabel = useCallback(async (device: Device) => {
-    const qrPayload = JSON.stringify({
-      sku: device.sku,
-      imei: device.imei ?? null,
-      serial: device.serial ?? null,
-    });
+  const handlePrintLabel = useCallback(
+    async (device: Device) => {
+      const qrPayload = JSON.stringify({
+        sku: device.sku,
+        imei: device.imei ?? null,
+        serial: device.serial ?? null,
+      });
 
-    let dataUrl: string;
-    try {
-      dataUrl = await QRCode.toDataURL(qrPayload, { width: 160, margin: 1, errorCorrectionLevel: "M" });
-    } catch (error) {
-      emitClientError("No fue posible generar el código QR", error);
-      window.alert("No fue posible generar la etiqueta. Intenta nuevamente.");
-      return;
-    }
+      let dataUrl: string;
+      try {
+        dataUrl = await QRCode.toDataURL(qrPayload, {
+          width: 160,
+          margin: 1,
+          errorCorrectionLevel: "M",
+        });
+      } catch (error) {
+        emitClientError("No fue posible generar el código QR", error);
+        window.alert("No fue posible generar la etiqueta. Intenta nuevamente.");
+        return;
+      }
 
-    const printWindow = window.open("", "softmobile-print-label", "width=420,height=600");
-    if (!printWindow) {
-      window.alert("Debes permitir ventanas emergentes para imprimir la etiqueta.");
-      return;
-    }
+      const printWindow = window.open("", "softmobile-print-label", "width=420,height=600");
+      if (!printWindow) {
+        window.alert("Debes permitir ventanas emergentes para imprimir la etiqueta.");
+        return;
+      }
 
-    const modelLabel = escapeHtml(device.modelo ?? device.name);
-    const skuLabel = escapeHtml(device.sku);
-    const imeiLabel = device.imei ? escapeHtml(device.imei) : "—";
-    const serialLabel = device.serial ? escapeHtml(device.serial) : "—";
+      const modelLabel = escapeHtml(device.modelo ?? device.name);
+      const skuLabel = escapeHtml(device.sku);
+      const imeiLabel = device.imei ? escapeHtml(device.imei) : "—";
+      const serialLabel = device.serial ? escapeHtml(device.serial) : "—";
 
-    const html = `<!DOCTYPE html>
+      const html = `<!DOCTYPE html>
 <html lang="es">
   <head>
     <meta charSet="utf-8" />
@@ -189,12 +272,16 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDev
   </body>
 </html>`;
 
-    printWindow.document.open();
-    printWindow.document.write(html);
-    printWindow.document.close();
-  }, [escapeHtml]);
+      printWindow.document.open();
+      printWindow.document.write(html);
+      printWindow.document.close();
+    },
+    [escapeHtml],
+  );
 
-  const activeReference = availabilityTarget ? buildAvailabilityReference(availabilityTarget) : null;
+  const activeReference = availabilityTarget
+    ? buildAvailabilityReference(availabilityTarget)
+    : null;
   const activeAvailability = activeReference ? availabilityRecords[activeReference] : undefined;
   const availabilityModalTitle = availabilityTarget
     ? `Disponibilidad corporativa — ${availabilityTarget.name}`
@@ -203,132 +290,229 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDev
     ? `SKU ${availabilityTarget.sku}`
     : "Consulta existencias por sucursal";
 
+  const renderCell = (columnId: ColumnId, device: Device) => {
+    switch (columnId) {
+      case "expand":
+        return (
+          <button
+            type="button"
+            className="btn-icon-ghost"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleRow(device.id);
+            }}
+            aria-label={expandedRows.has(device.id) ? "Contraer fila" : "Expandir fila"}
+          >
+            {expandedRows.has(device.id) ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          </button>
+        );
+      case "sku":
+        return device.sku;
+      case "name":
+        return device.name;
+      case "category":
+        return device.categoria ?? "—";
+      case "model":
+        return device.modelo ?? "—";
+      case "condition":
+        return device.condicion ?? "—";
+      case "status":
+        return (
+          <span className={`status-chip ${estadoTone(device.estado_comercial)}`}>
+            {resolveEstadoLabel(device.estado_comercial)}
+          </span>
+        );
+      case "inventory_status":
+        return device.estado ?? "—";
+      case "location":
+        return device.ubicacion ?? "—";
+      case "warehouse":
+        return device.warehouse_name ?? "Default";
+      case "stores": {
+        const reference = buildAvailabilityReference(device);
+        const availability = availabilityRecords[reference];
+        return (
+          <button
+            type="button"
+            className="inventory-availability__trigger"
+            onClick={() => handleOpenAvailability(device)}
+          >
+            <MapPin aria-hidden="true" className="inventory-availability__trigger-icon" />
+            <span>
+              {availability ? `${availability.stores.length} sucursales` : "Ver existencias"}
+            </span>
+          </button>
+        );
+      }
+      case "quantity":
+        return device.quantity;
+      case "cost":
+        return device.costo_unitario != null ? formatCurrencyWithUsd(device.costo_unitario) : "—";
+      case "price":
+        return device.precio_venta != null
+          ? formatCurrencyWithUsd(device.precio_venta)
+          : device.unit_price != null
+          ? formatCurrencyWithUsd(device.unit_price)
+          : "—";
+      case "total_value":
+        return formatCurrencyWithUsd(device.inventory_value);
+      case "actions":
+        return (
+          <div className="inventory-actions">
+            <button
+              type="button"
+              className="btn btn--secondary"
+              onClick={() => {
+                void handlePrintLabel(device);
+              }}
+            >
+              Imprimir etiqueta
+            </button>
+            {onEditDevice ? (
+              <button type="button" className="btn btn--ghost" onClick={() => onEditDevice(device)}>
+                Editar ficha
+              </button>
+            ) : null}
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
     <>
+      <div className="inventory-table-controls">
+        <div className="column-selector">
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={() => setIsColumnSelectorOpen(!isColumnSelectorOpen)}
+          >
+            <Columns size={16} />
+            <span>Columnas</span>
+          </button>
+          {isColumnSelectorOpen && (
+            <div className="column-selector__dropdown">
+              <div className="column-selector__header">
+                <h4>Personalizar vista</h4>
+                <button
+                  type="button"
+                  className="btn-icon-ghost"
+                  onClick={() => setIsColumnSelectorOpen(false)}
+                >
+                  ×
+                </button>
+              </div>
+              <div className="column-selector__list">
+                {COLUMNS.filter((col) => !col.alwaysVisible).map((col) => (
+                  <label key={col.id} className="column-selector__item">
+                    <input
+                      type="checkbox"
+                      checked={visibleColumns.has(col.id)}
+                      onChange={() => toggleColumn(col.id)}
+                    />
+                    <span>{col.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       <ScrollableTable
         items={devices}
         itemKey={(device) => device.id}
         pageSize={pageSize}
         renderHead={() => (
           <>
-            <th scope="col">SKU</th>
-            <th scope="col">Nombre</th>
-            <th scope="col">Categoría</th>
-            <th scope="col">Modelo</th>
-            <th scope="col">Condición</th>
-            <th scope="col">Estado</th>
-            <th scope="col">Estado inventario</th>
-            <th scope="col">Ubicación</th>
-            <th scope="col">Almacén</th>
-            <th scope="col">Identificadores</th>
-            <th scope="col">Sucursales</th>
-            <th scope="col">Cantidad</th>
-            <th scope="col">Costo compra</th>
-            <th scope="col">Precio de venta</th>
-            <th scope="col">Valor total</th>
-            <th scope="col" className="actions-column">Acciones</th>
+            {COLUMNS.filter((col) => visibleColumns.has(col.id)).map((col) => (
+              <th key={col.id} scope="col" className={col.sticky ? `sticky-col-${col.sticky}` : ""}>
+                {col.label}
+              </th>
+            ))}
           </>
         )}
         renderRow={(device) => {
           const isHighlighted = highlightedDeviceIds?.has(device.id);
-          const reference = buildAvailabilityReference(device);
-          const availability = availabilityRecords[reference];
+          const isExpanded = expandedRows.has(device.id);
+
           return (
-            <tr className={isHighlighted ? "inventory-row low-stock" : "inventory-row"}>
-              <td data-label="SKU">{device.sku}</td>
-              <td data-label="Nombre">{device.name}</td>
-              <td data-label="Categoría">{device.categoria ?? "—"}</td>
-              <td data-label="Modelo">{device.modelo ?? "—"}</td>
-              <td data-label="Condición">{device.condicion ?? "—"}</td>
-              <td data-label="Estado">
-                <span className={`status-chip ${estadoTone(device.estado_comercial)}`}>
-                  {resolveEstadoLabel(device.estado_comercial)}
-                </span>
-              </td>
-              <td data-label="Estado inventario">{device.estado ?? "—"}</td>
-              <td data-label="Ubicación">{device.ubicacion ?? "—"}</td>
-              <td data-label="Almacén">{device.warehouse_name ?? "Default"}</td>
-              <td data-label="Identificadores">
-                <div className="identifier-stack">
-                  {device.imei ? <span>IMEI catálogo: {device.imei}</span> : null}
-                  {device.serial ? <span>Serie catálogo: {device.serial}</span> : null}
-                  {device.identifier?.imei_1 ? <span>IMEI 1: {device.identifier.imei_1}</span> : null}
-                  {device.identifier?.imei_2 ? <span>IMEI 2: {device.identifier.imei_2}</span> : null}
-                  {device.identifier?.numero_serie ? (
-                    <span>Serie extendida: {device.identifier.numero_serie}</span>
-                  ) : null}
-                  {device.identifier?.estado_tecnico ? (
-                    <span>Estado técnico: {device.identifier.estado_tecnico}</span>
-                  ) : null}
-                  {device.identifier?.observaciones ? (
-                    <span>Notas: {device.identifier.observaciones}</span>
-                  ) : null}
-                  {!device.imei &&
-                  !device.serial &&
-                  !device.identifier?.imei_1 &&
-                  !device.identifier?.imei_2 &&
-                  !device.identifier?.numero_serie ? (
-                    <span className="muted-text">—</span>
-                  ) : null}
-                </div>
-              </td>
-              <td data-label="Sucursales">
-                <button
-                  type="button"
-                  className="inventory-availability__trigger"
-                  onClick={() => handleOpenAvailability(device)}
-                >
-                  <MapPin aria-hidden="true" className="inventory-availability__trigger-icon" />
-                  <span>
-                    {availability
-                      ? `${availability.stores.length} sucursales`
-                      : "Ver existencias"}
-                  </span>
-                </button>
-              </td>
-              <td data-label="Cantidad">{device.quantity}</td>
-              <td data-label="Costo compra">
-                {device.costo_unitario != null
-                  ? formatCurrencyWithUsd(device.costo_unitario)
-                  : "—"}
-              </td>
-              <td data-label="Precio de venta">
-                {device.precio_venta != null
-                  ? formatCurrencyWithUsd(device.precio_venta)
-                  : device.unit_price != null
-                  ? formatCurrencyWithUsd(device.unit_price)
-                  : "—"}
-              </td>
-              <td data-label="Valor total">{formatCurrencyWithUsd(device.inventory_value)}</td>
-              <td data-label="Acciones">
-                <div className="inventory-actions">
-                  <button
-                    type="button"
-                    className="btn btn--secondary"
-                    onClick={() => {
-                      void handlePrintLabel(device);
-                    }}
+            <Fragment key={device.id}>
+              <tr
+                className={`${isHighlighted ? "inventory-row low-stock" : "inventory-row"} ${
+                  isExpanded ? "expanded" : ""
+                }`}
+                onClick={() => toggleRow(device.id)}
+              >
+                {COLUMNS.filter((col) => visibleColumns.has(col.id)).map((col) => (
+                  <td
+                    key={col.id}
+                    data-label={col.label}
+                    className={col.sticky ? `sticky-col-${col.sticky}` : ""}
                   >
-                    Imprimir etiqueta
-                  </button>
-                  {onEditDevice ? (
-                    <button
-                      type="button"
-                      className="btn btn--ghost"
-                      onClick={() => onEditDevice(device)}
-                    >
-                      Editar ficha
-                    </button>
-                  ) : null}
-                </div>
-              </td>
-            </tr>
+                    {renderCell(col.id, device)}
+                  </td>
+                ))}
+              </tr>
+              {isExpanded && (
+                <tr className="inventory-row-detail">
+                  <td colSpan={visibleColumns.size}>
+                    <div className="detail-grid">
+                      <div className="detail-section">
+                        <h4>Identificadores</h4>
+                        <div className="identifier-stack">
+                          {device.imei ? <span>IMEI catálogo: {device.imei}</span> : null}
+                          {device.serial ? <span>Serie catálogo: {device.serial}</span> : null}
+                          {device.identifier?.imei_1 ? (
+                            <span>IMEI 1: {device.identifier.imei_1}</span>
+                          ) : null}
+                          {device.identifier?.imei_2 ? (
+                            <span>IMEI 2: {device.identifier.imei_2}</span>
+                          ) : null}
+                          {device.identifier?.numero_serie ? (
+                            <span>Serie extendida: {device.identifier.numero_serie}</span>
+                          ) : null}
+                          {!device.imei &&
+                          !device.serial &&
+                          !device.identifier?.imei_1 &&
+                          !device.identifier?.imei_2 &&
+                          !device.identifier?.numero_serie ? (
+                            <span className="muted-text">Sin identificadores registrados</span>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className="detail-section">
+                        <h4>Detalles de inventario</h4>
+                        <dl className="detail-list">
+                          <dt>Ubicación:</dt>
+                          <dd>{device.ubicacion ?? "—"}</dd>
+                          <dt>Almacén:</dt>
+                          <dd>{device.warehouse_name ?? "Default"}</dd>
+                          <dt>Estado inventario:</dt>
+                          <dd>{device.estado ?? "—"}</dd>
+                          <dt>Estado técnico:</dt>
+                          <dd>{device.identifier?.estado_tecnico ?? "—"}</dd>
+                        </dl>
+                      </div>
+                      {device.identifier?.observaciones && (
+                        <div className="detail-section full-width">
+                          <h4>Notas</h4>
+                          <p>{device.identifier.observaciones}</p>
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </Fragment>
           );
         }}
         emptyMessage={emptyMessage ?? "No hay dispositivos registrados para esta sucursal."}
         title="Inventario corporativo"
         ariaLabel="Tabla de inventario corporativo"
-        footer={(
+        footer={
           <div className="inventory-table__footer">
             <label className="inventory-table__page-size">
               <span>Registros por página</span>
@@ -344,7 +528,7 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDev
               Usa “Expandir vista completa” para cargar más filas mediante desplazamiento continuo.
             </p>
           </div>
-        )}
+        }
       />
       <Modal
         open={availabilityOpen}
@@ -383,7 +567,9 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDev
                             <div className="inventory-availability__store">
                               <span>{store.store_name}</span>
                               {isCurrent ? (
-                                <span className="inventory-availability__badge">Sucursal actual</span>
+                                <span className="inventory-availability__badge">
+                                  Sucursal actual
+                                </span>
                               ) : null}
                             </div>
                           </td>

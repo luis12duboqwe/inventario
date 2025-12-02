@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, MonitorSmartphone, Printer, ScanLine } from "lucide-react";
 
-import type { PosPrinterMode, Store } from "../../../api";
-import { openPosCashDrawer, pushCustomerDisplay, testPosPrinter } from "../../../api";
+import type { PosPrinterMode } from "@api/pos";
+import { openPosCashDrawer, pushCustomerDisplay, testPosPrinter } from "@api/pos";
+import type { Store } from "@api/inventory";
 
 const REASON = "Diagnostico hardware POS";
 
@@ -31,18 +32,23 @@ export default function HardwareDiagnostics({ token, stores, defaultStoreId }: P
   const [drawerIdentifier, setDrawerIdentifier] = useState<string>("");
   const [drawerPulse, setDrawerPulse] = useState<number>(120);
   const [displayHeadline, setDisplayHeadline] = useState<string>("Pantalla de cliente");
-  const [displayMessage, setDisplayMessage] = useState<string>("Mensaje de prueba desde diagnóstico");
+  const [displayMessage, setDisplayMessage] = useState<string>(
+    "Mensaje de prueba desde diagnóstico",
+  );
   const [displayTotal, setDisplayTotal] = useState<string>("");
   const [scanInput, setScanInput] = useState<string>("");
   const [scanLog, setScanLog] = useState<ScanEntry[]>([]);
   const [busyAction, setBusyAction] = useState<"printer" | "drawer" | "display" | null>(null);
   const [status, setStatus] = useState<Status | null>(null);
 
-  const sortedStores = useMemo(() => stores.slice().sort((a, b) => a.name.localeCompare(b.name)), [stores]);
+  const sortedStores = useMemo(
+    () => stores.slice().sort((a, b) => a.name.localeCompare(b.name)),
+    [stores],
+  );
 
   useEffect(() => {
     if (!storeId && sortedStores.length > 0) {
-      setStoreId(defaultStoreId ?? sortedStores[0].id);
+      setStoreId(defaultStoreId ?? sortedStores[0]?.id ?? null);
     }
   }, [defaultStoreId, sortedStores, storeId]);
 
@@ -53,7 +59,10 @@ export default function HardwareDiagnostics({ token, stores, defaultStoreId }: P
 
   const requireStore = () => {
     if (!storeId) {
-      setStatus({ tone: "error", message: "Selecciona una sucursal antes de ejecutar diagnósticos." });
+      setStatus({
+        tone: "error",
+        message: "Selecciona una sucursal antes de ejecutar diagnósticos.",
+      });
       return false;
     }
     return true;
@@ -72,18 +81,21 @@ export default function HardwareDiagnostics({ token, stores, defaultStoreId }: P
         token,
         {
           store_id: storeId!,
-          printer_name: printerName || undefined,
+          ...(printerName ? { printer_name: printerName } : {}),
           mode: printerMode,
-          sample: sampleText || undefined,
+          ...(sampleText ? { sample: sampleText } : {}),
         },
         REASON,
       );
       setStatus({
         tone: "success",
-        message: `Recibo de prueba enviado a ${printerName || "impresora principal"} (${selectedStoreName}).`,
+        message: `Recibo de prueba enviado a ${
+          printerName || "impresora principal"
+        } (${selectedStoreName}).`,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "No fue posible probar la impresora.";
+      const message =
+        error instanceof Error ? error.message : "No fue posible probar la impresora.";
       setStatus({ tone: "error", message });
     } finally {
       setBusyAction(null);
@@ -99,7 +111,7 @@ export default function HardwareDiagnostics({ token, stores, defaultStoreId }: P
         token,
         {
           store_id: storeId!,
-          connector_identifier: drawerIdentifier || undefined,
+          ...(drawerIdentifier ? { connector_identifier: drawerIdentifier } : {}),
           pulse_duration_ms: drawerPulse,
         },
         REASON,
@@ -128,13 +140,14 @@ export default function HardwareDiagnostics({ token, stores, defaultStoreId }: P
           store_id: storeId!,
           headline: displayHeadline,
           message: displayMessage,
-          total_amount: Number.isFinite(total) ? total : undefined,
+          ...(Number.isFinite(total) ? { total_amount: total } : {}),
         },
         REASON,
       );
       setStatus({ tone: "success", message: "Mensaje enviado a la pantalla de cliente." });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "No fue posible enviar el mensaje al display.";
+      const message =
+        error instanceof Error ? error.message : "No fue posible enviar el mensaje al display.";
       setStatus({ tone: "error", message });
     } finally {
       setBusyAction(null);
@@ -154,23 +167,26 @@ export default function HardwareDiagnostics({ token, stores, defaultStoreId }: P
     };
     setScanLog((prev) => [entry, ...prev].slice(0, 5));
     setScanInput("");
-    setStatus({ tone: "success", message: "Lectura registrada. Verifica longitud y tiempo de captura." });
+    setStatus({
+      tone: "success",
+      message: "Lectura registrada. Verifica longitud y tiempo de captura.",
+    });
   };
 
   return (
-    <div className="card" style={{ display: "grid", gap: 16 }}>
-      <header style={{ display: "grid", gap: 4 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#e2e8f0" }}>
+    <div className="card hardware-diagnostics">
+      <header className="hardware-diagnostics__header">
+        <div className="hardware-diagnostics__title">
           <Printer aria-hidden="true" size={18} />
           <strong>Diagnóstico de dispositivos</strong>
         </div>
-        <p className="card-subtitle" style={{ margin: 0 }}>
-          Ejecuta pruebas rápidas sobre impresoras, gavetas, pantallas de cliente y lectores de código de barras sin salir del
-          módulo de operaciones.
+        <p className="card-subtitle">
+          Ejecuta pruebas rápidas sobre impresoras, gavetas, pantallas de cliente y lectores de
+          código de barras sin salir del módulo de operaciones.
         </p>
       </header>
 
-      <div className="form-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
+      <div className="form-grid hardware-diagnostics__form">
         <label className="form-span">
           Sucursal para pruebas
           <select
@@ -202,7 +218,10 @@ export default function HardwareDiagnostics({ token, stores, defaultStoreId }: P
         </label>
         <label>
           Modo impresora
-          <select value={printerMode} onChange={(event) => setPrinterMode(event.target.value as PosPrinterMode)}>
+          <select
+            value={printerMode}
+            onChange={(event) => setPrinterMode(event.target.value as PosPrinterMode)}
+          >
             <option value="thermal">Térmica</option>
             <option value="fiscal">Fiscal</option>
           </select>
@@ -287,17 +306,18 @@ export default function HardwareDiagnostics({ token, stores, defaultStoreId }: P
         </button>
       </div>
 
-      <section className="card" style={{ background: "rgba(15,23,42,0.6)", borderColor: "rgba(148,163,184,0.2)" }}>
-        <header style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+      <section className="card hardware-diagnostics__scanner">
+        <header className="hardware-diagnostics__scanner-header">
           <ScanLine aria-hidden="true" size={18} />
           <div>
             <strong>Prueba rápida de lector</strong>
-            <p className="card-subtitle" style={{ margin: 0 }}>
-              Escanea tres códigos y valida longitud y tiempo de captura. El campo se limpia en cada registro.
+            <p className="card-subtitle">
+              Escanea tres códigos y valida longitud y tiempo de captura. El campo se limpia en cada
+              registro.
             </p>
           </div>
         </header>
-        <div className="form-grid" style={{ gridTemplateColumns: "2fr 1fr", gap: 10 }}>
+        <div className="form-grid hardware-diagnostics__scanner-form">
           <label className="form-span">
             Lectura de código
             <input
@@ -317,12 +337,12 @@ export default function HardwareDiagnostics({ token, stores, defaultStoreId }: P
           </button>
         </div>
         {scanLog.length > 0 ? (
-          <ul className="data-list" style={{ marginTop: 8 }}>
+          <ul className="data-list hardware-diagnostics__scanner-list">
             {scanLog.map((entry, index) => (
               <li key={index} className="data-list__item">
                 <div>
                   <strong>{entry.code}</strong>
-                  <p className="muted-text" style={{ margin: 0 }}>
+                  <p className="muted-text">
                     {entry.length} caracteres · {entry.timestamp}
                   </p>
                 </div>
@@ -330,18 +350,21 @@ export default function HardwareDiagnostics({ token, stores, defaultStoreId }: P
             ))}
           </ul>
         ) : (
-          <p className="muted-text" style={{ marginTop: 8 }}>
-            Aún no hay lecturas registradas. Escanea un código de barras para validar la configuración del lector.
+          <p className="muted-text hardware-diagnostics__scanner-empty">
+            Aún no hay lecturas registradas. Escanea un código de barras para validar la
+            configuración del lector.
           </p>
         )}
       </section>
 
       {status ? (
         <div
-          className={`alert ${status.tone === "error" ? "error" : status.tone === "success" ? "success" : "info"}`}
+          className={`alert ${
+            status.tone === "error" ? "error" : status.tone === "success" ? "success" : "info"
+          }`}
           role="status"
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div className="hardware-diagnostics__alert-content">
             {status.tone === "success" ? <CheckCircle2 aria-hidden="true" size={18} /> : null}
             {status.tone === "info" ? <MonitorSmartphone aria-hidden="true" size={18} /> : null}
             {status.tone === "error" ? <AlertTriangle aria-hidden="true" size={18} /> : null}

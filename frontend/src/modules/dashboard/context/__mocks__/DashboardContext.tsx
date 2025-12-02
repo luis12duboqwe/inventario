@@ -12,6 +12,5 @@ export const DashboardProvider = ({ children }: { children: ReactNode }) => (
 );
 
 export const useDashboard = () => dashboardContextValue;
-export const DashboardContext = {} as unknown as ReturnType<
-  typeof import("../DashboardContext")["DashboardContext"]
->;
+export const DashboardContext =
+  {} as unknown as typeof import("../DashboardContext")["DashboardContext"];

@@ -1,8 +1,8 @@
 import { FormEvent, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import PageHeader from "../../../shared/components/ui/PageHeader";
-import Button from "../../../shared/components/ui/Button";
+import PageHeader from "@components/ui/PageHeader";
+import Button from "@components/ui/Button";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 import LanDiscoveryAssistant from "../components/LanDiscoveryAssistant";
 import {
@@ -19,7 +19,7 @@ import {
   updateConfigurationParameter,
   updateConfigurationRate,
   updateConfigurationXmlTemplate,
-} from "../../../services/api/configuration";
+} from "@api/configuration";
 
 type RateFormState = {
   slug: string;
@@ -72,7 +72,7 @@ const emptyTemplateForm: TemplateFormState = {
   description: "",
   namespace: "",
   schemaLocation: "",
-  content: "<sar version=\"1.0\"></sar>",
+  content: '<sar version="1.0"></sar>',
   metadata: "{}",
 };
 
@@ -100,7 +100,7 @@ function parseMetadata(raw: string): Record<string, unknown> {
     if (parsed && typeof parsed === "object") {
       return parsed as Record<string, unknown>;
     }
-  } catch (error) {
+  } catch {
     throw new Error("Metadatos inválidos, utiliza JSON válido.");
   }
   throw new Error("Metadatos inválidos, utiliza JSON válido.");
@@ -389,16 +389,21 @@ export default function ConfigurationCenterPage(): JSX.Element {
     <div className="configuration-center">
       <PageHeader
         title="Configuración SAR y fiscal"
-        subtitle="Centraliza tasas, plantillas XML y parámetros de cumplimiento sin desplegar nuevas versiones."
+        description="Centraliza tasas, plantillas XML y parámetros de cumplimiento sin desplegar nuevas versiones."
       />
 
-      <LanDiscoveryAssistant onApplied={(baseUrl) => notify(`Base de API fijada en ${baseUrl}.`, "success")} />
+      <LanDiscoveryAssistant
+        onApplied={(baseUrl) => notify(`Base de API fijada en ${baseUrl}.`, "success")}
+      />
 
       <section className="card configuration-card">
         <header className="configuration-card__header">
           <div>
             <h2>Sincronización desde YAML</h2>
-            <p>Aplica los cambios almacenados en <code>ops/config_sync</code> sin reiniciar servicios.</p>
+            <p>
+              Aplica los cambios almacenados en <code>ops/config_sync</code> sin reiniciar
+              servicios.
+            </p>
           </div>
           <div className="configuration-sync">
             <label className="configuration-sync__label" htmlFor="sync-reason">
@@ -411,8 +416,8 @@ export default function ConfigurationCenterPage(): JSX.Element {
               onChange={(event) => setSyncReason(event.target.value)}
               placeholder="Describe el motivo"
             />
-            <Button onClick={handleSync} disabled={syncMutation.isLoading} variant="primary">
-              {syncMutation.isLoading ? "Sincronizando…" : "Sincronizar"}
+            <Button onClick={handleSync} disabled={syncMutation.isPending} variant="primary">
+              {syncMutation.isPending ? "Sincronizando…" : "Sincronizar"}
             </Button>
           </div>
         </header>
@@ -436,7 +441,9 @@ export default function ConfigurationCenterPage(): JSX.Element {
                   <input
                     className="configuration-input"
                     value={rateForm.slug}
-                    onChange={(event) => setRateForm((current) => ({ ...current, slug: event.target.value }))}
+                    onChange={(event) =>
+                      setRateForm((current) => ({ ...current, slug: event.target.value }))
+                    }
                     required
                   />
                 </label>
@@ -446,7 +453,9 @@ export default function ConfigurationCenterPage(): JSX.Element {
                 <input
                   className="configuration-input"
                   value={rateForm.name}
-                  onChange={(event) => setRateForm((current) => ({ ...current, name: event.target.value }))}
+                  onChange={(event) =>
+                    setRateForm((current) => ({ ...current, name: event.target.value }))
+                  }
                   required
                 />
               </label>
@@ -455,7 +464,9 @@ export default function ConfigurationCenterPage(): JSX.Element {
                 <textarea
                   className="configuration-textarea"
                   value={rateForm.description}
-                  onChange={(event) => setRateForm((current) => ({ ...current, description: event.target.value }))}
+                  onChange={(event) =>
+                    setRateForm((current) => ({ ...current, description: event.target.value }))
+                  }
                   rows={2}
                 />
               </label>
@@ -465,7 +476,9 @@ export default function ConfigurationCenterPage(): JSX.Element {
                   <input
                     className="configuration-input"
                     value={rateForm.value}
-                    onChange={(event) => setRateForm((current) => ({ ...current, value: event.target.value }))}
+                    onChange={(event) =>
+                      setRateForm((current) => ({ ...current, value: event.target.value }))
+                    }
                     required
                   />
                 </label>
@@ -474,7 +487,9 @@ export default function ConfigurationCenterPage(): JSX.Element {
                   <input
                     className="configuration-input"
                     value={rateForm.unit}
-                    onChange={(event) => setRateForm((current) => ({ ...current, unit: event.target.value }))}
+                    onChange={(event) =>
+                      setRateForm((current) => ({ ...current, unit: event.target.value }))
+                    }
                     required
                   />
                 </label>
@@ -483,7 +498,9 @@ export default function ConfigurationCenterPage(): JSX.Element {
                   <input
                     className="configuration-input"
                     value={rateForm.currency}
-                    onChange={(event) => setRateForm((current) => ({ ...current, currency: event.target.value }))}
+                    onChange={(event) =>
+                      setRateForm((current) => ({ ...current, currency: event.target.value }))
+                    }
                   />
                 </label>
               </div>
@@ -494,7 +511,9 @@ export default function ConfigurationCenterPage(): JSX.Element {
                     type="datetime-local"
                     className="configuration-input"
                     value={rateForm.effectiveFrom}
-                    onChange={(event) => setRateForm((current) => ({ ...current, effectiveFrom: event.target.value }))}
+                    onChange={(event) =>
+                      setRateForm((current) => ({ ...current, effectiveFrom: event.target.value }))
+                    }
                   />
                 </label>
                 <label>
@@ -503,7 +522,9 @@ export default function ConfigurationCenterPage(): JSX.Element {
                     type="datetime-local"
                     className="configuration-input"
                     value={rateForm.effectiveTo}
-                    onChange={(event) => setRateForm((current) => ({ ...current, effectiveTo: event.target.value }))}
+                    onChange={(event) =>
+                      setRateForm((current) => ({ ...current, effectiveTo: event.target.value }))
+                    }
                   />
                 </label>
               </div>
@@ -512,7 +533,9 @@ export default function ConfigurationCenterPage(): JSX.Element {
                 <textarea
                   className="configuration-textarea"
                   value={rateForm.metadata}
-                  onChange={(event) => setRateForm((current) => ({ ...current, metadata: event.target.value }))}
+                  onChange={(event) =>
+                    setRateForm((current) => ({ ...current, metadata: event.target.value }))
+                  }
                   rows={3}
                 />
               </label>
@@ -526,8 +549,12 @@ export default function ConfigurationCenterPage(): JSX.Element {
                 />
               </label>
               <div className="configuration-actions">
-                <Button type="submit" variant="primary" disabled={rateMutation.isLoading}>
-                  {rateMutation.isLoading ? "Guardando…" : editingRate ? "Actualizar tasa" : "Registrar tasa"}
+                <Button type="submit" variant="primary" disabled={rateMutation.isPending}>
+                  {rateMutation.isPending
+                    ? "Guardando…"
+                    : editingRate
+                    ? "Actualizar tasa"
+                    : "Registrar tasa"}
                 </Button>
                 {editingRate ? (
                   <Button
@@ -570,7 +597,11 @@ export default function ConfigurationCenterPage(): JSX.Element {
                       <td>{formatDecimal(rate.value)}</td>
                       <td>{rate.unit}</td>
                       <td>
-                        <span className={rate.is_active ? "status-pill tone-info" : "status-pill tone-warning"}>
+                        <span
+                          className={
+                            rate.is_active ? "status-pill tone-info" : "status-pill tone-warning"
+                          }
+                        >
                           {rate.is_active ? "Activa" : "Inactiva"}
                         </span>
                       </td>
@@ -616,14 +647,18 @@ export default function ConfigurationCenterPage(): JSX.Element {
         <div className="configuration-grid">
           <form className="configuration-form" onSubmit={handleTemplateSubmit}>
             <fieldset>
-              <legend>{editingTemplate ? `Editar ${editingTemplate.code}` : "Registrar plantilla"}</legend>
+              <legend>
+                {editingTemplate ? `Editar ${editingTemplate.code}` : "Registrar plantilla"}
+              </legend>
               {!editingTemplate && (
                 <label>
                   Código
                   <input
                     className="configuration-input"
                     value={templateForm.code}
-                    onChange={(event) => setTemplateForm((current) => ({ ...current, code: event.target.value }))}
+                    onChange={(event) =>
+                      setTemplateForm((current) => ({ ...current, code: event.target.value }))
+                    }
                     required
                   />
                 </label>
@@ -633,7 +668,9 @@ export default function ConfigurationCenterPage(): JSX.Element {
                 <input
                   className="configuration-input"
                   value={templateForm.version}
-                  onChange={(event) => setTemplateForm((current) => ({ ...current, version: event.target.value }))}
+                  onChange={(event) =>
+                    setTemplateForm((current) => ({ ...current, version: event.target.value }))
+                  }
                   required
                 />
               </label>
@@ -642,7 +679,9 @@ export default function ConfigurationCenterPage(): JSX.Element {
                 <textarea
                   className="configuration-textarea"
                   value={templateForm.description}
-                  onChange={(event) => setTemplateForm((current) => ({ ...current, description: event.target.value }))}
+                  onChange={(event) =>
+                    setTemplateForm((current) => ({ ...current, description: event.target.value }))
+                  }
                   rows={2}
                 />
               </label>
@@ -652,7 +691,9 @@ export default function ConfigurationCenterPage(): JSX.Element {
                   <input
                     className="configuration-input"
                     value={templateForm.namespace}
-                    onChange={(event) => setTemplateForm((current) => ({ ...current, namespace: event.target.value }))}
+                    onChange={(event) =>
+                      setTemplateForm((current) => ({ ...current, namespace: event.target.value }))
+                    }
                   />
                 </label>
                 <label>
@@ -660,7 +701,12 @@ export default function ConfigurationCenterPage(): JSX.Element {
                   <input
                     className="configuration-input"
                     value={templateForm.schemaLocation}
-                    onChange={(event) => setTemplateForm((current) => ({ ...current, schemaLocation: event.target.value }))}
+                    onChange={(event) =>
+                      setTemplateForm((current) => ({
+                        ...current,
+                        schemaLocation: event.target.value,
+                      }))
+                    }
                   />
                 </label>
               </div>
@@ -669,7 +715,9 @@ export default function ConfigurationCenterPage(): JSX.Element {
                 <textarea
                   className="configuration-textarea"
                   value={templateForm.content}
-                  onChange={(event) => setTemplateForm((current) => ({ ...current, content: event.target.value }))}
+                  onChange={(event) =>
+                    setTemplateForm((current) => ({ ...current, content: event.target.value }))
+                  }
                   rows={6}
                   required
                 />
@@ -679,7 +727,9 @@ export default function ConfigurationCenterPage(): JSX.Element {
                 <textarea
                   className="configuration-textarea"
                   value={templateForm.metadata}
-                  onChange={(event) => setTemplateForm((current) => ({ ...current, metadata: event.target.value }))}
+                  onChange={(event) =>
+                    setTemplateForm((current) => ({ ...current, metadata: event.target.value }))
+                  }
                   rows={3}
                 />
               </label>
@@ -693,8 +743,12 @@ export default function ConfigurationCenterPage(): JSX.Element {
                 />
               </label>
               <div className="configuration-actions">
-                <Button type="submit" variant="primary" disabled={templateMutation.isLoading}>
-                  {templateMutation.isLoading ? "Guardando…" : editingTemplate ? "Actualizar plantilla" : "Registrar plantilla"}
+                <Button type="submit" variant="primary" disabled={templateMutation.isPending}>
+                  {templateMutation.isPending
+                    ? "Guardando…"
+                    : editingTemplate
+                    ? "Actualizar plantilla"
+                    : "Registrar plantilla"}
                 </Button>
                 {editingTemplate ? (
                   <Button
@@ -733,7 +787,13 @@ export default function ConfigurationCenterPage(): JSX.Element {
                       <td>{template.code}</td>
                       <td>{template.version}</td>
                       <td>
-                        <span className={template.is_active ? "status-pill tone-info" : "status-pill tone-warning"}>
+                        <span
+                          className={
+                            template.is_active
+                              ? "status-pill tone-info"
+                              : "status-pill tone-warning"
+                          }
+                        >
                           {template.is_active ? "Activa" : "Inactiva"}
                         </span>
                       </td>
@@ -777,14 +837,18 @@ export default function ConfigurationCenterPage(): JSX.Element {
         <div className="configuration-grid">
           <form className="configuration-form" onSubmit={handleParameterSubmit}>
             <fieldset>
-              <legend>{editingParameter ? `Editar ${editingParameter.key}` : "Registrar parámetro"}</legend>
+              <legend>
+                {editingParameter ? `Editar ${editingParameter.key}` : "Registrar parámetro"}
+              </legend>
               {!editingParameter && (
                 <label>
                   Clave
                   <input
                     className="configuration-input"
                     value={parameterForm.key}
-                    onChange={(event) => setParameterForm((current) => ({ ...current, key: event.target.value }))}
+                    onChange={(event) =>
+                      setParameterForm((current) => ({ ...current, key: event.target.value }))
+                    }
                     required
                   />
                 </label>
@@ -794,7 +858,9 @@ export default function ConfigurationCenterPage(): JSX.Element {
                 <input
                   className="configuration-input"
                   value={parameterForm.name}
-                  onChange={(event) => setParameterForm((current) => ({ ...current, name: event.target.value }))}
+                  onChange={(event) =>
+                    setParameterForm((current) => ({ ...current, name: event.target.value }))
+                  }
                   required
                 />
               </label>
@@ -804,7 +870,12 @@ export default function ConfigurationCenterPage(): JSX.Element {
                   <select
                     className="configuration-input"
                     value={parameterForm.valueType}
-                    onChange={(event) => setParameterForm((current) => ({ ...current, valueType: event.target.value as ConfigurationParameterType }))}
+                    onChange={(event) =>
+                      setParameterForm((current) => ({
+                        ...current,
+                        valueType: event.target.value as ConfigurationParameterType,
+                      }))
+                    }
                   >
                     <option value="string">Cadena</option>
                     <option value="integer">Entero</option>
@@ -817,7 +888,12 @@ export default function ConfigurationCenterPage(): JSX.Element {
                   <input
                     type="checkbox"
                     checked={parameterForm.isSensitive}
-                    onChange={(event) => setParameterForm((current) => ({ ...current, isSensitive: event.target.checked }))}
+                    onChange={(event) =>
+                      setParameterForm((current) => ({
+                        ...current,
+                        isSensitive: event.target.checked,
+                      }))
+                    }
                   />
                   Sensible
                 </label>
@@ -827,9 +903,11 @@ export default function ConfigurationCenterPage(): JSX.Element {
                 <textarea
                   className="configuration-textarea"
                   value={parameterForm.value}
-                  onChange={(event) => setParameterForm((current) => ({ ...current, value: event.target.value }))}
+                  onChange={(event) =>
+                    setParameterForm((current) => ({ ...current, value: event.target.value }))
+                  }
                   rows={parameterForm.valueType === "json" ? 4 : 2}
-                  placeholder={parameterForm.valueType === "json" ? "{\n  \"clave\": \"valor\"\n}" : ""}
+                  placeholder={parameterForm.valueType === "json" ? '{\n  "clave": "valor"\n}' : ""}
                 />
               </label>
               <div className="configuration-row">
@@ -838,7 +916,9 @@ export default function ConfigurationCenterPage(): JSX.Element {
                   <input
                     className="configuration-input"
                     value={parameterForm.category}
-                    onChange={(event) => setParameterForm((current) => ({ ...current, category: event.target.value }))}
+                    onChange={(event) =>
+                      setParameterForm((current) => ({ ...current, category: event.target.value }))
+                    }
                   />
                 </label>
                 <label>
@@ -846,7 +926,12 @@ export default function ConfigurationCenterPage(): JSX.Element {
                   <input
                     className="configuration-input"
                     value={parameterForm.description}
-                    onChange={(event) => setParameterForm((current) => ({ ...current, description: event.target.value }))}
+                    onChange={(event) =>
+                      setParameterForm((current) => ({
+                        ...current,
+                        description: event.target.value,
+                      }))
+                    }
                   />
                 </label>
               </div>
@@ -855,7 +940,9 @@ export default function ConfigurationCenterPage(): JSX.Element {
                 <textarea
                   className="configuration-textarea"
                   value={parameterForm.metadata}
-                  onChange={(event) => setParameterForm((current) => ({ ...current, metadata: event.target.value }))}
+                  onChange={(event) =>
+                    setParameterForm((current) => ({ ...current, metadata: event.target.value }))
+                  }
                   rows={3}
                 />
               </label>
@@ -869,8 +956,12 @@ export default function ConfigurationCenterPage(): JSX.Element {
                 />
               </label>
               <div className="configuration-actions">
-                <Button type="submit" variant="primary" disabled={parameterMutation.isLoading}>
-                  {parameterMutation.isLoading ? "Guardando…" : editingParameter ? "Actualizar parámetro" : "Registrar parámetro"}
+                <Button type="submit" variant="primary" disabled={parameterMutation.isPending}>
+                  {parameterMutation.isPending
+                    ? "Guardando…"
+                    : editingParameter
+                    ? "Actualizar parámetro"
+                    : "Registrar parámetro"}
                 </Button>
                 {editingParameter ? (
                   <Button
@@ -910,10 +1001,18 @@ export default function ConfigurationCenterPage(): JSX.Element {
                       <td>{parameter.key}</td>
                       <td>{parameter.value_type}</td>
                       <td>
-                        <code className="configuration-code">{stringifyParameterValue(parameter)}</code>
+                        <code className="configuration-code">
+                          {stringifyParameterValue(parameter)}
+                        </code>
                       </td>
                       <td>
-                        <span className={parameter.is_active ? "status-pill tone-info" : "status-pill tone-warning"}>
+                        <span
+                          className={
+                            parameter.is_active
+                              ? "status-pill tone-info"
+                              : "status-pill tone-warning"
+                          }
+                        >
                           {parameter.is_active ? "Activo" : "Inactivo"}
                         </span>
                       </td>

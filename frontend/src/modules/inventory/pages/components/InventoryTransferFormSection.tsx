@@ -2,20 +2,16 @@ import { useEffect, useMemo, useState } from "react";
 
 import { ArrowLeftRight, Send } from "lucide-react";
 
-import Button from "../../../../shared/components/ui/Button";
-import { createTransferOrder, getDevices, type Device } from "../../../../api";
+import Button from "@components/ui/Button";
+import { getDevices, type Device } from "@api/inventory";
+import { createTransferOrder } from "@api/transfers";
 import { useInventoryLayout } from "../context/InventoryLayoutContext";
 
 const MIN_REASON_LENGTH = 5; // [PACK30-31-FRONTEND]
 
 function InventoryTransferFormSection() {
   const {
-    module: {
-      token,
-      stores,
-      refreshSummary,
-      refreshRecentMovements,
-    },
+    module: { token, stores, refreshSummary, refreshRecentMovements },
   } = useInventoryLayout();
 
   const [originStoreId, setOriginStoreId] = useState<number | "">("");
@@ -244,22 +240,19 @@ function InventoryTransferFormSection() {
         </label>
         {selectedDevice ? (
           <p className="muted-text span-3">
-            Stock disponible en origen: {selectedDevice.quantity} unidades. Costo unitario estimado: $
-            {selectedDevice.costo_unitario?.toFixed(2) ?? "0.00"}.
+            Stock disponible en origen: {selectedDevice.quantity} unidades. Costo unitario estimado:
+            ${selectedDevice.costo_unitario?.toFixed(2) ?? "0.00"}.
           </p>
         ) : null}
-        {error ? (
-          <p className="span-3" style={{ color: "var(--color-danger)" }}>
-            {error}
-          </p>
-        ) : null}
-        {feedback ? (
-          <p className="span-3" style={{ color: "var(--color-success)" }}>
-            {feedback}
-          </p>
-        ) : null}
+        {error ? <p className="inventory-transfer-error span-3">{error}</p> : null}
+        {feedback ? <p className="inventory-transfer-success span-3">{feedback}</p> : null}
         <div className="button-row span-3">
-          <Button type="submit" variant="primary" disabled={isSubmitting} leadingIcon={<Send size={16} />}>
+          <Button
+            type="submit"
+            variant="primary"
+            disabled={isSubmitting}
+            leadingIcon={<Send size={16} />}
+          >
             {isSubmitting ? "Registrando…" : "Registrar transferencia"}
           </Button>
         </div>

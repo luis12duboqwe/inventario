@@ -1,7 +1,7 @@
 import type {
   InventoryCountLineInput,
   InventoryReceivingLineInput,
-} from "../../../api";
+} from "@api/inventory";
 
 type IdentifierLine = Pick<InventoryReceivingLineInput, "imei" | "serial"> &
   Pick<InventoryCountLineInput, "imei" | "serial">;

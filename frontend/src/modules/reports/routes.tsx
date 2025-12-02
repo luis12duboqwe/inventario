@@ -2,15 +2,15 @@
 import { lazy } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
-import { SuspenseGate } from "@/ui/SuspenseGate"; // [PACK37-frontend]
-import { ErrorBoundary } from "@/ui/ErrorBoundary"; // [PACK37-frontend]
+import { SuspenseGate } from "@components/ui/SuspenseGate"; // [PACK37-frontend]
+import AppErrorBoundary from "@components/ui/AppErrorBoundary"; // [PACK37-frontend]
 
 const SalesReportsPage = lazy(() => import("./pages/SalesReportsPage"));
 
 export default function ReportsRoutes() {
   // [PACK29-*] Enrutamiento interno del módulo de reportes
   return (
-    <ErrorBoundary>
+    <AppErrorBoundary variant="inline" title="Error en Reportes">
       <SuspenseGate
         fallback={
           <div style={{ padding: 16 }}>
@@ -23,6 +23,6 @@ export default function ReportsRoutes() {
           <Route path="*" element={<Navigate to="." replace />} />
         </Routes>
       </SuspenseGate>
-    </ErrorBoundary>
+    </AppErrorBoundary>
   );
 }

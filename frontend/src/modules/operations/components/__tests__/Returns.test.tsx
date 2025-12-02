@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Store } from "../../../../api";
+import type { Store } from "@api/stores";
 
 const listPurchaseOrdersMock = vi.hoisted(() => vi.fn());
 const listSalesMock = vi.hoisted(() => vi.fn());
@@ -11,23 +11,15 @@ const registerSaleReturnMock = vi.hoisted(() => vi.fn());
 const listReturnsMock = vi.hoisted(() => vi.fn());
 const searchSalesHistoryMock = vi.hoisted(() => vi.fn());
 
-const apiModuleId = vi.hoisted(() => new URL("../../../../api.ts", import.meta.url).pathname);
-
-vi.mock("../../../../api", () => ({
+vi.mock("@api/purchases", () => ({
   __esModule: true,
   listPurchaseOrders: listPurchaseOrdersMock,
-  listSales: listSalesMock,
   registerPurchaseReturn: registerPurchaseReturnMock,
-  registerSaleReturn: registerSaleReturnMock,
-  listReturns: listReturnsMock,
-  searchSalesHistory: searchSalesHistoryMock,
 }));
 
-vi.mock(apiModuleId, () => ({
+vi.mock("@api/sales", () => ({
   __esModule: true,
-  listPurchaseOrders: listPurchaseOrdersMock,
   listSales: listSalesMock,
-  registerPurchaseReturn: registerPurchaseReturnMock,
   registerSaleReturn: registerSaleReturnMock,
   listReturns: listReturnsMock,
   searchSalesHistory: searchSalesHistoryMock,

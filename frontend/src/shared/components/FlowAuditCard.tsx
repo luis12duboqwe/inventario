@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import Accordion from "./ui/Accordion/Accordion";
+import Accordion from "@components/ui/Accordion/Accordion";
 
 export type FlowAuditAction = {
   id: string;
@@ -49,7 +49,10 @@ function FlowAuditCard({ title, subtitle, flows }: FlowAuditCardProps) {
                 ))}
               </ol>
               {flow.actions && flow.actions.length > 0 ? (
-                <div className="flow-audit-card__actions" aria-label={`Acciones rápidas para ${flow.title}`}>
+                <div
+                  className="flow-audit-card__actions"
+                  aria-label={`Acciones rápidas para ${flow.title}`}
+                >
                   {flow.actions.map((action) => (
                     <button
                       key={action.id}

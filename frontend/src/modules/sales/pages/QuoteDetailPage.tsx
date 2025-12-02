@@ -16,7 +16,7 @@ import { logUI } from "../../../services/audit";
 import { openPrintable } from "@/lib/print";
 // [PACK27-PRINT-IMPORT-END]
 // [PACK25-SKELETON-USE-START]
-import { Skeleton } from "@/ui/Skeleton";
+import { Skeleton } from "@components/ui/Skeleton";
 // [PACK25-SKELETON-USE-END]
 import { readQueue } from "@/services/offline";
 import { flushOffline } from "../utils/offline";
@@ -59,8 +59,11 @@ export function QuoteDetailPage() {
   const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
-    try { setData(await SalesQuotes.getQuote(id)); }
-    finally { setLoading(false); }
+    try {
+      setData(await SalesQuotes.getQuote(id));
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
   useEffect(() => {
     if (!id || unauthorized) return;
@@ -97,8 +100,12 @@ export function QuoteDetailPage() {
     if (!id) return;
     if (!can(PERMS.QUOTE_EDIT)) return;
     setSaving(true);
-    try { const updated = await SalesQuotes.updateQuote(id, partial); setData(updated); }
-    finally { setSaving(false); }
+    try {
+      const updated = await SalesQuotes.updateQuote(id, partial);
+      setData(updated);
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function onConvert() {
@@ -106,8 +113,14 @@ export function QuoteDetailPage() {
     if (!can(PERMS.QUOTE_CONVERT)) return;
     setConverting(true);
     try {
-  const r = await SalesQuotes.convertQuoteToSale(id);
-  await logUI({ ts: Date.now(), userId: user?.id ?? null, module: "QUOTES", action: "convert", entityId: id });
+      const r = await SalesQuotes.convertQuoteToSale(id);
+      await logUI({
+        ts: Date.now(),
+        userId: user?.id ?? null,
+        module: "QUOTES",
+        action: "convert",
+        entityId: id,
+      });
       // Opcional: abrir ticket r.printable o navegar a ventas
       // window.open(r.printable?.pdfUrl ?? "", "_blank");
       // [PACK23-PRINT-START]
@@ -149,127 +162,131 @@ export function QuoteDetailPage() {
       return <Skeleton lines={5} />;
     }
     return (
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h2 style={{ margin: 0 }}>Cotización #{data?.number ?? "—"}</h2>
-        <span style={{ color: "#9ca3af" }}>{data ? new Date(data.date).toLocaleString() : loading ? "Cargando…" : "—"}</span>
+      <div className="quote-detail-header">
+        <h2 className="quote-detail-title">Cotización #{data?.number ?? "—"}</h2>
+        <span className="quote-detail-date">
+          {data ? new Date(data.date).toLocaleString() : loading ? "Cargando…" : "—"}
+        </span>
       </div>
     );
   }, [data, loading]);
 
   return (
-    <div style={{ display: "grid", gap: 16 }}>
+    <div className="quote-detail-container">
       {unauthorized ? (
         <div>No autorizado</div>
       ) : (
         <>
-      {pendingOffline > 0 ? (
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ color: "#fbbf24" }}>Pendientes offline: {pendingOffline}</span>
-          <button
-            type="button"
-            onClick={handleFlush}
-            disabled={flushing}
-            style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "rgba(56,189,248,0.16)", color: "#e0f2fe" }}
-          >
-            {flushing ? "Reintentando…" : "Reintentar pendientes"}
-          </button>
-        </div>
-      ) : null}
-      {flushMessage ? <div style={{ color: "#9ca3af", fontSize: 12 }}>{flushMessage}</div> : null}
-      <div style={{ display: "grid", gap: 12 }}>
-        {headerSection}
-        <QuoteEditor value={value} onChange={setValue} />
-      </div>
-      <div>
-        <h3 style={{ marginBottom: 8 }}>Líneas</h3>
-        <Table cols={lineColumns} rows={lineRows} />
-      </div>
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, alignItems: "center" }}>
-        <div style={{ marginRight: "auto", color: "#9ca3af" }}>
-          Total: <strong>{formatCurrency(totals?.grand)}</strong>
-        </div>
-        <RequirePerm perm={PERMS.QUOTE_EDIT} fallback={null}>
-          <button
-            style={{ padding: "8px 12px", borderRadius: 8 }}
-            disabled={!canSave}
-            onClick={async () => {
-              if (!data) return;
-              const mappedLines = (data.lines || []).map((line) => {
-                const updated = value.lines.find((item) => item.id === String(line.productId));
-                if (!updated) return line;
-                return {
-                  ...line,
-                  name: updated.name,
-                  qty: updated.qty,
-                  price: updated.price,
-                };
-              });
-              const payload: Partial<QuoteCreate> = { lines: mappedLines };
-              if (value.customer) {
-                payload.customerName = value.customer;
-              }
-              if (typeof value.note === "string") {
-                payload.note = value.note;
-              }
-              await onSave(payload);
-            }}
-          >
-            {saving ? "Guardando…" : "Guardar"}
-          </button>
-        </RequirePerm>
-        <RequirePerm perm={PERMS.QUOTE_CONVERT} fallback={null}>
-          <button
-            style={{ padding: "8px 12px", borderRadius: 8, background: "#22c55e", color: "#0b1220", border: 0 }}
-            disabled={loading || converting}
-            onClick={onConvert}
-          >
-            {converting ? "Convirtiendo…" : "Convertir a venta"}
-          </button>
-        </RequirePerm>
-        <button
-          style={{ padding: "8px 12px", borderRadius: 8 }}
-          disabled={!canSave}
-          onClick={async () => {
-            if (!data) return;
-            const mappedLines = (data.lines || []).map((line) => {
-              const updated = value.lines.find((item) => item.id === String(line.productId));
-              if (!updated) return line;
-              return {
-                ...line,
-                name: updated.name,
-                qty: updated.qty,
-                price: updated.price,
-              };
-            });
-            const payload: Partial<QuoteCreate> = { lines: mappedLines };
-            if (value.customer) {
-              payload.customerName = value.customer;
-            }
-            if (typeof value.note === "string") {
-              payload.note = value.note;
-            }
-            await onSave(payload);
-          }}
-        >
-          {saving ? "Guardando…" : "Guardar"}
-        </button>
-        {/* [PACK27-PRINT-BUTTON-START] */}
-        <button
-          style={{ padding: "8px 12px", borderRadius: 8, background: "#1f2937", color: "#e0f2fe", border: "1px solid #334155" }}
-          onClick={() => openPrintable(data?.printable, "documento")}
-          disabled={!data?.printable}
-        >
-          Imprimir
-        </button>
-        {/* [PACK27-PRINT-BUTTON-END] */}
-        <button
-          style={{ padding: "8px 12px", borderRadius: 8, background: "#22c55e", color: "#0b1220", border: 0 }}
-          disabled={loading || converting}
-          onClick={onConvert}
-        >
-          {converting ? "Convirtiendo…" : "Convertir a venta"}
-        </button>
-      </div>
+          {pendingOffline > 0 ? (
+            <div className="quote-detail-offline-bar">
+              <span className="quote-detail-offline-text">
+                Pendientes offline: {pendingOffline}
+              </span>
+              <button
+                type="button"
+                onClick={handleFlush}
+                disabled={flushing}
+                className="quote-detail-offline-btn"
+              >
+                {flushing ? "Reintentando…" : "Reintentar pendientes"}
+              </button>
+            </div>
+          ) : null}
+          {flushMessage ? <div className="quote-detail-flush-message">{flushMessage}</div> : null}
+          <div className="quote-detail-editor-container">
+            {headerSection}
+            <QuoteEditor value={value} onChange={setValue} />
+          </div>
+          <div>
+            <h3 className="quote-detail-lines-title">Líneas</h3>
+            <Table cols={lineColumns} rows={lineRows} />
+          </div>
+          <div className="quote-detail-footer">
+            <div className="quote-detail-total">
+              Total: <strong>{formatCurrency(totals?.grand)}</strong>
+            </div>
+            <RequirePerm perm={PERMS.QUOTE_EDIT} fallback={null}>
+              <button
+                className="quote-detail-btn"
+                disabled={!canSave}
+                onClick={async () => {
+                  if (!data) return;
+                  const mappedLines = (data.lines || []).map((line) => {
+                    const updated = value.lines.find((item) => item.id === String(line.productId));
+                    if (!updated) return line;
+                    return {
+                      ...line,
+                      name: updated.name,
+                      qty: updated.qty,
+                      price: updated.price,
+                    };
+                  });
+                  const payload: Partial<QuoteCreate> = { lines: mappedLines };
+                  if (value.customer) {
+                    payload.customerName = value.customer;
+                  }
+                  if (typeof value.note === "string") {
+                    payload.note = value.note;
+                  }
+                  await onSave(payload);
+                }}
+              >
+                {saving ? "Guardando…" : "Guardar"}
+              </button>
+            </RequirePerm>
+            <RequirePerm perm={PERMS.QUOTE_CONVERT} fallback={null}>
+              <button
+                className="quote-detail-btn-convert"
+                disabled={loading || converting}
+                onClick={onConvert}
+              >
+                {converting ? "Convirtiendo…" : "Convertir a venta"}
+              </button>
+            </RequirePerm>
+            <button
+              className="quote-detail-btn"
+              disabled={!canSave}
+              onClick={async () => {
+                if (!data) return;
+                const mappedLines = (data.lines || []).map((line) => {
+                  const updated = value.lines.find((item) => item.id === String(line.productId));
+                  if (!updated) return line;
+                  return {
+                    ...line,
+                    name: updated.name,
+                    qty: updated.qty,
+                    price: updated.price,
+                  };
+                });
+                const payload: Partial<QuoteCreate> = { lines: mappedLines };
+                if (value.customer) {
+                  payload.customerName = value.customer;
+                }
+                if (typeof value.note === "string") {
+                  payload.note = value.note;
+                }
+                await onSave(payload);
+              }}
+            >
+              {saving ? "Guardando…" : "Guardar"}
+            </button>
+            {/* [PACK27-PRINT-BUTTON-START] */}
+            <button
+              className="quote-detail-btn-print"
+              onClick={() => openPrintable(data?.printable, "documento")}
+              disabled={!data?.printable}
+            >
+              Imprimir
+            </button>
+            {/* [PACK27-PRINT-BUTTON-END] */}
+            <button
+              className="quote-detail-btn-convert"
+              disabled={loading || converting}
+              onClick={onConvert}
+            >
+              {converting ? "Convirtiendo…" : "Convertir a venta"}
+            </button>
+          </div>
         </>
       )}
     </div>

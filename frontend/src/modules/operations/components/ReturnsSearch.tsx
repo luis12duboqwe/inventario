@@ -1,7 +1,7 @@
 import { FormEvent, useMemo, useState } from "react";
 
-import type { Sale, SaleHistorySearchResponse } from "../../../api";
-import { searchSalesHistory } from "../../../api";
+import type { Sale, SaleHistorySearchResponse } from "@api/sales";
+import { searchSalesHistory } from "@api/sales";
 
 type Props = {
   token: string;
@@ -12,7 +12,7 @@ type SegmentKey = keyof SaleHistorySearchResponse;
 
 const DEFAULT_LIMIT = 25;
 
-const initialFilters = { ticket: "", date: "", customer: "", qr: "" } as const;
+const initialFilters = { ticket: "", date: "", customer: "", qr: "" };
 
 const SEGMENTS: Array<{
   key: SegmentKey;
@@ -87,11 +87,15 @@ export default function ReturnsSearch({ token, limit = DEFAULT_LIMIT }: Props) {
 
   const hasFilters = useMemo(() => {
     return Boolean(
-      normalizedFilters.ticket || normalizedFilters.date || normalizedFilters.customer || normalizedFilters.qr,
+      normalizedFilters.ticket ||
+        normalizedFilters.date ||
+        normalizedFilters.customer ||
+        normalizedFilters.qr,
     );
   }, [normalizedFilters]);
 
-  const handleChange = (field: keyof typeof filters) =>
+  const handleChange =
+    (field: keyof typeof filters) =>
     (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       const { value } = event.currentTarget;
       setFilters((current) => ({ ...current, [field]: value }));
@@ -120,10 +124,10 @@ export default function ReturnsSearch({ token, limit = DEFAULT_LIMIT }: Props) {
     setLoading(true);
     try {
       const response = await searchSalesHistory(token, {
-        ticket: normalizedFilters.ticket || undefined,
-        date: normalizedFilters.date || undefined,
-        customer: normalizedFilters.customer || undefined,
-        qr: normalizedFilters.qr || undefined,
+        ...(normalizedFilters.ticket ? { ticket: normalizedFilters.ticket } : {}),
+        ...(normalizedFilters.date ? { date: normalizedFilters.date } : {}),
+        ...(normalizedFilters.customer ? { customer: normalizedFilters.customer } : {}),
+        ...(normalizedFilters.qr ? { qr: normalizedFilters.qr } : {}),
         limit,
       });
       setResults(response);
@@ -155,9 +159,7 @@ export default function ReturnsSearch({ token, limit = DEFAULT_LIMIT }: Props) {
           <span>{occurredAt.toLocaleString()}</span>
           <span>Total ${formatCurrency(sale.total_amount)}</span>
         </div>
-        {customerLabel ? (
-          <p className="muted-text">Cliente: {customerLabel}</p>
-        ) : null}
+        {customerLabel ? <p className="muted-text">Cliente: {customerLabel}</p> : null}
         {sale.notes ? <p className="muted-text">Notas: {sale.notes}</p> : null}
       </li>
     );
@@ -168,8 +170,8 @@ export default function ReturnsSearch({ token, limit = DEFAULT_LIMIT }: Props) {
       <header className="card__header">
         <h3 className="card__title">Búsqueda inteligente de devoluciones</h3>
         <p className="card__subtitle">
-          Escanea recibos con QR o busca por ticket, cliente y fecha para localizar la venta original antes de
-          registrar la devolución.
+          Escanea recibos con QR o busca por ticket, cliente y fecha para localizar la venta
+          original antes de registrar la devolución.
         </p>
       </header>
 
@@ -218,7 +220,12 @@ export default function ReturnsSearch({ token, limit = DEFAULT_LIMIT }: Props) {
           <button type="submit" className="btn btn--secondary" disabled={loading}>
             {loading ? "Buscando…" : "Buscar historial"}
           </button>
-          <button type="button" className="btn btn--ghost" onClick={handleReset} disabled={loading && !hasFilters}>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={handleReset}
+            disabled={loading && !hasFilters}
+          >
             Limpiar
           </button>
         </div>
@@ -235,9 +242,7 @@ export default function ReturnsSearch({ token, limit = DEFAULT_LIMIT }: Props) {
                   <p className="muted-text">{segment.description}</p>
                 </header>
                 {items.length ? (
-                  <ul className="returns-search__list">
-                    {items.map((sale) => renderSale(sale))}
-                  </ul>
+                  <ul className="returns-search__list">{items.map((sale) => renderSale(sale))}</ul>
                 ) : (
                   <p className="muted-text">{segment.empty}</p>
                 )}
@@ -247,7 +252,8 @@ export default function ReturnsSearch({ token, limit = DEFAULT_LIMIT }: Props) {
         </div>
       ) : (
         <p className="muted-text">
-          Ingresa criterios y presiona «Buscar historial» para obtener coincidencias de ventas recientes.
+          Ingresa criterios y presiona «Buscar historial» para obtener coincidencias de ventas
+          recientes.
         </p>
       )}
     </section>

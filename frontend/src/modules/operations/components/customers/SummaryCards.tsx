@@ -2,12 +2,9 @@ import type {
   CustomerDashboardMetrics,
   CustomerPortfolioItem,
   CustomerPortfolioReport,
-} from "../../../../api";
+} from "@api/customers";
 import { colors } from "../../../../theme/designTokens";
-import type {
-  DashboardFilters,
-  PortfolioFilters,
-} from "../../../../types/customers";
+import type { DashboardFilters, PortfolioFilters } from "../../../../types/customers";
 
 type CustomersSummaryCardsProps = {
   portfolio: CustomerPortfolioReport | null;
@@ -63,7 +60,8 @@ const CustomersSummaryCards = ({
           <div>
             <h3>Portafolio de clientes</h3>
             <p className="muted-text">
-              Identifica clientes morosos o compradores frecuentes y exporta el reporte oficial con estilo oscuro.
+              Identifica clientes morosos o compradores frecuentes y exporta el reporte oficial con
+              estilo oscuro.
             </p>
           </div>
           <div className="report-actions">
@@ -110,7 +108,10 @@ const CustomersSummaryCards = ({
               max={100}
               value={portfolioFilters.limit}
               onChange={(event) =>
-                onPortfolioFiltersChange("limit", Number(event.target.value) || portfolioFilters.limit)
+                onPortfolioFiltersChange(
+                  "limit",
+                  Number(event.target.value) || portfolioFilters.limit,
+                )
               }
             />
           </label>
@@ -275,10 +276,7 @@ const CustomersSummaryCards = ({
                       <li key={point.label}>
                         <span>{point.label}</span>
                         <div className="bar">
-                          <div
-                            className="bar__fill"
-                            style={{ width: `${normalizedWidth}%` }}
-                          />
+                          <div className="bar__fill" style={{ width: `${normalizedWidth}%` }} />
                           <span className="bar__value">{point.value}</span>
                         </div>
                       </li>
@@ -330,14 +328,18 @@ const CustomersSummaryCards = ({
                 </div>
               </div>
               <p className="muted-text small">
-                Datos generados el {dashboardMetrics.generated_at
+                Datos generados el{" "}
+                {dashboardMetrics.generated_at
                   ? new Date(dashboardMetrics.generated_at).toLocaleString("es-HN")
-                  : "—"}.
+                  : "—"}
+                .
               </p>
             </div>
           </div>
         ) : (
-          <p className="muted-text">Configura los filtros y presiona actualizar para ver las métricas.</p>
+          <p className="muted-text">
+            Configura los filtros y presiona actualizar para ver las métricas.
+          </p>
         )}
       </div>
     </div>

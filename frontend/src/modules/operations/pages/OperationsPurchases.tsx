@@ -1,12 +1,16 @@
 import React from "react";
+import Purchases from "../components/Purchases";
+import { useDashboard } from "../../dashboard/context/DashboardContext";
 
 export default function OperationsPurchases() {
+  const { token, stores, selectedStoreId, refreshInventoryAfterTransfer } = useDashboard();
+
   return (
-    <div style={{ display: "grid", gap: 12 }}>
-      <h2 style={{ margin: 0 }}>Compras</h2>
-      <p style={{ margin: 0, color: "#9ca3af" }}>
-        Órdenes de compra, recepción y actualización de existencias.
-      </p>
-    </div>
+    <Purchases
+      token={token}
+      stores={stores}
+      defaultStoreId={selectedStoreId}
+      onInventoryRefresh={refreshInventoryAfterTransfer}
+    />
   );
 }

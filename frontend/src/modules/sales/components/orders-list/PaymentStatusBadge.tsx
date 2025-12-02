@@ -4,33 +4,23 @@ export type PaymentStatusBadgeProps = {
   value: "UNPAID" | "PARTIAL" | "PAID" | "REFUNDED" | string;
 };
 
-const PAYMENT_COLORS: Record<string, string> = {
-  UNPAID: "#b91c1c",
-  PARTIAL: "#f59e0b",
-  PAID: "#22c55e",
-  REFUNDED: "#64748b",
-};
-
 function PaymentStatusBadge({ value }: PaymentStatusBadgeProps) {
-  const background = PAYMENT_COLORS[value] ?? "#6b7280";
+  const getBadgeClass = (status: string) => {
+    switch (status) {
+      case "UNPAID":
+        return "orders-payment-status-badge--unpaid";
+      case "PARTIAL":
+        return "orders-payment-status-badge--partial";
+      case "PAID":
+        return "orders-payment-status-badge--paid";
+      case "REFUNDED":
+        return "orders-payment-status-badge--refunded";
+      default:
+        return "orders-payment-status-badge--default";
+    }
+  };
 
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        padding: "2px 8px",
-        borderRadius: 999,
-        background,
-        color: "#0b1220",
-        fontSize: 12,
-        fontWeight: 700,
-        textTransform: "uppercase",
-      }}
-    >
-      {value}
-    </span>
-  );
+  return <span className={`orders-payment-status-badge ${getBadgeClass(value)}`}>{value}</span>;
 }
 
 export default PaymentStatusBadge;

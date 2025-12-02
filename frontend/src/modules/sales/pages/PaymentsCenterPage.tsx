@@ -44,6 +44,7 @@ const METHOD_API_TO_UI: Record<ApiPaymentMethod, UiPaymentMethod> = {
   TRANSFERENCIA: "TRANSFER",
   OTRO: "MIXED",
   CREDITO: "MIXED",
+  NOTA_CREDITO: "MIXED",
 };
 
 const METHOD_LABELS: Record<UiPaymentMethod, string> = {
@@ -129,11 +130,11 @@ function PaymentsCenterPage() {
           };
         }
         if (transaction.method) {
-            const apiMethod = transaction.method as ApiPaymentMethod;
-            const mappedMethod = METHOD_API_TO_UI[apiMethod];
-            if (mappedMethod) {
-              row.method = mappedMethod;
-            }
+          const apiMethod = transaction.method as ApiPaymentMethod;
+          const mappedMethod = METHOD_API_TO_UI[apiMethod];
+          if (mappedMethod) {
+            row.method = mappedMethod;
+          }
         }
         if (transaction.note) {
           row.note = transaction.note;
@@ -145,12 +146,21 @@ function PaymentsCenterPage() {
       });
       setRows(mapped);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "No fue posible cargar el centro de pagos";
+      const message =
+        error instanceof Error ? error.message : "No fue posible cargar el centro de pagos";
       pushToast({ message, variant: "error" });
     } finally {
       setLoading(false);
     }
-  }, [filters.dateFrom, filters.dateTo, filters.method, filters.query, filters.type, pushToast, token]);
+  }, [
+    filters.dateFrom,
+    filters.dateTo,
+    filters.method,
+    filters.query,
+    filters.type,
+    pushToast,
+    token,
+  ]);
 
   useEffect(() => {
     void loadPayments();
@@ -211,7 +221,10 @@ function PaymentsCenterPage() {
 
   const handleOpenRefund = (orderId?: string) => {
     if (!selectedRow && !orderId) {
-      pushToast({ message: "Selecciona un movimiento para registrar el reembolso.", variant: "error" });
+      pushToast({
+        message: "Selecciona un movimiento para registrar el reembolso.",
+        variant: "error",
+      });
       return;
     }
     const nextModal: Exclude<ModalState, null> = { open: true };
@@ -226,7 +239,10 @@ function PaymentsCenterPage() {
 
   const handleOpenCreditNote = (orderId?: string) => {
     if (!selectedRow && !orderId) {
-      pushToast({ message: "Selecciona un movimiento para emitir la nota de crédito.", variant: "error" });
+      pushToast({
+        message: "Selecciona un movimiento para emitir la nota de crédito.",
+        variant: "error",
+      });
       return;
     }
     const nextModal: Exclude<ModalState, null> = { open: true };
@@ -265,12 +281,18 @@ function PaymentsCenterPage() {
     const contextRow = paymentModal?.row ?? selectedRow;
     const customer = resolveCustomer(contextRow);
     if (!customer) {
-      pushToast({ message: "No fue posible determinar el cliente para el cobro.", variant: "error" });
+      pushToast({
+        message: "No fue posible determinar el cliente para el cobro.",
+        variant: "error",
+      });
       return;
     }
     const reason = payload.reason?.trim() ?? "";
     if (reason.length < 5) {
-      pushToast({ message: "Ingresa un motivo corporativo de al menos 5 caracteres.", variant: "error" });
+      pushToast({
+        message: "Ingresa un motivo corporativo de al menos 5 caracteres.",
+        variant: "error",
+      });
       return;
     }
     try {
@@ -311,7 +333,10 @@ function PaymentsCenterPage() {
     }
     const reason = payload.notes?.trim() ?? "";
     if (reason.length < 5) {
-      pushToast({ message: "El motivo corporativo debe tener al menos 5 caracteres.", variant: "error" });
+      pushToast({
+        message: "El motivo corporativo debe tener al menos 5 caracteres.",
+        variant: "error",
+      });
       return;
     }
     try {
@@ -334,7 +359,8 @@ function PaymentsCenterPage() {
       setRefundModal(null);
       await loadPayments();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "No fue posible registrar el reembolso";
+      const message =
+        error instanceof Error ? error.message : "No fue posible registrar el reembolso";
       pushToast({ message, variant: "error" });
     }
   };
@@ -346,12 +372,18 @@ function PaymentsCenterPage() {
     const contextRow = creditNoteModal?.row ?? selectedRow;
     const customer = resolveCustomer(contextRow);
     if (!customer) {
-      pushToast({ message: "Selecciona un movimiento válido para emitir la nota de crédito.", variant: "error" });
+      pushToast({
+        message: "Selecciona un movimiento válido para emitir la nota de crédito.",
+        variant: "error",
+      });
       return;
     }
     const reason = payload.reason?.trim() ?? "";
     if (reason.length < 5) {
-      pushToast({ message: "El motivo corporativo debe tener al menos 5 caracteres.", variant: "error" });
+      pushToast({
+        message: "El motivo corporativo debe tener al menos 5 caracteres.",
+        variant: "error",
+      });
       return;
     }
     try {
@@ -377,15 +409,20 @@ function PaymentsCenterPage() {
       setCreditNoteModal(null);
       await loadPayments();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "No fue posible emitir la nota de crédito";
+      const message =
+        error instanceof Error ? error.message : "No fue posible emitir la nota de crédito";
       pushToast({ message, variant: "error" });
     }
   };
 
   return (
-    <div style={{ display: "grid", gap: 16 }}>
+    <div className="payments-center-container">
       <PaymentsSummaryCards items={summaryItems} loading={loading && rows.length === 0} />
-      <PaymentsFiltersBar value={filters} onChange={setFilters} onNewPayment={() => handleOpenPayment()} />
+      <PaymentsFiltersBar
+        value={filters}
+        onChange={setFilters}
+        onNewPayment={() => handleOpenPayment()}
+      />
       <PaymentsTable
         rows={tableRows}
         loading={loading}
@@ -395,31 +432,35 @@ function PaymentsCenterPage() {
         }}
       />
       <PaymentsSidePanel
-        row={selectedRow ? (() => {
-          const detail: PaymentRowDetails = {
-            id: selectedRow.id,
-            type: selectedRow.type,
-            amount: selectedRow.amount,
-            date: selectedRow.date,
-          };
-          if (selectedRow.orderId) {
-            detail.orderId = selectedRow.orderId;
-          }
-          if (selectedRow.orderNumber) {
-            detail.orderNumber = selectedRow.orderNumber;
-          }
-          const customerName = selectedRow.customer?.name;
-          if (customerName) {
-            detail.customer = customerName;
-          }
-          if (selectedRow.method) {
-            detail.method = METHOD_LABELS[selectedRow.method];
-          }
-          if (selectedRow.note) {
-            detail.note = selectedRow.note;
-          }
-          return detail;
-        })() : null}
+        row={
+          selectedRow
+            ? (() => {
+                const detail: PaymentRowDetails = {
+                  id: selectedRow.id,
+                  type: selectedRow.type,
+                  amount: selectedRow.amount,
+                  date: selectedRow.date,
+                };
+                if (selectedRow.orderId) {
+                  detail.orderId = selectedRow.orderId;
+                }
+                if (selectedRow.orderNumber) {
+                  detail.orderNumber = selectedRow.orderNumber;
+                }
+                const customerName = selectedRow.customer?.name;
+                if (customerName) {
+                  detail.customer = customerName;
+                }
+                if (selectedRow.method) {
+                  detail.method = METHOD_LABELS[selectedRow.method];
+                }
+                if (selectedRow.note) {
+                  detail.note = selectedRow.note;
+                }
+                return detail;
+              })()
+            : null
+        }
         onClose={() => setSelectedRow(null)}
         onPay={() => handleOpenPayment(selectedRow?.orderId)}
         onRefund={() => handleOpenRefund(selectedRow?.orderId)}

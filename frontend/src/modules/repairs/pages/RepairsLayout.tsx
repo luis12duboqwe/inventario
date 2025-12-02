@@ -1,1 +1,1 @@
-export { default } from "../../../pages/reparaciones/ReparacionesLayout"; // [PACK37-frontend]
+export { default } from "./ReparacionesLayout"; // [PACK37-frontend]

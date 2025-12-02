@@ -1,10 +1,8 @@
 import type { FormEvent } from "react";
-import type {
-  Device,
-  PurchaseOrder,
-  RecurringOrder,
-  Store,
-} from "../../../../api";
+import type { Device } from "@api/inventory";
+import type { PurchaseOrder } from "@api/purchases";
+import type { RecurringOrder } from "@api/operations";
+import type { Store } from "@api/stores";
 import type { PurchaseForm } from "../../../../types/purchases";
 
 type PurchasesOrdersPanelProps = {
@@ -66,14 +64,17 @@ const PurchasesOrdersPanel = ({
     <section className="card">
       <h2>Órdenes de compra</h2>
       <p className="card-subtitle">
-        Captura nuevas órdenes, recibe productos parciales y conserva un historial auditado de compras.
+        Captura nuevas órdenes, recibe productos parciales y conserva un historial auditado de
+        compras.
       </p>
       <form className="form-grid" onSubmit={onSubmit}>
         <label>
           Sucursal
           <select
             value={form.storeId ?? ""}
-            onChange={(event) => onUpdateForm({ storeId: event.target.value ? Number(event.target.value) : null })}
+            onChange={(event) =>
+              onUpdateForm({ storeId: event.target.value ? Number(event.target.value) : null })
+            }
           >
             <option value="">Selecciona una sucursal</option>
             {stores.map((store) => (
@@ -95,7 +96,9 @@ const PurchasesOrdersPanel = ({
           Dispositivo
           <select
             value={form.deviceId ?? ""}
-            onChange={(event) => onUpdateForm({ deviceId: event.target.value ? Number(event.target.value) : null })}
+            onChange={(event) =>
+              onUpdateForm({ deviceId: event.target.value ? Number(event.target.value) : null })
+            }
             disabled={!selectedStore}
           >
             <option value="">Selecciona un dispositivo</option>
@@ -142,7 +145,8 @@ const PurchasesOrdersPanel = ({
               {csvLoading ? "Importando…" : "Importar CSV"}
             </button>
             <p className="muted-text form-span">
-              Columnas esperadas: <code>store_id,supplier,device_id,quantity,unit_cost[,reference][,notes]</code>
+              Columnas esperadas:{" "}
+              <code>store_id,supplier,device_id,quantity,unit_cost[,reference][,notes]</code>
             </p>
           </form>
 
@@ -258,7 +262,9 @@ const PurchasesOrdersPanel = ({
                   <td>#{order.id}</td>
                   <td>{order.supplier}</td>
                   <td>
-                    <span className={`badge ${order.status === "COMPLETADA" ? "success" : "neutral"}`}>
+                    <span
+                      className={`badge ${order.status === "COMPLETADA" ? "success" : "neutral"}`}
+                    >
                       {statusLabels[order.status]}
                     </span>
                   </td>
@@ -267,20 +273,33 @@ const PurchasesOrdersPanel = ({
                     <ul className="compact-list">
                       {order.items.map((item) => (
                         <li key={item.id}>
-                          Dispositivo #{item.device_id} · {item.quantity_received}/{item.quantity_ordered} unidades
+                          Dispositivo #{item.device_id} · {item.quantity_received}/
+                          {item.quantity_ordered} unidades
                         </li>
                       ))}
                     </ul>
                   </td>
                   <td>
                     <div className="transfer-actions">
-                      <button type="button" className="btn btn--ghost" onClick={() => onReceive(order)}>
+                      <button
+                        type="button"
+                        className="btn btn--ghost"
+                        onClick={() => onReceive(order)}
+                      >
                         Recibir pendientes
                       </button>
-                      <button type="button" className="btn btn--ghost" onClick={() => onReturn(order)}>
+                      <button
+                        type="button"
+                        className="btn btn--ghost"
+                        onClick={() => onReturn(order)}
+                      >
                         Registrar devolución
                       </button>
-                      <button type="button" className="btn btn--ghost" onClick={() => onCancel(order)}>
+                      <button
+                        type="button"
+                        className="btn btn--ghost"
+                        onClick={() => onCancel(order)}
+                      >
                         Cancelar orden
                       </button>
                     </div>

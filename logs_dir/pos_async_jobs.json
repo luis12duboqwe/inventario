@@ -188,5 +188,95 @@
     "error": null,
     "created_at": "2025-11-26T22:43:38.217989+00:00",
     "finished_at": "2025-11-26T22:43:38.224213+00:00"
+  },
+  "b5907cce-5611-4967-99ee-044af3944dfd": {
+    "id": "b5907cce-5611-4967-99ee-044af3944dfd",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-0/test_async_cash_report_job_run0/cash_reports/cierre_1_b5907cce-5611-4967-99ee-044af3944dfd.pdf",
+    "error": null,
+    "created_at": "2025-11-27T17:47:08.640112+00:00",
+    "finished_at": "2025-11-27T17:47:08.646745+00:00"
+  },
+  "165e62f8-1a18-42bf-834e-8042fec4fe99": {
+    "id": "165e62f8-1a18-42bf-834e-8042fec4fe99",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-1/test_async_cash_report_job_run0/cash_reports/cierre_1_165e62f8-1a18-42bf-834e-8042fec4fe99.pdf",
+    "error": null,
+    "created_at": "2025-11-27T19:44:38.127894+00:00",
+    "finished_at": "2025-11-27T19:44:38.134419+00:00"
+  },
+  "b17c5fa2-7932-47b6-876a-632d3bffb0e2": {
+    "id": "b17c5fa2-7932-47b6-876a-632d3bffb0e2",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-2/test_async_cash_report_job_run0/cash_reports/cierre_1_b17c5fa2-7932-47b6-876a-632d3bffb0e2.pdf",
+    "error": null,
+    "created_at": "2025-11-27T20:32:58.157682+00:00",
+    "finished_at": "2025-11-27T20:32:58.164651+00:00"
+  },
+  "757db0d6-e139-4648-b08d-1d91da41e669": {
+    "id": "757db0d6-e139-4648-b08d-1d91da41e669",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-3/test_async_cash_report_job_run0/cash_reports/cierre_1_757db0d6-e139-4648-b08d-1d91da41e669.pdf",
+    "error": null,
+    "created_at": "2025-11-27T20:42:00.487574+00:00",
+    "finished_at": "2025-11-27T20:42:00.494217+00:00"
+  },
+  "7a6a27c4-e67e-465f-9344-539d9748d98a": {
+    "id": "7a6a27c4-e67e-465f-9344-539d9748d98a",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-4/test_async_cash_report_job_run0/cash_reports/cierre_1_7a6a27c4-e67e-465f-9344-539d9748d98a.pdf",
+    "error": null,
+    "created_at": "2025-11-27T21:43:40.643262+00:00",
+    "finished_at": "2025-11-27T21:43:40.650018+00:00"
+  },
+  "0ebae17a-b45e-41b2-8ae5-c5fcab6e425d": {
+    "id": "0ebae17a-b45e-41b2-8ae5-c5fcab6e425d",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-0/test_async_cash_report_job_run0/cash_reports/cierre_1_0ebae17a-b45e-41b2-8ae5-c5fcab6e425d.pdf",
+    "error": null,
+    "created_at": "2025-11-27T23:47:46.978791+00:00",
+    "finished_at": "2025-11-27T23:47:46.985872+00:00"
+  },
+  "c378983b-a51a-45c9-95d8-79550a7a2ee0": {
+    "id": "c378983b-a51a-45c9-95d8-79550a7a2ee0",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-2/test_async_cash_report_job_run0/cash_reports/cierre_1_c378983b-a51a-45c9-95d8-79550a7a2ee0.pdf",
+    "error": null,
+    "created_at": "2025-11-27T23:52:33.912229+00:00",
+    "finished_at": "2025-11-27T23:52:33.919157+00:00"
+  },
+  "c90349ef-31a3-4803-a229-2156550619b4": {
+    "id": "c90349ef-31a3-4803-a229-2156550619b4",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-4/test_async_cash_report_job_run0/cash_reports/cierre_1_c90349ef-31a3-4803-a229-2156550619b4.pdf",
+    "error": null,
+    "created_at": "2025-11-27T23:58:38.041982+00:00",
+    "finished_at": "2025-11-27T23:58:38.049207+00:00"
+  },
+  "b2a493e0-a6c1-4cbf-9877-7319e977c00c": {
+    "id": "b2a493e0-a6c1-4cbf-9877-7319e977c00c",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-0/test_async_cash_report_job_run0/cash_reports/cierre_1_b2a493e0-a6c1-4cbf-9877-7319e977c00c.pdf",
+    "error": null,
+    "created_at": "2025-12-01T21:05:36.556957+00:00",
+    "finished_at": "2025-12-01T21:05:36.564614+00:00"
   }
 }

@@ -9,7 +9,7 @@ const DIGITS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
 
 function AmountPad({ value, onChange }: POSAmountPadProps) {
   const handleAppend = (digit: number) => {
-    const next = Number((((value ?? 0) * 10 + digit)).toFixed(2));
+    const next = Number(((value ?? 0) * 10 + digit).toFixed(2));
     onChange(next);
   };
 
@@ -18,13 +18,13 @@ function AmountPad({ value, onChange }: POSAmountPadProps) {
   };
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+    <div className="pos-amount-pad">
       {DIGITS.map((digit) => (
-        <button key={digit} onClick={() => handleAppend(digit)} style={{ padding: "12px 0", borderRadius: 8 }}>
+        <button key={digit} onClick={() => handleAppend(digit)} className="pos-amount-pad-btn">
           {digit}
         </button>
       ))}
-      <button onClick={handleClear} style={{ padding: "12px 0", borderRadius: 8, gridColumn: "span 3" }}>
+      <button onClick={handleClear} className="pos-amount-pad-btn-clear">
         Limpiar
       </button>
     </div>

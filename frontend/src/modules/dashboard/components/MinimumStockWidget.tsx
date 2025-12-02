@@ -17,7 +17,7 @@ function MinimumStockWidget() {
       try {
         setIsLoading(true);
         const response = await getMinimumStockAlerts(token, {
-          storeId: selectedStoreId ?? undefined,
+          ...(selectedStoreId ? { storeId: selectedStoreId } : {}),
         });
         if (!isMounted) {
           return;
@@ -29,9 +29,7 @@ function MinimumStockWidget() {
           return;
         }
         const message =
-          error instanceof Error
-            ? error.message
-            : "No fue posible obtener el stock bajo mínimo.";
+          error instanceof Error ? error.message : "No fue posible obtener el stock bajo mínimo.";
         setError(message);
         pushToast({ message, variant: "error" });
       } finally {

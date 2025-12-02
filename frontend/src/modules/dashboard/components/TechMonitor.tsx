@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 import { AlertTriangle, Activity, RefreshCw, ServerCrash } from "lucide-react";
 
-import Button from "../../../shared/components/ui/Button";
-import { Skeleton } from "@/ui/Skeleton";
+import Button from "@components/ui/Button";
+import { Skeleton } from "@components/ui/Skeleton";
 import { useDashboard } from "../context/DashboardContext";
 
 function formatSeconds(value: number | null | undefined): string {
@@ -34,12 +34,8 @@ function resolveLatencyTone(value: number | null | undefined): "ok" | "warn" | "
 }
 
 function TechMonitor() {
-  const {
-    observability,
-    observabilityError,
-    observabilityLoading,
-    refreshObservability,
-  } = useDashboard();
+  const { observability, observabilityError, observabilityLoading, refreshObservability } =
+    useDashboard();
 
   const latencySummary = observability?.latency;
   const syncSummary = observability?.sync;
@@ -47,38 +43,43 @@ function TechMonitor() {
   const logs = observability?.logs ?? [];
   const systemErrors = observability?.system_errors ?? [];
 
+  const generatedAt = observability?.generated_at;
   const generatedAtLabel = useMemo(() => {
-    if (!observability?.generated_at) {
+    if (!generatedAt) {
       return "Sin actualizaciones recientes";
     }
-    return new Date(observability.generated_at).toLocaleString("es-HN", {
+    return new Date(generatedAt).toLocaleString("es-HN", {
       dateStyle: "short",
       timeStyle: "short",
     });
-  }, [observability?.generated_at]);
+  }, [generatedAt]);
+
+  const avg = latencySummary?.average_seconds;
+  const p95 = latencySummary?.percentile_95_seconds;
+  const max = latencySummary?.max_seconds;
 
   const latencyCards = useMemo(
     () => [
       {
         id: "avg",
         title: "Latencia promedio",
-        value: formatSeconds(latencySummary?.average_seconds ?? null),
-        tone: resolveLatencyTone(latencySummary?.average_seconds ?? null),
+        value: formatSeconds(avg ?? null),
+        tone: resolveLatencyTone(avg ?? null),
       },
       {
         id: "p95",
         title: "Latencia p95",
-        value: formatSeconds(latencySummary?.percentile_95_seconds ?? null),
-        tone: resolveLatencyTone(latencySummary?.percentile_95_seconds ?? null),
+        value: formatSeconds(p95 ?? null),
+        tone: resolveLatencyTone(p95 ?? null),
       },
       {
         id: "max",
         title: "Latencia máxima",
-        value: formatSeconds(latencySummary?.max_seconds ?? null),
-        tone: resolveLatencyTone(latencySummary?.max_seconds ?? null),
+        value: formatSeconds(max ?? null),
+        tone: resolveLatencyTone(max ?? null),
       },
     ],
-    [latencySummary?.average_seconds, latencySummary?.max_seconds, latencySummary?.percentile_95_seconds],
+    [avg, p95, max],
   );
 
   const hasSnapshot = Boolean(observability);
@@ -169,7 +170,9 @@ function TechMonitor() {
                         <tr key={`${stat.entity_type}-${stat.priority}`}>
                           <th scope="row">{stat.entity_type}</th>
                           <td>{stat.pending}</td>
-                          <td className={stat.failed > 0 ? "tech-monitor__cell-alert" : undefined}>{stat.failed}</td>
+                          <td className={stat.failed > 0 ? "tech-monitor__cell-alert" : undefined}>
+                            {stat.failed}
+                          </td>
                           <td>{formatSeconds(stat.oldest_pending_seconds ?? null)}</td>
                         </tr>
                       ))}
@@ -192,11 +195,16 @@ function TechMonitor() {
                 <AlertTriangle size={18} aria-hidden="true" />
               </header>
               {notifications.length === 0 ? (
-                <p className="tech-monitor__empty">Todo en orden. Continúa monitoreando para reaccionar a tiempo.</p>
+                <p className="tech-monitor__empty">
+                  Todo en orden. Continúa monitoreando para reaccionar a tiempo.
+                </p>
               ) : (
                 <ul className="tech-monitor__list">
                   {notifications.map((notification) => (
-                    <li key={notification.id} className={`tech-monitor__alert tech-monitor__alert--${notification.severity.toLowerCase()}`}>
+                    <li
+                      key={notification.id}
+                      className={`tech-monitor__alert tech-monitor__alert--${notification.severity.toLowerCase()}`}
+                    >
                       <strong>{notification.title}</strong>
                       <p>{notification.message}</p>
                       {notification.occurred_at ? (
@@ -219,12 +227,16 @@ function TechMonitor() {
               <header className="tech-monitor__panel-header">
                 <div>
                   <h3 id="tech-logs-heading">Logs recientes</h3>
-                  <p className="tech-monitor__panel-subtitle">Seguimiento de eventos operativos críticos.</p>
+                  <p className="tech-monitor__panel-subtitle">
+                    Seguimiento de eventos operativos críticos.
+                  </p>
                 </div>
                 <ServerCrash size={18} aria-hidden="true" />
               </header>
               {logs.length === 0 ? (
-                <p className="tech-monitor__empty">Sin registros relevantes en las últimas horas.</p>
+                <p className="tech-monitor__empty">
+                  Sin registros relevantes en las últimas horas.
+                </p>
               ) : (
                 <ul className="tech-monitor__list tech-monitor__list--compact">
                   {logs.slice(0, 4).map((entry) => (
@@ -247,7 +259,9 @@ function TechMonitor() {
               <header className="tech-monitor__panel-header">
                 <div>
                   <h3 id="tech-errors-heading">Errores de sistema</h3>
-                  <p className="tech-monitor__panel-subtitle">Escala a TI cuando identifiques tendencias.</p>
+                  <p className="tech-monitor__panel-subtitle">
+                    Escala a TI cuando identifiques tendencias.
+                  </p>
                 </div>
                 <ServerCrash size={18} aria-hidden="true" />
               </header>
@@ -273,7 +287,9 @@ function TechMonitor() {
           </div>
         </div>
       ) : (
-        <div className="tech-monitor__empty">Aún no se han generado métricas de observabilidad.</div>
+        <div className="tech-monitor__empty">
+          Aún no se han generado métricas de observabilidad.
+        </div>
       )}
     </section>
   );

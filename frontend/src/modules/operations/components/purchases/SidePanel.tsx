@@ -1,13 +1,6 @@
 import type { FormEvent } from "react";
-import type {
-  PurchaseVendor,
-  PurchaseVendorHistory,
-} from "../../../../api";
-import type {
-  VendorFilters,
-  VendorForm,
-  VendorHistoryFilters,
-} from "../../../../types/purchases";
+import type { PurchaseVendor, PurchaseVendorHistory } from "@api/purchases";
+import type { VendorFilters, VendorForm, VendorHistoryFilters } from "../../../../types/purchases";
 
 type PurchasesSidePanelProps = {
   vendorForm: VendorForm;
@@ -74,7 +67,8 @@ const PurchasesSidePanel = ({
     <section className="card">
       <h2>Gestión de proveedores</h2>
       <p className="card-subtitle">
-        Registra proveedores, consulta su historial y actualiza su estado sin perder el contexto corporativo.
+        Registra proveedores, consulta su historial y actualiza su estado sin perder el contexto
+        corporativo.
       </p>
       <div className="section-grid">
         <form className="form-grid" onSubmit={onVendorFormSubmit}>
@@ -288,9 +282,7 @@ const PurchasesSidePanel = ({
                 <input
                   type="date"
                   value={vendorHistoryFiltersDraft.dateFrom}
-                  onChange={(event) =>
-                    onVendorHistoryFiltersChange("dateFrom", event.target.value)
-                  }
+                  onChange={(event) => onVendorHistoryFiltersChange("dateFrom", event.target.value)}
                 />
               </label>
               <label>
@@ -298,9 +290,7 @@ const PurchasesSidePanel = ({
                 <input
                   type="date"
                   value={vendorHistoryFiltersDraft.dateTo}
-                  onChange={(event) =>
-                    onVendorHistoryFiltersChange("dateTo", event.target.value)
-                  }
+                  onChange={(event) => onVendorHistoryFiltersChange("dateTo", event.target.value)}
                 />
               </label>
               <label>
@@ -322,7 +312,11 @@ const PurchasesSidePanel = ({
                 <button type="submit" className="btn btn--primary">
                   Aplicar
                 </button>
-                <button type="button" className="btn btn--ghost" onClick={onVendorHistoryFiltersReset}>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={onVendorHistoryFiltersReset}
+                >
                   Limpiar
                 </button>
               </div>
@@ -365,8 +359,9 @@ const PurchasesSidePanel = ({
 
         {!vendorHistoryLoading && vendorHistory ? (
           <p className="muted-text">
-            Total en el rango: {currencyFormatter.format(vendorHistory.total)} · Impuestos: {" "}
-            {currencyFormatter.format(vendorHistory.impuesto)} · Registros analizados: {vendorHistory.registros}
+            Total en el rango: {currencyFormatter.format(vendorHistory.total)} · Impuestos:{" "}
+            {currencyFormatter.format(vendorHistory.impuesto)} · Registros analizados:{" "}
+            {vendorHistory.registros}
           </p>
         ) : null}
       </div>

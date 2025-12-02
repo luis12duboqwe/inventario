@@ -19,8 +19,14 @@ type TotalsRowProps = {
 
 function TotalsRow({ label, value, strong }: TotalsRowProps) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", fontWeight: strong ? 700 : 400 }}>
-      <span style={{ color: strong ? "#e5e7eb" : "#94a3b8" }}>{label}</span>
+    <div
+      className={`order-totals-row ${
+        strong ? "order-totals-row-strong" : "order-totals-row-normal"
+      }`}
+    >
+      <span className={strong ? "order-totals-label-strong" : "order-totals-label-normal"}>
+        {label}
+      </span>
       <span>{currency.format(value ?? 0)}</span>
     </div>
   );
@@ -28,16 +34,7 @@ function TotalsRow({ label, value, strong }: TotalsRowProps) {
 
 function TotalsCard({ subtotal, discount, taxes, total, paid, balance }: OrderTotalsCardProps) {
   return (
-    <div
-      style={{
-        padding: 12,
-        borderRadius: 12,
-        background: "rgba(255, 255, 255, 0.04)",
-        border: "1px solid rgba(255, 255, 255, 0.08)",
-        display: "grid",
-        gap: 8,
-      }}
-    >
+    <div className="order-totals-card">
       <TotalsRow label="Subtotal" value={subtotal} />
       <TotalsRow label="Descuento" value={discount} />
       <TotalsRow label="Impuestos" value={taxes} />

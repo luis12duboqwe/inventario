@@ -1,5 +1,5 @@
 import { FormEvent, useMemo, useState } from "react";
-import { Device, MovementInput } from "../../../api";
+import { Device, MovementInput } from "@api/inventory";
 
 type Props = {
   devices: Device[];
@@ -15,7 +15,7 @@ function MovementForm({ devices, onSubmit }: Props) {
 
   // Derivar el dispositivo efectivo sin setState en efectos: si no hay selección explicita, usar el primero.
   const effectiveDeviceId = useMemo<number | "">(
-    () => (deviceId === "" ? (devices[0]?.id ?? "") : deviceId),
+    () => (deviceId === "" ? devices[0]?.id ?? "" : deviceId),
     [deviceId, devices],
   );
 
@@ -40,7 +40,11 @@ function MovementForm({ devices, onSubmit }: Props) {
       comentario: normalizedComment,
     };
 
-    if (typeof parsedUnitCost === "number" && Number.isFinite(parsedUnitCost) && parsedUnitCost >= 0) {
+    if (
+      typeof parsedUnitCost === "number" &&
+      Number.isFinite(parsedUnitCost) &&
+      parsedUnitCost >= 0
+    ) {
       payload.unit_cost = parsedUnitCost;
     }
 
@@ -73,7 +77,9 @@ function MovementForm({ devices, onSubmit }: Props) {
       <select
         id="movementType"
         value={movementType}
-        onChange={(event) => setMovementType(event.target.value as MovementInput["tipo_movimiento"])}
+        onChange={(event) =>
+          setMovementType(event.target.value as MovementInput["tipo_movimiento"])
+        }
       >
         <option value="entrada">Entrada</option>
         <option value="salida">Salida</option>

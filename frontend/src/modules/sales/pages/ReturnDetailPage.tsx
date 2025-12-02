@@ -16,7 +16,7 @@ import { logUI } from "../../../services/audit";
 import { openPrintable } from "@/lib/print";
 // [PACK27-PRINT-IMPORT-RETURNS-END]
 // [PACK25-SKELETON-USE-START]
-import { Skeleton } from "@/ui/Skeleton";
+import { Skeleton } from "@components/ui/Skeleton";
 // [PACK25-SKELETON-USE-END]
 import { readQueue } from "@/services/offline";
 import { flushOffline, safeCreateReturn } from "../utils/offline";
@@ -34,6 +34,7 @@ const reasonLabels: Record<ReturnDoc["reason"], string> = {
   BUYER_REMORSE: "Remordimiento",
   WARRANTY: "Garantía",
   OTHER: "Otro",
+  EXCHANGE: "Cambio",
 };
 
 function formatCurrency(value?: number) {
@@ -72,8 +73,11 @@ export function ReturnDetailPage() {
         return;
       }
       setLoading(true);
-      try { setData(await SalesReturns.getReturn(id)); }
-      finally { setLoading(false); }
+      try {
+        setData(await SalesReturns.getReturn(id));
+      } finally {
+        setLoading(false);
+      }
     })();
   }, [id, canView]);
   // [PACK23-RETURNS-DETAIL-FETCH-END]
@@ -144,7 +148,7 @@ export function ReturnDetailPage() {
       name: line.name ?? String(line.productId),
       qty: line.qty,
       price: line.price,
-    }))
+    })),
   );
 
   // [PACK26-RETURNS-DETAIL-GUARD-START]
@@ -157,9 +161,9 @@ export function ReturnDetailPage() {
       return <Skeleton lines={6} />;
     }
     return (
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h2 style={{ margin: 0 }}>Devolución #{data?.number ?? "—"}</h2>
-        <span style={{ color: "#9ca3af" }}>
+      <div className="return-detail-header">
+        <h2 className="return-detail-title">Devolución #{data?.number ?? "—"}</h2>
+        <span className="return-detail-date">
           {data ? formatDate(data.date) : loading ? "Cargando…" : "—"}
         </span>
       </div>
@@ -167,71 +171,107 @@ export function ReturnDetailPage() {
   }, [data, isCreateMode, loading]);
 
   return (
-    <div style={{ display: "grid", gap: 16 }}>
+    <div className="return-detail-container">
       {unauthorized ? (
         <div>No autorizado</div>
       ) : (
         <>
-      {pendingOffline > 0 ? (
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ color: "#fbbf24" }}>Pendientes offline: {pendingOffline}</span>
-          <button
-            type="button"
-            onClick={handleFlush}
-            disabled={flushing}
-            style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "rgba(56,189,248,0.16)", color: "#e0f2fe" }}
-          >
-            {flushing ? "Reintentando…" : "Reintentar pendientes"}
-          </button>
-        </div>
-      ) : null}
-      {flushMessage ? <div style={{ color: "#9ca3af", fontSize: 12 }}>{flushMessage}</div> : null}
-      {offlineNotice ? <div style={{ color: "#fbbf24", fontSize: 13 }}>{offlineNotice}</div> : null}
-      {isCreateMode ? (
-        <>
-          <RequirePerm perm={PERMS.RETURN_CREATE} fallback={<div>No autorizado</div>}>
-            <ReturnEditor
-              onSubmit={(payload) => {
-                if (saving) return;
-                const request: ReturnCreate = {
-                  reason: payload.reason as ReturnDoc["reason"],
-                  lines: payload.lines.map((line) => {
-                    const linePayload: ReturnCreate["lines"][number] = {
-                      productId: line.id,
-                      name: line.name,
-                      qty: line.qty,
-                      price: line.price,
+          {pendingOffline > 0 ? (
+            <div className="return-detail-offline-bar">
+              <span className="return-detail-offline-text">
+                Pendientes offline: {pendingOffline}
+              </span>
+              <button
+                type="button"
+                onClick={handleFlush}
+                disabled={flushing}
+                className="return-detail-offline-btn"
+              >
+                {flushing ? "Reintentando…" : "Reintentar pendientes"}
+              </button>
+            </div>
+          ) : null}
+          {flushMessage ? <div className="return-detail-flush-message">{flushMessage}</div> : null}
+          {offlineNotice ? (
+            <div className="return-detail-offline-notice">{offlineNotice}</div>
+          ) : null}
+          {isCreateMode ? (
+            <>
+              <RequirePerm perm={PERMS.RETURN_CREATE} fallback={<div>No autorizado</div>}>
+                <ReturnEditor
+                  onSubmit={(payload) => {
+                    if (saving) return;
+                    const request: ReturnCreate = {
+                      reason: payload.reason as ReturnDoc["reason"],
+                      lines: payload.lines.map((line) => {
+                        const linePayload: ReturnCreate["lines"][number] = {
+                          productId: line.id,
+                          name: line.name,
+                          qty: line.qty,
+                          price: line.price,
+                        };
+                        if (line.imei) {
+                          linePayload.imei = line.imei;
+                        }
+                        if (typeof line.restock === "boolean") {
+                          linePayload.restock = line.restock;
+                        }
+                        return linePayload;
+                      }),
                     };
-                    if (line.imei) {
-                      linePayload.imei = line.imei;
+                    if (payload.note) {
+                      request.note = payload.note;
                     }
-                    if (typeof line.restock === "boolean") {
-                      linePayload.restock = line.restock;
+                    if (payload.lines[0]?.ticket) {
+                      request.ticketNumber = payload.lines[0]?.ticket;
                     }
-                    return linePayload;
-                  }),
-                };
-                if (payload.note) {
-                  request.note = payload.note;
-                }
-                if (payload.lines[0]?.ticket) {
-                  request.ticketNumber = payload.lines[0]?.ticket;
-                }
-                onCreate(request);
-              }}
-            />
-          </RequirePerm>
-          {data && (
-            <div style={{ display: "grid", gap: 12 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-                <h2 style={{ margin: 0 }}>Devolución #{data.number}</h2>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ color: "#9ca3af" }}>{formatDate(data.date)}</span>
+                    onCreate(request);
+                  }}
+                />
+              </RequirePerm>
+              {data && (
+                <div className="return-detail-created-container">
+                  <div className="return-detail-created-header">
+                    <h2 className="return-detail-title">Devolución #{data.number}</h2>
+                    <div className="return-detail-created-actions">
+                      <span className="return-detail-date">{formatDate(data.date)}</span>
+                      {/* [PACK27-PRINT-BUTTON-START] */}
+                      <button
+                        className="return-detail-btn-print"
+                        onClick={() => openPrintable(data.printable, "documento")}
+                        disabled={!data.printable}
+                      >
+                        Imprimir
+                      </button>
+                      {/* [PACK27-PRINT-BUTTON-END] */}
+                    </div>
+                  </div>
+                  {headerSection}
+                  <div className="return-detail-info">
+                    <span>
+                      Motivo: <strong>{reasonLabels[data.reason] ?? data.reason}</strong>
+                    </span>
+                    <span>
+                      Crédito: <strong>{formatCurrency(data.totalCredit)}</strong>
+                    </span>
+                  </div>
+                  <Table cols={lineColumns} rows={lineRows} />
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="return-detail-created-container">
+              <div className="return-detail-created-header">
+                <h2 className="return-detail-title">Devolución #{data?.number ?? "—"}</h2>
+                <div className="return-detail-created-actions">
+                  <span className="return-detail-date">
+                    {data ? formatDate(data.date) : loading ? "Cargando…" : "—"}
+                  </span>
                   {/* [PACK27-PRINT-BUTTON-START] */}
                   <button
-                    style={{ padding: "6px 12px", borderRadius: 8, background: "#1f2937", color: "#e0f2fe", border: "1px solid #334155" }}
-                    onClick={() => openPrintable(data.printable, "documento")}
-                    disabled={!data.printable}
+                    className="return-detail-btn-print"
+                    onClick={() => openPrintable(data?.printable, "documento")}
+                    disabled={!data?.printable}
                   >
                     Imprimir
                   </button>
@@ -239,45 +279,17 @@ export function ReturnDetailPage() {
                 </div>
               </div>
               {headerSection}
-              <div style={{ display: "grid", gap: 4, color: "#9ca3af" }}>
+              <div className="return-detail-info">
                 <span>
-                  Motivo: <strong>{reasonLabels[data.reason] ?? data.reason}</strong>
+                  Motivo: <strong>{data ? reasonLabels[data.reason] ?? data.reason : "—"}</strong>
                 </span>
-                <span>Crédito: <strong>{formatCurrency(data.totalCredit)}</strong></span>
+                <span>
+                  Crédito: <strong>{formatCurrency(data?.totalCredit)}</strong>
+                </span>
               </div>
               <Table cols={lineColumns} rows={lineRows} />
             </div>
           )}
-        </>
-      ) : (
-        <div style={{ display: "grid", gap: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-            <h2 style={{ margin: 0 }}>Devolución #{data?.number ?? "—"}</h2>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ color: "#9ca3af" }}>
-                {data ? formatDate(data.date) : loading ? "Cargando…" : "—"}
-              </span>
-              {/* [PACK27-PRINT-BUTTON-START] */}
-              <button
-                style={{ padding: "6px 12px", borderRadius: 8, background: "#1f2937", color: "#e0f2fe", border: "1px solid #334155" }}
-                onClick={() => openPrintable(data?.printable, "documento")}
-                disabled={!data?.printable}
-              >
-                Imprimir
-              </button>
-              {/* [PACK27-PRINT-BUTTON-END] */}
-            </div>
-          </div>
-          {headerSection}
-          <div style={{ display: "grid", gap: 4, color: "#9ca3af" }}>
-            <span>
-              Motivo: <strong>{data ? reasonLabels[data.reason] ?? data.reason : "—"}</strong>
-            </span>
-            <span>Crédito: <strong>{formatCurrency(data?.totalCredit)}</strong></span>
-          </div>
-          <Table cols={lineColumns} rows={lineRows} />
-        </div>
-      )}
         </>
       )}
     </div>

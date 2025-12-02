@@ -22,31 +22,22 @@ function BulkActions({
   }
 
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-      <span style={{ color: "#94a3b8", fontSize: 13 }}>{selectedCount} seleccionados</span>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button
-          onClick={onMarkPaid}
-          style={{ padding: "8px 12px", borderRadius: 8, background: "#22c55e", color: "#0b1220", border: 0 }}
-        >
+    <div className="orders-list-bulk-actions">
+      <span className="orders-list-bulk-count">{selectedCount} seleccionados</span>
+      <div className="orders-list-bulk-group">
+        <button onClick={onMarkPaid} className="orders-list-bulk-btn orders-list-bulk-btn-success">
           Marcar pagado
         </button>
-        <button
-          onClick={onCancel}
-          style={{ padding: "8px 12px", borderRadius: 8, background: "#b91c1c", color: "#fff", border: 0 }}
-        >
+        <button onClick={onCancel} className="orders-list-bulk-btn orders-list-bulk-btn-danger">
           Cancelar
         </button>
-        <button onClick={onImport} style={{ padding: "8px 12px", borderRadius: 8 }}>
+        <button onClick={onImport} className="orders-list-bulk-btn">
           Importar
         </button>
-        <button
-          onClick={onExport}
-          style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(255, 255, 255, 0.08)", color: "#e5e7eb", border: 0 }}
-        >
+        <button onClick={onExport} className="orders-list-bulk-btn orders-list-bulk-btn-default">
           Exportar
         </button>
-        <button onClick={onPrint} style={{ padding: "8px 12px", borderRadius: 8 }}>
+        <button onClick={onPrint} className="orders-list-bulk-btn">
           Imprimir
         </button>
       </div>

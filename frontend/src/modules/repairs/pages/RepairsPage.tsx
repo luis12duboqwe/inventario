@@ -1,1 +1,1 @@
-export { default } from "../../../pages/reparaciones/ReparacionesLayout";
+export { default } from "./ReparacionesLayout";

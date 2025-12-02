@@ -46,6 +46,7 @@ const snapshot: ObservabilitySnapshot = {
         total: 10,
         pending: 4,
         failed: 3,
+        conflicts: 0,
         latest_update: "2025-02-25T09:58:00.000Z",
         oldest_pending: "2025-02-25T09:20:00.000Z",
       },
@@ -88,7 +89,6 @@ const snapshot: ObservabilitySnapshot = {
       fecha: "2025-02-25T09:50:00.000Z",
       nivel: "error",
       ip_origen: null,
-      audit_log_id: null,
     },
   ],
   system_errors: [

@@ -1,10 +1,26 @@
 // [PACK25-MEMO-ROW-START]
 import React from "react";
-type Props = { cells: React.ReactNode[]; onClick?: ()=>void };
-function RowBase({ cells, onClick }: Props){
+type Props = { cells: React.ReactNode[]; onClick?: () => void };
+function RowBase({ cells, onClick }: Props) {
   return (
-    <div onClick={onClick} style={{display:"grid", gridTemplateColumns:`repeat(${cells.length},1fr)`, gap:8, padding:"8px 12px"}}>
-      {cells.map((c,i)=>(<div key={i}>{c}</div>))}
+    <div
+      role="row"
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (onClick && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      className="sales-row"
+      style={{ "--sales-row-cols": cells.length } as React.CSSProperties}
+    >
+      {cells.map((c, i) => (
+        <div key={i} role="cell">
+          {c}
+        </div>
+      ))}
     </div>
   );
 }

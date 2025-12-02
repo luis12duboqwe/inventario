@@ -19,29 +19,29 @@ function PaymentsTable({ items }: OrderPaymentsTableProps) {
   const data = Array.isArray(items) ? items : [];
 
   if (data.length === 0) {
-    return <div style={{ padding: 12, color: "#9ca3af" }}>Sin pagos</div>;
+    return <div className="order-payments-empty">Sin pagos</div>;
   }
 
   return (
-    <div style={{ overflow: "auto", borderRadius: 12, border: "1px solid rgba(255, 255, 255, 0.08)" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+    <div className="order-payments-container">
+      <table className="order-payments-table">
         <thead>
-          <tr style={{ background: "rgba(255, 255, 255, 0.03)" }}>
-            <th style={{ textAlign: "left", padding: 10 }}>Método</th>
-            <th style={{ textAlign: "left", padding: 10 }}>Referencia</th>
-            <th style={{ textAlign: "right", padding: 10 }}>Monto</th>
-            <th style={{ textAlign: "left", padding: 10 }}>Fecha</th>
-            <th style={{ textAlign: "left", padding: 10 }}>Notas</th>
+          <tr className="order-payments-header-row">
+            <th className="order-payments-th-left">Método</th>
+            <th className="order-payments-th-left">Referencia</th>
+            <th className="order-payments-th-right">Monto</th>
+            <th className="order-payments-th-left">Fecha</th>
+            <th className="order-payments-th-left">Notas</th>
           </tr>
         </thead>
         <tbody>
           {data.map((payment) => (
             <tr key={payment.id}>
-              <td style={{ padding: 10 }}>{payment.method}</td>
-              <td style={{ padding: 10 }}>{payment.reference ?? "—"}</td>
-              <td style={{ padding: 10, textAlign: "right" }}>{currency.format(payment.amount)}</td>
-              <td style={{ padding: 10 }}>{new Date(payment.date).toLocaleString()}</td>
-              <td style={{ padding: 10 }}>{payment.note ?? "—"}</td>
+              <td className="order-payments-td">{payment.method}</td>
+              <td className="order-payments-td">{payment.reference ?? "—"}</td>
+              <td className="order-payments-td-right">{currency.format(payment.amount)}</td>
+              <td className="order-payments-td">{new Date(payment.date).toLocaleString()}</td>
+              <td className="order-payments-td">{payment.note ?? "—"}</td>
             </tr>
           ))}
         </tbody>

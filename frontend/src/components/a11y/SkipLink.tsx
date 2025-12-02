@@ -16,10 +16,10 @@ export default function SkipLink() {
         textDecoration: "none",
       }}
       onFocus={(e) => {
-        (e.currentTarget.style as any).transform = "translateY(0)";
+        e.currentTarget.style.transform = "translateY(0)";
       }}
       onBlur={(e) => {
-        (e.currentTarget.style as any).transform = "translateY(-150%)";
+        e.currentTarget.style.transform = "translateY(-150%)";
       }}
     >
       Ir al contenido principal

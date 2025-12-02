@@ -5,7 +5,7 @@ import type {
   PosHardwareSettings,
   PosPrinterMode,
   PosPrinterSettings,
-} from "../../api";
+} from "@api/pos";
 
 export type PosHardwareProps = {
   storeId: number;
@@ -13,7 +13,11 @@ export type PosHardwareProps = {
   onChange: (nextHardware: PosHardwareSettings) => void;
   onTestPrinter: (printerName: string | undefined, mode: PosPrinterMode) => Promise<void>;
   onOpenDrawer: () => Promise<void>;
-  onDisplayPreview: (payload: { headline: string; message: string; total?: number | null }) => Promise<void>;
+  onDisplayPreview: (payload: {
+    headline: string;
+    message: string;
+    total?: number | null;
+  }) => Promise<void>;
   disabled?: boolean;
   busy?: boolean;
 };
@@ -34,7 +38,7 @@ function resolvePrimaryPrinter(printers: PosPrinterSettings[]): PosPrinterSettin
   if (printers.length === 0) {
     return { ...DEFAULT_PRINTER };
   }
-  const candidate = printers.find((printer) => printer.is_default) ?? printers[0];
+  const candidate = printers.find((printer) => printer.is_default) ?? printers[0]!;
   return { ...candidate, connector: { ...candidate.connector } };
 }
 
@@ -57,9 +61,9 @@ function PosHardware({
   const [displaySending, setDisplaySending] = useState(false);
   const [displayHeadline, setDisplayHeadline] = useState("Venta en mostrador");
   const [displayMessage, setDisplayMessage] = useState(
-    hardware.customer_display.message_template ?? "Gracias por tu compra"
+    hardware.customer_display.message_template ?? "Gracias por tu compra",
   );
-  const [displayTotal, setDisplayTotal] = useState<number | "">("");
+  const [displayTotal, setDisplayTotal] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -79,7 +83,9 @@ function PosHardware({
       },
       is_default: true,
     };
-    const otherPrinters = hardware.printers.filter((printer) => printer.name !== primaryPrinter.name);
+    const otherPrinters = hardware.printers.filter(
+      (printer) => printer.name !== primaryPrinter.name,
+    );
     updateHardware({
       ...hardware,
       printers: [mergedPrinter, ...otherPrinters],
@@ -94,7 +100,11 @@ function PosHardware({
     port: hardware.cash_drawer.connector?.port ?? null,
   };
 
-  const updateCashDrawer = (updates: Partial<PosCashDrawerSettings>) => {
+  const updateCashDrawer = (
+    updates: Partial<Omit<PosCashDrawerSettings, "connector">> & {
+      connector?: Partial<PosConnectorSettings> | null;
+    },
+  ) => {
     const { connector: connectorUpdates, ...rest } = updates;
     updateHardware({
       ...hardware,
@@ -184,7 +194,7 @@ function PosHardware({
       await onDisplayPreview({
         headline: displayHeadline,
         message: displayMessage,
-        total: Number.isFinite(total ?? NaN) ? total : undefined,
+        total: typeof total === "number" && Number.isFinite(total) ? total : null,
       });
       setFeedback("Mensaje enviado a la pantalla de cliente.");
     } catch (err) {
@@ -202,7 +212,8 @@ function PosHardware({
     <section className="card">
       <h3>Hardware POS sucursal #{storeId}</h3>
       <p className="card-subtitle">
-        Configura la impresora de recibos, la gaveta de efectivo y los avisos de pantalla del cliente.
+        Configura la impresora de recibos, la gaveta de efectivo y los avisos de pantalla del
+        cliente.
       </p>
       {feedback ? <div className="alert success">{feedback}</div> : null}
       {error ? <div className="alert error">{error}</div> : null}
@@ -233,7 +244,10 @@ function PosHardware({
             <select
               value={primaryPrinter.connector.type}
               onChange={(event) =>
-                handlePrinterConnectorChange("type", event.target.value as PosConnectorSettings["type"])
+                handlePrinterConnectorChange(
+                  "type",
+                  event.target.value as PosConnectorSettings["type"],
+                )
               }
               disabled={disabled || busy}
             >
@@ -326,7 +340,9 @@ function PosHardware({
             <select
               value={drawerConnector.type}
               onChange={(event) =>
-                updateCashDrawer({ connector: { type: event.target.value as PosConnectorSettings["type"] } })
+                updateCashDrawer({
+                  connector: { type: event.target.value as PosConnectorSettings["type"] },
+                })
               }
               disabled={disabled || busy}
             >
@@ -355,7 +371,9 @@ function PosHardware({
                   max={65535}
                   value={drawerConnector.port ?? 9100}
                   onChange={(event) =>
-                    updateCashDrawer({ connector: { port: Math.max(1, Number(event.target.value)) } })
+                    updateCashDrawer({
+                      connector: { port: Math.max(1, Number(event.target.value)) },
+                    })
                   }
                   disabled={disabled || busy}
                 />
@@ -400,7 +418,11 @@ function PosHardware({
             Canal
             <select
               value={hardware.customer_display.channel}
-              onChange={(event) => updateDisplay({ channel: event.target.value as PosHardwareSettings["customer_display"]["channel"] })}
+              onChange={(event) =>
+                updateDisplay({
+                  channel: event.target.value as PosHardwareSettings["customer_display"]["channel"],
+                })
+              }
               disabled={disabled || busy}
             >
               <option value="websocket">WebSocket</option>
@@ -471,7 +493,8 @@ function PosHardware({
         </fieldset>
       </div>
       <p className="muted-text">
-        Guarda los cambios para sincronizar la configuración entre cajeros y clientes vinculados a la sucursal #{storeId}.
+        Guarda los cambios para sincronizar la configuración entre cajeros y clientes vinculados a
+        la sucursal #{storeId}.
       </p>
     </section>
   );

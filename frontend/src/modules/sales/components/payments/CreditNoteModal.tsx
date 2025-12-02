@@ -97,25 +97,19 @@ function CreditNoteModal({ open, orderId, onClose, onSubmit }: CreditNoteModalPr
   }
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(8, 15, 35, 0.7)", display: "grid", placeItems: "center", zIndex: 50 }}>
-      <div style={{ width: 640, background: "#0b1220", borderRadius: 12, border: "1px solid rgba(37, 99, 235, 0.3)", padding: 16 }}>
-        <h3 style={{ marginTop: 0 }}>Nota de crédito {orderId ? `(#${orderId})` : ""}</h3>
-        <div style={{ display: "grid", gap: 12 }}>
+    <div className="credit-note-modal-overlay">
+      <div className="credit-note-modal-content">
+        <h3 className="credit-note-modal-title">
+          Nota de crédito {orderId ? `(#${orderId})` : ""}
+        </h3>
+        <div className="credit-note-modal-form">
           {lines.map((line) => (
-            <div
-              key={line.id}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "2fr 100px 120px 140px 40px",
-                gap: 8,
-                alignItems: "center",
-              }}
-            >
+            <div key={line.id} className="credit-note-modal-line">
               <input
                 placeholder="Descripción"
                 value={line.name}
                 onChange={(event) => handleLineChange(line.id, { name: event.target.value })}
-                style={{ padding: 8, borderRadius: 8 }}
+                className="credit-note-modal-input"
               />
               <input
                 type="number"
@@ -124,7 +118,7 @@ function CreditNoteModal({ open, orderId, onClose, onSubmit }: CreditNoteModalPr
                 placeholder="Cant"
                 value={line.qty}
                 onChange={(event) => handleLineChange(line.id, { qty: Number(event.target.value) })}
-                style={{ padding: 8, borderRadius: 8 }}
+                className="credit-note-modal-input"
               />
               <input
                 type="number"
@@ -132,8 +126,10 @@ function CreditNoteModal({ open, orderId, onClose, onSubmit }: CreditNoteModalPr
                 step="0.01"
                 placeholder="Precio"
                 value={line.price}
-                onChange={(event) => handleLineChange(line.id, { price: Number(event.target.value) })}
-                style={{ padding: 8, borderRadius: 8 }}
+                onChange={(event) =>
+                  handleLineChange(line.id, { price: Number(event.target.value) })
+                }
+                className="credit-note-modal-input"
               />
               <input
                 type="number"
@@ -141,32 +137,43 @@ function CreditNoteModal({ open, orderId, onClose, onSubmit }: CreditNoteModalPr
                 step="0.01"
                 placeholder="Monto"
                 value={line.amount}
-                onChange={(event) => handleLineChange(line.id, { amount: Number(event.target.value) })}
-                style={{ padding: 8, borderRadius: 8 }}
+                onChange={(event) =>
+                  handleLineChange(line.id, { amount: Number(event.target.value) })
+                }
+                className="credit-note-modal-input"
               />
-              <button onClick={() => handleRemoveLine(line.id)} style={{ padding: "6px 8px", borderRadius: 8 }}>×</button>
+              <button
+                onClick={() => handleRemoveLine(line.id)}
+                className="credit-note-modal-remove-btn"
+              >
+                ×
+              </button>
             </div>
           ))}
-          <button onClick={handleAddLine} style={{ padding: "8px 12px", borderRadius: 8 }}>Agregar línea</button>
-          <label style={{ display: "grid", gap: 4 }}>
+          <button onClick={handleAddLine} className="credit-note-modal-add-btn">
+            Agregar línea
+          </button>
+          <label className="refund-modal-label">
             <span>Motivo corporativo (mín. 5 caracteres)</span>
             <textarea
               value={reason}
               onChange={(event) => setReason(event.target.value)}
-              style={{ width: "100%", padding: 8, borderRadius: 8, minHeight: 96 }}
+              className="credit-note-modal-textarea"
               placeholder="Describe el motivo corporativo de la nota"
             />
           </label>
-          <div style={{ textAlign: "right", fontWeight: 700 }}>Total NC: {currency.format(Math.max(0, total))}</div>
+          <div className="credit-note-modal-total">
+            Total NC: {currency.format(Math.max(0, total))}
+          </div>
         </div>
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
+        <div className="credit-note-modal-actions">
           <button
             onClick={() => {
               setLines([]);
               setReason("");
               onClose?.();
             }}
-            style={{ padding: "8px 12px", borderRadius: 8 }}
+            className="credit-note-modal-btn-cancel"
           >
             Cancelar
           </button>
@@ -174,14 +181,11 @@ function CreditNoteModal({ open, orderId, onClose, onSubmit }: CreditNoteModalPr
             type="button"
             disabled={!isValid}
             onClick={handleSubmit}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 8,
-              background: isValid ? "#2563eb" : "rgba(37, 99, 235, 0.35)",
-              color: "#f8fafc",
-              border: 0,
-              cursor: isValid ? "pointer" : "not-allowed",
-            }}
+            className={`credit-note-modal-btn-submit ${
+              isValid
+                ? "credit-note-modal-btn-submit-valid"
+                : "credit-note-modal-btn-submit-invalid"
+            }`}
           >
             Emitir NC
           </button>

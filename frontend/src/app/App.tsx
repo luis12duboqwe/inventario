@@ -1,13 +1,14 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { RouterProvider } from "react-router-dom";
 import { createAppRouter, type ThemeMode } from "../router";
-import Loader from "../shared/components/Loader";
-import type { Credentials } from "../api";
+import { Loader } from "@components/ui/Loader";
+import type { Credentials } from "@api/types";
 import { useAuth } from "../auth/useAuth"; // [PACK28-app]
-import AppErrorBoundary from "../shared/components/AppErrorBoundary"; // [PACK36-app-boundary]
+import AppErrorBoundary from "@components/ui/AppErrorBoundary"; // [PACK36-app-boundary]
 import SkipLink from "../components/a11y/SkipLink";
 import { startWebVitalsLite } from "../lib/metrics/webVitalsLite";
-import { logUI } from "../services/audit"; // [PACK36-app-boundary]
+import { useGlobalErrorHandler } from "../hooks/useGlobalErrorHandler";
+import { AppContext } from "./AppContext";
 
 function resolveInitialTheme(): ThemeMode {
   if (typeof window === "undefined") {
@@ -25,58 +26,23 @@ function resolveInitialTheme(): ThemeMode {
 }
 
 function App() {
-  const { user, accessToken, isLoading: authLoading, login: authLogin, logout: authLogout, lastError, clearError } =
-    useAuth(); // [PACK28-app]
+  const {
+    user,
+    accessToken,
+    isLoading: authLoading,
+    login: authLogin,
+    logout: authLogout,
+    lastError,
+    clearError,
+  } = useAuth(); // [PACK28-app]
   const [error, setError] = useState<string | null>(null);
   const [loginPending, setLoginPending] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>(() => resolveInitialTheme());
 
+  useGlobalErrorHandler();
+
   useEffect(() => {
     startWebVitalsLite();
-  }, []);
-
-  useEffect(() => {
-    const handleWindowError = (event: ErrorEvent) => {
-      const meta = {
-        message: event.message,
-        filename: event.filename,
-        lineno: event.lineno,
-        colno: event.colno,
-        error: event.error ? String(event.error) : undefined,
-      };
-      void logUI({
-        ts: Date.now(),
-        module: "OTHER",
-        action: "window.error", // [PACK36-app-boundary]
-        meta,
-      }).catch(() => {
-        console.error("[App] error global", meta);
-      });
-    };
-
-    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
-      const reason = event.reason instanceof Error ? event.reason.message : String(event.reason);
-      const meta = {
-        reason,
-        stack: event.reason?.stack,
-      };
-      void logUI({
-        ts: Date.now(),
-        module: "OTHER",
-        action: "window.unhandledrejection", // [PACK36-app-boundary]
-        meta,
-      }).catch(() => {
-        console.error("[App] rechazo no controlado", meta);
-      });
-    };
-
-    window.addEventListener("error", handleWindowError);
-    window.addEventListener("unhandledrejection", handleUnhandledRejection);
-
-    return () => {
-      window.removeEventListener("error", handleWindowError);
-      window.removeEventListener("unhandledrejection", handleUnhandledRejection);
-    };
   }, []);
 
   useEffect(() => {
@@ -104,8 +70,7 @@ function App() {
       try {
         await authLogin(credentials);
       } catch (loginError) {
-        const message =
-          loginError instanceof Error ? loginError.message : "Error desconocido";
+        const message = loginError instanceof Error ? loginError.message : "Error desconocido";
         setError(message);
         throw loginError;
       } finally {
@@ -119,30 +84,8 @@ function App() {
     authLogout();
   }, [authLogout]);
 
-  const router = useMemo(
-    () =>
-      createAppRouter({
-        token: accessToken,
-        loading: authLoading || loginPending,
-        error,
-        theme,
-        themeLabel,
-        onToggleTheme: toggleTheme,
-        onLogin: handleLogin,
-        onLogout: handleLogout,
-      }),
-    [
-      accessToken,
-      authLoading,
-      error,
-      handleLogin,
-      handleLogout,
-      loginPending,
-      theme,
-      themeLabel,
-      toggleTheme,
-    ],
-  );
+  // Router is created once and stable across re-renders
+  const router = useMemo(() => createAppRouter(), []);
 
   useEffect(
     () => () => {
@@ -153,14 +96,40 @@ function App() {
 
   const isAuthenticated = Boolean(user && accessToken);
 
+  const contextValue = useMemo(
+    () => ({
+      token: accessToken,
+      loading: authLoading || loginPending,
+      error,
+      theme,
+      themeLabel,
+      onToggleTheme: toggleTheme,
+      onLogin: handleLogin,
+      onLogout: handleLogout,
+    }),
+    [
+      accessToken,
+      authLoading,
+      loginPending,
+      error,
+      theme,
+      themeLabel,
+      toggleTheme,
+      handleLogin,
+      handleLogout,
+    ],
+  );
+
   return (
     <AppErrorBoundary>
-      <div className={`app-root${!isAuthenticated ? " login-mode" : ""}`}>
-        <SkipLink />
-        <Suspense fallback={<Loader variant="overlay" message="Cargando interfaz…" />}>
-          <RouterProvider router={router} />
-        </Suspense>
-      </div>
+      <AppContext.Provider value={contextValue}>
+        <div className={`app-root${!isAuthenticated ? " login-mode" : ""}`}>
+          <SkipLink />
+          <Suspense fallback={<Loader variant="overlay" message="Cargando interfaz…" />}>
+            <RouterProvider router={router} />
+          </Suspense>
+        </div>
+      </AppContext.Provider>
     </AppErrorBoundary>
   );
 }

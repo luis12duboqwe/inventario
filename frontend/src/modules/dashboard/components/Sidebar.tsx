@@ -1,9 +1,10 @@
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, PanelsTopLeft } from "lucide-react";
 
-import SidebarMenu, { type SidebarMenuItem } from "../../../shared/components/ui/SidebarMenu";
+import SidebarMenu, { type SidebarMenuItem } from "@components/ui/SidebarMenu";
 // [PACK25-PREFETCH-WIRE-START]
 import { preimport, prefetchJson } from "@/lib/prefetch";
+import { getApiBaseUrl } from "@/config/api";
 // [PACK25-PREFETCH-WIRE-END]
 
 export type SidebarNavChild = {
@@ -27,7 +28,6 @@ type SidebarProps = {
 };
 
 const STORAGE_KEY = "softmobile_sidebar_collapsed";
-const BASE = (import.meta as any)?.env?.VITE_API_BASE_URL || "";
 
 function Sidebar({ items, currentPath, mobileOpen = false, onNavigate }: SidebarProps) {
   const [collapsed, setCollapsed] = useState<boolean>(() => {
@@ -59,22 +59,28 @@ function Sidebar({ items, currentPath, mobileOpen = false, onNavigate }: Sidebar
   };
 
   const onHoverSales = useCallback(() => {
+    const base = getApiBaseUrl();
     preimport(() => import("@/modules/sales/pages/POSPage"));
     preimport(() => import("@/modules/sales/pages/QuotesListPage"));
     preimport(() => import("@/modules/sales/pages/CustomersListPage"));
 
-    prefetchJson(`${BASE}/api/products/search?page=1&pageSize=12`);
-    prefetchJson(`${BASE}/api/customers?page=1&pageSize=20`);
+    prefetchJson(`${base}/api/products/search?page=1&pageSize=12`);
+    prefetchJson(`${base}/api/customers?page=1&pageSize=20`);
   }, []);
 
-  const sidebarClassName = ["app-sidebar", collapsed ? "is-collapsed" : "", mobileOpen ? "is-mobile-open" : ""]
+  const sidebarClassName = [
+    "app-sidebar",
+    collapsed ? "is-collapsed" : "",
+    mobileOpen ? "is-mobile-open" : "",
+  ]
     .filter(Boolean)
     .join(" ");
 
   const menuItems: SidebarMenuItem[] = useMemo(
     () =>
       items.map((item) => {
-        const resolvedOnMouseEnter = item.onMouseEnter ?? (item.label === "Ventas" ? onHoverSales : undefined);
+        const resolvedOnMouseEnter =
+          item.onMouseEnter ?? (item.label === "Ventas" ? onHoverSales : undefined);
 
         const base: SidebarMenuItem = {
           to: item.to,
@@ -115,7 +121,9 @@ function Sidebar({ items, currentPath, mobileOpen = false, onNavigate }: Sidebar
         aria-label={toggleLabel}
         title={toggleLabel}
       >
-        <span aria-hidden="true">{collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}</span>
+        <span aria-hidden="true">
+          {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+        </span>
         <span className="app-sidebar__toggle-label">{toggleLabel}</span>
       </button>
     </aside>

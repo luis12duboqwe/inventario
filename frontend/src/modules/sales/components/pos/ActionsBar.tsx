@@ -27,47 +27,27 @@ export default function ActionsBar({
   sendingChannel = null,
 }: Props) {
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-        gap: 8,
-      }}
-    >
+    <div className="pos-actions-bar">
       <RequirePerm perm={PERMS.POS_HOLD} fallback={null}>
-        <button onClick={onHold} style={{ padding: "10px 12px", borderRadius: 10 }}>
+        <button onClick={onHold} className="pos-action-button pos-action-button-default">
           Guardar
         </button>
       </RequirePerm>
       <DisableIfNoPerm perm={PERMS.POS_CHECKOUT}>
-        <button
-          onClick={onPay}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 10,
-            background: "#22c55e",
-            color: "#0b1220",
-            border: 0,
-          }}
-        >
+        <button onClick={onPay} className="pos-action-button pos-action-button-pay">
           Cobrar
         </button>
       </DisableIfNoPerm>
-      <button onClick={onPrint} style={{ padding: "10px 12px", borderRadius: 10 }}>
+      <button onClick={onPrint} className="pos-action-button pos-action-button-default">
         Imprimir
       </button>
       <button
         onClick={onSendEmail}
         disabled={!canSend || sendingChannel === "email"}
         aria-busy={sendingChannel === "email"}
-        style={{
-          padding: "10px 12px",
-          borderRadius: 10,
-          background: "#1d4ed8",
-          color: "#f8fafc",
-          border: 0,
-          opacity: !canSend ? 0.5 : 1,
-        }}
+        className={`pos-action-button pos-action-button-email ${
+          !canSend ? "pos-action-button-disabled" : ""
+        }`}
       >
         Enviar correo
       </button>
@@ -75,30 +55,16 @@ export default function ActionsBar({
         onClick={onSendWhatsapp}
         disabled={!canSend || sendingChannel === "whatsapp"}
         aria-busy={sendingChannel === "whatsapp"}
-        style={{
-          padding: "10px 12px",
-          borderRadius: 10,
-          background: "#10b981",
-          color: "#0b1220",
-          border: 0,
-          opacity: !canSend ? 0.5 : 1,
-        }}
+        className={`pos-action-button pos-action-button-whatsapp ${
+          !canSend ? "pos-action-button-disabled" : ""
+        }`}
       >
         Enviar WhatsApp
       </button>
-      <button onClick={onOffline} style={{ padding: "10px 12px", borderRadius: 10 }}>
+      <button onClick={onOffline} className="pos-action-button pos-action-button-default">
         Offline
       </button>
-      <button
-        onClick={onCancel}
-        style={{
-          padding: "10px 12px",
-          borderRadius: 10,
-          background: "#b91c1c",
-          color: "#fff",
-          border: 0,
-        }}
-      >
+      <button onClick={onCancel} className="pos-action-button pos-action-button-cancel">
         Cancelar
       </button>
     </div>

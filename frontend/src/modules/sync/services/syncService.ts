@@ -1,5 +1,5 @@
+import { runBackup } from "@api/system";
 import {
-  runBackup,
   triggerSync,
   listSyncOutbox,
   retrySyncOutbox,
@@ -9,7 +9,7 @@ import {
   dispatchSyncQueueEvents,
   listSyncQueueStatus,
   resolveSyncQueueEvent,
-} from "../../../api";
+} from "@api/sync";
 
 export const syncService = {
   runBackup,

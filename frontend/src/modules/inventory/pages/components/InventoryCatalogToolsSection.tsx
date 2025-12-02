@@ -1,6 +1,6 @@
 import { Suspense, lazy } from "react";
 
-import Button from "../../../../shared/components/ui/Button";
+import Button from "@components/ui/Button";
 import { useInventoryLayout } from "../context/InventoryLayoutContext";
 
 const AdvancedSearch = lazy(() => import("../../components/AdvancedSearch"));

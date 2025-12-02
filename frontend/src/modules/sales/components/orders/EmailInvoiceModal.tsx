@@ -11,29 +11,15 @@ function EmailInvoiceModal({ open, onClose }: Props) {
   }
 
   return (
-    <div
-      style={{ position: "fixed", inset: 0, background: "rgba(0, 0, 0, 0.5)", display: "grid", placeItems: "center" }}
-    >
-      <div
-        style={{
-          width: 520,
-          background: "#0b1220",
-          borderRadius: 12,
-          border: "1px solid rgba(255, 255, 255, 0.08)",
-          padding: 16,
-        }}
-      >
-        <h3 style={{ marginTop: 0 }}>Enviar facturas por email</h3>
-        <input placeholder="Para (email)" style={{ padding: 8, borderRadius: 8, width: "100%" }} />
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
-          <button onClick={onClose} style={{ padding: "8px 12px", borderRadius: 8 }}>
+    <div className="orders-email-modal-overlay">
+      <div className="orders-email-modal-content">
+        <h3 className="orders-email-modal-title">Enviar facturas por email</h3>
+        <input placeholder="Para (email)" className="orders-email-modal-input" />
+        <div className="orders-email-modal-actions">
+          <button onClick={onClose} className="orders-email-modal-btn">
             Cerrar
           </button>
-          <button
-            style={{ padding: "8px 12px", borderRadius: 8, background: "#2563eb", color: "#fff", border: 0 }}
-          >
-            Enviar
-          </button>
+          <button className="orders-email-modal-btn orders-email-modal-btn--send">Enviar</button>
         </div>
       </div>
     </div>

@@ -23,7 +23,13 @@ type PaymentsSidePanelProps = {
 const currency = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
 const dateFormatter = new Intl.DateTimeFormat("es-HN", { dateStyle: "medium", timeStyle: "short" });
 
-function PaymentsSidePanel({ row, onClose, onPay, onRefund, onCreditNote }: PaymentsSidePanelProps) {
+function PaymentsSidePanel({
+  row,
+  onClose,
+  onPay,
+  onRefund,
+  onCreditNote,
+}: PaymentsSidePanelProps) {
   if (!row) {
     return null;
   }
@@ -39,48 +45,33 @@ function PaymentsSidePanel({ row, onClose, onPay, onRefund, onCreditNote }: Paym
   ];
 
   return (
-    <aside
-      style={{
-        position: "fixed",
-        right: 0,
-        top: 0,
-        bottom: 0,
-        width: 420,
-        background: "#0b1220",
-        borderLeft: "1px solid rgba(148, 163, 184, 0.2)",
-        padding: 16,
-        overflowY: "auto",
-        zIndex: 40,
-        boxShadow: "-12px 0 32px rgba(15, 23, 42, 0.45)",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <h3 style={{ margin: 0 }}>Movimiento</h3>
-        <button onClick={onClose} style={{ padding: "6px 10px", borderRadius: 8 }}>Cerrar</button>
+    <aside className="payments-side-panel">
+      <div className="payments-side-panel-header">
+        <h3 className="payments-side-panel-title">Movimiento</h3>
+        <button onClick={onClose} className="payments-side-panel-close-btn">
+          Cerrar
+        </button>
       </div>
 
-      <div style={{ display: "grid", gap: 8 }}>
+      <div className="payments-side-panel-details">
         {details.map(([label, value]) => (
-          <div
-            key={label}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              borderBottom: "1px dashed rgba(148, 163, 184, 0.2)",
-              padding: "6px 0",
-              fontSize: 14,
-            }}
-          >
-            <span style={{ color: "#94a3b8" }}>{label}</span>
-            <span style={{ marginLeft: 16, textAlign: "right" }}>{value}</span>
+          <div key={label} className="payments-side-panel-row">
+            <span className="payments-side-panel-label">{label}</span>
+            <span className="payments-side-panel-value">{value}</span>
           </div>
         ))}
       </div>
 
-      <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
-        <button onClick={onPay} style={{ padding: "8px 12px", borderRadius: 8 }}>Registrar cobro</button>
-        <button onClick={onRefund} style={{ padding: "8px 12px", borderRadius: 8 }}>Reembolsar</button>
-        <button onClick={onCreditNote} style={{ padding: "8px 12px", borderRadius: 8 }}>Nota de crédito</button>
+      <div className="payments-side-panel-actions">
+        <button onClick={onPay} className="payments-side-panel-action-btn">
+          Registrar cobro
+        </button>
+        <button onClick={onRefund} className="payments-side-panel-action-btn">
+          Reembolsar
+        </button>
+        <button onClick={onCreditNote} className="payments-side-panel-action-btn">
+          Nota de crédito
+        </button>
       </div>
     </aside>
   );

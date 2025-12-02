@@ -1,6 +1,6 @@
 import { FormEvent, useState } from "react";
 
-import type { PosSessionSummary } from "../../../../services/api/pos";
+import type { PosSessionSummary } from "@api/pos";
 
 type StoreOption = {
   id: number;

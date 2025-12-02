@@ -8,14 +8,14 @@ export type POSSearchBarProps = {
 
 function SearchBar({ value, onChange, onSubmit }: POSSearchBarProps) {
   return (
-    <div style={{ display: "flex", gap: 8 }}>
+    <div className="pos-search-bar">
       <input
         placeholder="Buscar por nombre, SKU o IMEI…"
         value={value ?? ""}
         onChange={(event) => onChange(event.target.value)}
-        style={{ flex: 1, padding: 8, borderRadius: 8 }}
+        className="pos-search-input"
       />
-      <button onClick={onSubmit} style={{ padding: "8px 12px", borderRadius: 8 }}>
+      <button onClick={onSubmit} className="pos-search-btn">
         Buscar
       </button>
     </div>

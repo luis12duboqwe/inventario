@@ -1,13 +1,14 @@
+import { getAuditLogs } from "@api/audit";
 import {
   activateTotp,
   disableTotp,
-  getAuditLogs,
   getTotpStatus,
   listActiveSessions,
   revokeSession,
   setupTotp,
-} from "../../../api";
-import type { ActiveSession, AuditLogEntry, TOTPSetup, TOTPStatus } from "../../../api";
+} from "@api/security";
+import type { AuditLogEntry } from "@api/audit";
+import type { ActiveSession, TOTPSetup, TOTPStatus } from "@api/security";
 
 export const securityService = {
   fetchAuditLogs: getAuditLogs,

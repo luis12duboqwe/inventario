@@ -28,47 +28,47 @@ export default function PrintQuote({ business, doc }: Props) {
   const subtotal = lines.reduce((acc, line) => acc + line.qty * line.price, 0);
 
   return (
-    <div style={{ width: 680, padding: 16, background: "#fff", color: "#111", fontFamily: "system-ui" }}>
-      <div style={{ display: "flex", justifyContent: "space-between" }}>
+    <div className="quotes-print-container">
+      <div className="quotes-print-header">
         <div>
-          <div style={{ fontWeight: 700, fontSize: 18 }}>{business?.name ?? "SOFTMOBILE"}</div>
+          <div className="quotes-print-business-name">{business?.name ?? "SOFTMOBILE"}</div>
         </div>
-        <div style={{ textAlign: "right" }}>
-          <div style={{ fontWeight: 700 }}>Cotización</div>
+        <div className="quotes-print-info">
+          <div className="quotes-print-title">Cotización</div>
           <div>Número: {doc?.number ?? "—"}</div>
           <div>Fecha: {doc?.date ? new Date(doc.date).toLocaleString() : "—"}</div>
           <div>Cliente: {doc?.customer ?? "—"}</div>
         </div>
       </div>
       <hr />
-      <table style={{ width: "100%", fontSize: 14 }}>
+      <table className="quotes-print-table">
         <thead>
           <tr>
-            <th style={{ textAlign: "left" }}>Producto</th>
-            <th style={{ textAlign: "center" }}>Cant</th>
-            <th style={{ textAlign: "right" }}>Precio</th>
-            <th style={{ textAlign: "right" }}>Importe</th>
+            <th className="quotes-print-th">Producto</th>
+            <th className="quotes-print-th quotes-print-th--center">Cant</th>
+            <th className="quotes-print-th quotes-print-th--right">Precio</th>
+            <th className="quotes-print-th quotes-print-th--right">Importe</th>
           </tr>
         </thead>
         <tbody>
           {lines.map((line, index) => (
             <tr key={index}>
               <td>{line.name}</td>
-              <td style={{ textAlign: "center" }}>{line.qty}</td>
-              <td style={{ textAlign: "right" }}>{line.price}</td>
-              <td style={{ textAlign: "right" }}>{line.qty * line.price}</td>
+              <td className="quotes-print-td--center">{line.qty}</td>
+              <td className="quotes-print-td--right">{line.price}</td>
+              <td className="quotes-print-td--right">{line.qty * line.price}</td>
             </tr>
           ))}
         </tbody>
       </table>
       <hr />
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+      <div className="quotes-print-footer">
         <div>
           Sub-total: <b>{subtotal}</b>
         </div>
       </div>
       {!!doc?.note && (
-        <div style={{ marginTop: 8 }}>
+        <div className="quotes-print-notes">
           <b>Notas:</b> {doc.note}
         </div>
       )}

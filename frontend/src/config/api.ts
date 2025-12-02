@@ -187,6 +187,10 @@ export function getApiBaseUrl(): string {
       hostname === "::1";
     const isLanHost = PRIVATE_IPV4_REGEX.test(hostname);
 
+    // Fuerza el uso de base relativa `/api` cuando se ejecuta en Vite dev (4173/5173)
+    if (isLocalHost && (port === "5173" || port === "4173")) {
+      return RELATIVE_API_BASE;
+    }
     if (isLocalHost && (!port || port === DEFAULT_API_PORT)) {
       return RELATIVE_API_BASE;
     }
@@ -197,7 +201,8 @@ export function getApiBaseUrl(): string {
     }
 
     if (port === "5173" || port === "4173") {
-      return `${normalizedProtocol}://${hostname}:${DEFAULT_API_PORT}`;
+      // Preferir el proxy relativo en dev para evitar CORS
+      return RELATIVE_API_BASE;
     }
 
     if (port === DEFAULT_API_PORT && !isLocalHost) {

@@ -8,7 +8,7 @@ type Payment = {
   amount: number;
   reference?: string;
   tipAmount?: number;
-  terminalId?: string;
+  terminalId?: string | undefined;
 };
 
 type TerminalOption = { id: string; label: string };
@@ -84,53 +84,37 @@ export default function PaymentsModal({
     payments.every((payment) => (payment.amount ?? 0) >= 0 && (payment.tipAmount ?? 0) >= 0);
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "grid", placeItems: "center" }}>
-      <div
-        style={{
-          width: 560,
-          background: "#0b1220",
-          borderRadius: 12,
-          border: "1px solid rgba(255,255,255,0.08)",
-          padding: 16,
-        }}
-      >
-        <h3 style={{ marginTop: 0 }}>Cobros</h3>
-          <div style={{ display: "grid", gap: 8, maxHeight: 360, overflow: "auto" }}>
-            {payments.map((payment) => (
-              <div
-                key={payment.id}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 120px 110px 1fr 1fr 28px",
-                  gap: 8,
-                  alignItems: "center",
-                }}
+    <div className="pos-payments-modal-overlay">
+      <div className="pos-payments-modal">
+        <h3 className="pos-payments-modal-title">Cobros</h3>
+        <div className="pos-payments-list">
+          {payments.map((payment) => (
+            <div key={payment.id} className="pos-payments-item">
+              <select
+                value={payment.type}
+                onChange={(event) =>
+                  updatePayment(payment.id, {
+                    type: event.target.value as PaymentType,
+                    terminalId:
+                      event.target.value === "CARD" || event.target.value === "TRANSFER"
+                        ? payment.terminalId || defaultTerminalId || terminals?.[0]?.id
+                        : undefined,
+                  })
+                }
+                className="pos-payments-select"
               >
-                <select
-                  value={payment.type}
-                  onChange={(event) =>
-                    updatePayment(payment.id, {
-                      type: event.target.value as PaymentType,
-                      terminalId:
-                        event.target.value === "CARD" || event.target.value === "TRANSFER"
-                          ? payment.terminalId || defaultTerminalId || terminals?.[0]?.id
-                          : undefined,
-                    })
-                  }
-                  style={{ padding: 8, borderRadius: 8 }}
-                >
-                  <option value="CASH">Efectivo</option>
-                  <option value="CARD">Tarjeta</option>
-                  <option value="TRANSFER">Transferencia</option>
-                  <option value="OTHER">Otro</option>
-                </select>
+                <option value="CASH">Efectivo</option>
+                <option value="CARD">Tarjeta</option>
+                <option value="TRANSFER">Transferencia</option>
+                <option value="OTHER">Otro</option>
+              </select>
               <input
                 type="number"
                 value={payment.amount}
                 onChange={(event) =>
                   updatePayment(payment.id, { amount: Number(event.target.value ?? 0) })
                 }
-                style={{ padding: 8, borderRadius: 8 }}
+                className="pos-payments-input"
               />
               <input
                 type="number"
@@ -138,18 +122,18 @@ export default function PaymentsModal({
                 onChange={(event) =>
                   updatePayment(payment.id, { tipAmount: Number(event.target.value ?? 0) })
                 }
-                style={{ padding: 8, borderRadius: 8 }}
+                className="pos-payments-input"
                 placeholder="Propina"
                 min={0}
               />
-              <div style={{ display: "grid", gap: 4 }}>
-                {(payment.type === "CARD" || payment.type === "TRANSFER") ? (
+              <div className="pos-payments-terminal-container">
+                {payment.type === "CARD" || payment.type === "TRANSFER" ? (
                   <select
                     value={payment.terminalId ?? defaultTerminalId ?? ""}
                     onChange={(event) =>
                       updatePayment(payment.id, { terminalId: event.target.value || undefined })
                     }
-                    style={{ padding: 8, borderRadius: 8 }}
+                    className="pos-payments-select"
                   >
                     <option value="">Terminal</option>
                     {terminals?.map((terminal) => (
@@ -159,10 +143,10 @@ export default function PaymentsModal({
                     ))}
                   </select>
                 ) : (
-                  <div style={{ fontSize: 12, color: "#64748b" }}>Sin terminal</div>
+                  <div className="pos-payments-no-terminal">Sin terminal</div>
                 )}
                 {tipSuggestions && tipSuggestions.length > 0 ? (
-                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  <div className="pos-payments-tips">
                     {tipSuggestions.map((tip) => (
                       <button
                         key={`${payment.id}-tip-${tip}`}
@@ -172,14 +156,7 @@ export default function PaymentsModal({
                             tipAmount: Number(((total * tip) / 100).toFixed(2)),
                           })
                         }
-                        style={{
-                          padding: "4px 6px",
-                          borderRadius: 6,
-                          border: "1px solid rgba(56,189,248,0.4)",
-                          background: "rgba(56,189,248,0.1)",
-                          color: "#38bdf8",
-                          fontSize: 11,
-                        }}
+                        className="pos-payments-tip-btn"
                       >
                         +{tip}%
                       </button>
@@ -191,21 +168,18 @@ export default function PaymentsModal({
                 placeholder="Ref/last4"
                 value={payment.reference ?? ""}
                 onChange={(event) => updatePayment(payment.id, { reference: event.target.value })}
-                style={{ padding: 8, borderRadius: 8 }}
+                className="pos-payments-input"
               />
-              <button
-                onClick={() => removePayment(payment.id)}
-                style={{ padding: "6px 8px", borderRadius: 8 }}
-              >
+              <button onClick={() => removePayment(payment.id)} className="pos-payments-remove-btn">
                 ×
               </button>
             </div>
           ))}
-          <button onClick={addPayment} style={{ padding: "8px 12px", borderRadius: 8 }}>
+          <button onClick={addPayment} className="pos-payments-add-btn">
             Agregar medio
           </button>
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+        <div className="pos-payments-summary">
           <div>
             Total: <b>{Intl.NumberFormat().format(total)}</b>
           </div>
@@ -213,22 +187,23 @@ export default function PaymentsModal({
             Pagado: <b>{Intl.NumberFormat().format(basePaid)}</b>
           </div>
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 12, color: "#94a3b8" }}>
+        <div className="pos-payments-summary-tips">
           <div>
-            Propinas: <b style={{ color: "#38bdf8" }}>{Intl.NumberFormat().format(tipsPaid)}</b>
+            Propinas:{" "}
+            <b className="pos-payments-tip-amount">{Intl.NumberFormat().format(tipsPaid)}</b>
           </div>
           <div>
             Total con propina: <b>{Intl.NumberFormat().format(basePaid + tipsPaid)}</b>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
-          <button onClick={onClose} style={{ padding: "8px 12px", borderRadius: 8 }}>
+        <div className="pos-payments-actions">
+          <button onClick={onClose} className="pos-payments-cancel-btn">
             Cancelar
           </button>
           <button
             disabled={!valid}
             onClick={() => onSubmit?.(payments)}
-            style={{ padding: "8px 12px", borderRadius: 8, background: "#22c55e", color: "#0b1220", border: 0 }}
+            className="pos-payments-confirm-btn"
           >
             Confirmar
           </button>

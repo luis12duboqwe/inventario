@@ -1,12 +1,16 @@
 import React from "react";
+import { useDashboard } from "../../dashboard/context/DashboardContext";
+import TransferOrders from "../components/TransferOrders";
 
 export default function OperationsTransfers() {
+  const { token, stores, selectedStoreId, refreshInventoryAfterTransfer } = useDashboard();
+
   return (
-    <div style={{ display: "grid", gap: 12 }}>
-      <h2 style={{ margin: 0 }}>Transferencias</h2>
-      <p style={{ margin: 0, color: "#9ca3af" }}>
-        Transferencias entre tiendas con control de aprobación y recepción.
-      </p>
-    </div>
+    <TransferOrders
+      token={token}
+      stores={stores}
+      defaultOriginId={selectedStoreId}
+      onRefreshInventory={refreshInventoryAfterTransfer}
+    />
   );
 }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import PageHeader from "../../../components/layout/PageHeader";
 import PageToolbar from "../../../components/layout/PageToolbar";
-import { listRepairOrders, type RepairOrder } from "../../../api";
+import { listRepairOrders, type RepairOrder } from "@api/repairs";
 import { useRepairsLayout } from "./context/RepairsLayoutContext";
 
 const STATUS_LABELS: Record<RepairOrder["status"], string> = {
@@ -34,7 +34,10 @@ function RepairsBudgetsPage() {
         const data = await listRepairOrders(token, { store_id: selectedStoreId, limit: 200 });
         setOrders(data);
       } catch (err) {
-        const message = err instanceof Error ? err.message : "No fue posible cargar los presupuestos de reparación.";
+        const message =
+          err instanceof Error
+            ? err.message
+            : "No fue posible cargar los presupuestos de reparación.";
         setError(message);
       } finally {
         setLoading(false);
@@ -53,7 +56,9 @@ function RepairsBudgetsPage() {
       if (!normalized) {
         return true;
       }
-      const haystack = `${order.id} ${order.customer_name ?? "Mostrador"} ${order.technician_name} ${order.damage_type}`.toLowerCase();
+      const haystack = `${order.id} ${order.customer_name ?? "Mostrador"} ${
+        order.technician_name
+      } ${order.damage_type}`.toLowerCase();
       return haystack.includes(normalized);
     });
   }, [orders, searchTerm, statusFilter]);
@@ -118,7 +123,9 @@ function RepairsBudgetsPage() {
             Estado
             <select
               value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value as RepairOrder["status"] | "TODOS")}
+              onChange={(event) =>
+                setStatusFilter(event.target.value as RepairOrder["status"] | "TODOS")
+              }
             >
               <option value="TODOS">Todos</option>
               {Object.keys(STATUS_LABELS).map((status) => (
@@ -136,7 +143,13 @@ function RepairsBudgetsPage() {
           <section className="card metrics-grid">
             <article className="metric">
               <h3>Total estimado</h3>
-              <strong>${summary.totalCost.toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              <strong>
+                $
+                {summary.totalCost.toLocaleString("es-HN", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </strong>
             </article>
             <article className="metric">
               <h3>Órdenes pendientes</h3>
@@ -148,7 +161,13 @@ function RepairsBudgetsPage() {
             </article>
             <article className="metric">
               <h3>Promedio por reparación</h3>
-              <strong>${summary.average.toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              <strong>
+                $
+                {summary.average.toLocaleString("es-HN", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </strong>
             </article>
           </section>
 
@@ -157,7 +176,9 @@ function RepairsBudgetsPage() {
             {loading ? <p className="muted-text">Cargando presupuestos…</p> : null}
             {error ? <div className="alert error">{error}</div> : null}
             {!loading && !error && filteredOrders.length === 0 ? (
-              <p className="muted-text">No hay presupuestos que coincidan con los filtros seleccionados.</p>
+              <p className="muted-text">
+                No hay presupuestos que coincidan con los filtros seleccionados.
+              </p>
             ) : null}
             {!loading && !error && filteredOrders.length > 0 ? (
               <div className="table-wrapper">
@@ -181,7 +202,13 @@ function RepairsBudgetsPage() {
                         <td>{order.technician_name}</td>
                         <td>{order.damage_type}</td>
                         <td>{STATUS_LABELS[order.status]}</td>
-                        <td>${Number(order.total_cost ?? 0).toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        <td>
+                          $
+                          {Number(order.total_cost ?? 0).toLocaleString("es-HN", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </td>
                         <td>{new Date(order.updated_at).toLocaleString("es-HN")}</td>
                       </tr>
                     ))}
@@ -193,7 +220,9 @@ function RepairsBudgetsPage() {
         </>
       ) : (
         <section className="card">
-          <p className="muted-text">Selecciona una sucursal para revisar los presupuestos de reparación.</p>
+          <p className="muted-text">
+            Selecciona una sucursal para revisar los presupuestos de reparación.
+          </p>
         </section>
       )}
     </div>

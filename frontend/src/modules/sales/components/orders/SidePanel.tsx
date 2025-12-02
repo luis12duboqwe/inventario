@@ -22,41 +22,20 @@ function SidePanel({ row, onClose }: Props) {
   ];
 
   return (
-    <aside
-      style={{
-        position: "fixed",
-        right: 0,
-        top: 0,
-        bottom: 0,
-        width: 420,
-        background: "#0b1220",
-        borderLeft: "1px solid rgba(255, 255, 255, 0.08)",
-        padding: 16,
-        overflow: "auto",
-        zIndex: 40,
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <h3 style={{ margin: 0 }}>Resumen orden</h3>
-        <button onClick={onClose} style={{ padding: "6px 10px", borderRadius: 8 }}>
+    <aside className="orders-side-panel">
+      <div className="orders-side-panel-header">
+        <h3 className="orders-side-panel-title">Resumen orden</h3>
+        <button onClick={onClose} className="orders-side-panel-close-btn">
           Cerrar
         </button>
       </div>
-      <div style={{ marginBottom: 8 }}>
+      <div className="orders-side-panel-status">
         <StatusBadge value={row.status} />
       </div>
-      <div style={{ display: "grid", gap: 8 }}>
+      <div className="orders-side-panel-fields">
         {fields.map(([label, value]) => (
-          <div
-            key={label}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              borderBottom: "1px dashed rgba(255, 255, 255, 0.08)",
-              padding: "6px 0",
-            }}
-          >
-            <span style={{ color: "#94a3b8" }}>{label}</span>
+          <div key={label} className="orders-side-panel-field-row">
+            <span className="orders-side-panel-field-label">{label}</span>
             <span>{value}</span>
           </div>
         ))}

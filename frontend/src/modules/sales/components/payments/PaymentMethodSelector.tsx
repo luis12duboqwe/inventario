@@ -11,7 +11,7 @@ const METHODS: PaymentMethod[] = ["CASH", "CARD", "TRANSFER", "MIXED"];
 
 function PaymentMethodSelector({ method, onChange }: PaymentMethodSelectorProps) {
   return (
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+    <div className="payment-method-selector">
       {METHODS.map((option) => {
         const isActive = method === option;
         return (
@@ -19,13 +19,7 @@ function PaymentMethodSelector({ method, onChange }: PaymentMethodSelectorProps)
             key={option}
             type="button"
             onClick={() => onChange(option)}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 8,
-              background: isActive ? "#2563eb" : "rgba(148, 163, 184, 0.16)",
-              color: "#f8fafc",
-              border: "1px solid rgba(37, 99, 235, 0.4)",
-            }}
+            className={`payment-method-button ${isActive ? "payment-method-button-active" : ""}`}
           >
             {option}
           </button>
