@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import type { InventoryAlertsResponse } from "../../../../api";
-import { getInventoryAlerts } from "../../../../api";
+import type { InventoryAlertsResponse } from "@api/inventory";
+import { getInventoryAlerts } from "@api/inventory";
 import { useDashboard } from "../../../dashboard/context/DashboardContext";
 import InventoryAlerts from "../../components/InventoryAlerts";
 import { useInventoryLayout } from "../context/InventoryLayoutContext";
@@ -21,8 +21,8 @@ function InventoryAlertsSection() {
       try {
         setIsLoading(true);
         const response = await getInventoryAlerts(token, {
-          storeId: selectedStoreId ?? undefined,
-          threshold: overrideThreshold,
+          ...(selectedStoreId != null ? { storeId: selectedStoreId } : {}),
+          ...(overrideThreshold !== undefined ? { threshold: overrideThreshold } : {}),
         });
         setAlertsData(response);
         updateThresholdDraftValue(response.settings.threshold);
@@ -46,7 +46,7 @@ function InventoryAlertsSection() {
 
   useEffect(() => {
     void fetchAlerts(alertsData?.settings.threshold);
-  }, [fetchAlerts, lowStockDevices.length]);
+  }, [fetchAlerts, lowStockDevices.length, alertsData?.settings.threshold]);
 
   const handlePersistThreshold = useCallback(async () => {
     try {

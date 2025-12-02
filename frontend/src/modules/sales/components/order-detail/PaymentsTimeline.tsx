@@ -16,21 +16,14 @@ function PaymentsTimeline({ items }: Props) {
   const data = Array.isArray(items) ? items : [];
 
   return (
-    <div
-      style={{
-        padding: 12,
-        borderRadius: 12,
-        background: "rgba(255, 255, 255, 0.04)",
-        border: "1px solid rgba(255, 255, 255, 0.08)",
-      }}
-    >
-      <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 8 }}>Pagos</div>
+    <div className="order-payments-timeline-card">
+      <div className="order-payments-timeline-label">Pagos</div>
       {data.length === 0 ? (
-        <div style={{ color: "#9ca3af" }}>Sin pagos</div>
+        <div className="order-payments-timeline-empty">Sin pagos</div>
       ) : (
-        <div style={{ display: "grid", gap: 8 }}>
+        <div className="order-payments-timeline-list">
           {data.map((payment) => (
-            <div key={payment.id} style={{ display: "flex", justifyContent: "space-between" }}>
+            <div key={payment.id} className="order-payments-timeline-item">
               <span>
                 {new Date(payment.date).toLocaleString()} — {payment.method}
                 {payment.note ? ` · ${payment.note}` : ""}

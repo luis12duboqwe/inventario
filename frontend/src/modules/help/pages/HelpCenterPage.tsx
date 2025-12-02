@@ -1,9 +1,9 @@
 import { useMemo } from "react";
 import { useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import Loader from "../../../shared/components/Loader";
-import PageHeader from "../../../shared/components/ui/PageHeader";
-import { fetchDemoPreview, fetchHelpContext, type HelpGuide } from "../../../services/api/help";
+import { Loader } from "@components/ui/Loader";
+import PageHeader from "@components/ui/PageHeader";
+import { fetchDemoPreview, fetchHelpContext, type HelpGuide } from "@api/help";
 
 function resolveContextModule(pathname: string, fromState?: string | null): string {
   if (fromState && fromState.startsWith("/dashboard/")) {
@@ -38,12 +38,13 @@ function HelpCenterPage() {
     queryFn: fetchDemoPreview,
   });
 
+  const guides = helpData?.guides;
   const contextualGuide: HelpGuide | undefined = useMemo(() => {
-    if (!helpData?.guides) {
+    if (!guides) {
       return undefined;
     }
-    return helpData.guides.find((guide) => guide.module === currentModule) ?? helpData.guides[0];
-  }, [currentModule, helpData?.guides]);
+    return guides.find((guide) => guide.module === currentModule) ?? guides[0];
+  }, [currentModule, guides]);
 
   return (
     <section className="help-center">
@@ -88,7 +89,8 @@ function HelpCenterPage() {
               <p className="eyebrow">Recursos completos</p>
               <h2>Manual y video por módulo</h2>
               <p className="muted">
-                Accede a todos los manuales PDF y guiones de video almacenados en docs/capacitacion para capacitación offline.
+                Accede a todos los manuales PDF y guiones de video almacenados en docs/capacitacion
+                para capacitación offline.
               </p>
             </header>
             <div className="help-center__manuals">
@@ -116,7 +118,9 @@ function HelpCenterPage() {
             <header className="card__header">
               <p className="eyebrow">Modo demostración</p>
               <h2>Datos ficticios aislados</h2>
-              <p className="muted">Explora flujos sin tocar la base corporativa utilizando el dataset simulado.</p>
+              <p className="muted">
+                Explora flujos sin tocar la base corporativa utilizando el dataset simulado.
+              </p>
             </header>
             <div className="help-center__demo">
               <p className={`chip ${demoData?.enabled ? "chip--success" : "chip--muted"}`}>
@@ -127,15 +131,21 @@ function HelpCenterPage() {
                 <div className="help-center__demo-grid" role="list">
                   <div className="help-center__demo-card" role="listitem">
                     <h4>Inventario simulado</h4>
-                    <p className="muted">{demoData.dataset.inventory.length} items listos para pruebas.</p>
+                    <p className="muted">
+                      {demoData.dataset.inventory.length} items listos para pruebas.
+                    </p>
                   </div>
                   <div className="help-center__demo-card" role="listitem">
                     <h4>Operaciones de referencia</h4>
-                    <p className="muted">{demoData.dataset.operations.length} flujos preservan el motivo corporativo.</p>
+                    <p className="muted">
+                      {demoData.dataset.operations.length} flujos preservan el motivo corporativo.
+                    </p>
                   </div>
                   <div className="help-center__demo-card" role="listitem">
                     <h4>Contactos</h4>
-                    <p className="muted">{demoData.dataset.contacts.length} clientes/proveedores ficticios.</p>
+                    <p className="muted">
+                      {demoData.dataset.contacts.length} clientes/proveedores ficticios.
+                    </p>
                   </div>
                 </div>
               ) : null}

@@ -1,24 +1,35 @@
 import { defineConfig, loadEnv } from "vite";
-import { fileURLToPath, URL } from "node:url"; // [PACK37-frontend]
+import { fileURLToPath, URL } from "node:url";
 import react from "@vitejs/plugin-react";
 
 const DEFAULT_DEV_HOST = "0.0.0.0";
-const DEFAULT_DEV_PORT = 4173;
-const DEFAULT_BACKEND_TARGET = "http://127.0.0.1:8000";
+const DEFAULT_DEV_PORT = 5173; // Standard Vite port
+const DEFAULT_BACKEND_TARGET = "http://localhost:8000"; // Standard FastAPI port
 
 export default defineConfig(({ mode }) => {
-  // Evita depender de "process" en este archivo de configuración
   const envDir = fileURLToPath(new URL(".", import.meta.url));
   const env = loadEnv(mode, envDir, "");
   const devHost = env.VITE_DEV_HOST?.trim() || DEFAULT_DEV_HOST;
   const devPort = Number(env.VITE_DEV_PORT ?? DEFAULT_DEV_PORT);
-  const backendTarget = env.VITE_BACKEND_TARGET?.trim() || DEFAULT_BACKEND_TARGET;
+  const backendTarget = env.VITE_API_URL || DEFAULT_BACKEND_TARGET;
+
+  console.log("[Vite] Proxy '/api' target:", backendTarget);
 
   return {
     plugins: [react()],
     resolve: {
       alias: {
-        "@": fileURLToPath(new URL("./src", import.meta.url)), // [PACK37-frontend]
+        "@": fileURLToPath(new URL("./src", import.meta.url)),
+        "@api": fileURLToPath(new URL("./src/api", import.meta.url)),
+        "@components": fileURLToPath(new URL("./src/components", import.meta.url)),
+        "@modules": fileURLToPath(new URL("./src/modules", import.meta.url)),
+        "@pages": fileURLToPath(new URL("./src/pages", import.meta.url)),
+        "@services": fileURLToPath(new URL("./src/services", import.meta.url)),
+        "@shared": fileURLToPath(new URL("./src/shared", import.meta.url)),
+        "@ui": fileURLToPath(new URL("./src/ui", import.meta.url)),
+        "@utils": fileURLToPath(new URL("./src/utils", import.meta.url)),
+        "@hooks": fileURLToPath(new URL("./src/hooks", import.meta.url)),
+        "@lib": fileURLToPath(new URL("./src/lib", import.meta.url)),
       },
     },
     test: {
@@ -26,6 +37,11 @@ export default defineConfig(({ mode }) => {
       globals: true,
       setupFiles: "./src/setupTests.ts",
       restoreMocks: true,
+      coverage: {
+        provider: "v8",
+        reporter: ["text", "json", "html"],
+        exclude: ["node_modules/", "src/setupTests.ts"],
+      },
     },
     server: {
       host: devHost,
@@ -37,16 +53,9 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api/, ""),
           ws: true,
-          // Habilitamos cabeceras reenviadas y timeouts más generosos para evitar 500 del proxy
-          // en equipos lentos o recargas en caliente.
           configure(proxy) {
             proxy.on("error", (err) => {
-              // Log simple en consola para depurar problemas de proxy en desarrollo
               console.error("[Vite proxy] error:", err?.message || err);
-            });
-            proxy.on("proxyReq", (proxyReq, req) => {
-              // Propaga el host de desarrollo para diagnósticos
-              if (req.headers.host) proxyReq.setHeader("X-Forwarded-Host", String(req.headers.host));
             });
           },
         },

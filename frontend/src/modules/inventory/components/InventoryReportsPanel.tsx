@@ -11,7 +11,7 @@ import {
   TrendingUp,
   Clock,
 } from "lucide-react";
-import { Skeleton } from "@/ui/Skeleton"; // [PACK36-inventory-reports]
+import { Skeleton } from "@components/ui/Skeleton"; // [PACK36-inventory-reports]
 import { safeArray, safeNumber } from "@/utils/safeValues"; // [PACK36-inventory-reports]
 
 import type {
@@ -24,12 +24,12 @@ import type {
   InventoryValueReport,
   InactiveProductsFilters,
   InactiveProductsReport,
-  Store,
-  SyncConflictLog,
+  SyncDiscrepancyLog,
   SyncDiscrepancyFilters,
   SyncDiscrepancyReport,
   TopProductsReport,
-} from "../../../api";
+} from "@api/inventory";
+import type { Store } from "@api/types";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 
 // Tipos locales para evitar "any" implícito en mapeos y mantener compatibilidad con respuestas de API.
@@ -81,9 +81,9 @@ type InactiveProductRow = {
   rotacion_total: number;
 };
 
-type SyncSeverityFilter = "todas" | SyncConflictLog["severity"];
+type SyncSeverityFilter = "todas" | SyncDiscrepancyLog["severity"];
 
-const severityLabels: Record<SyncConflictLog["severity"], string> = {
+const severityLabels: Record<SyncDiscrepancyLog["severity"], string> = {
   alerta: "Alerta",
   critica: "Crítica",
   operativa: "Operativa",
@@ -120,28 +120,21 @@ type InventoryReportsPanelProps = {
   stores: Store[];
   selectedStoreId: number | null;
   formatCurrency: (value: number) => string;
-  fetchInventoryCurrentReport: (filters: InventoryCurrentFilters) => Promise<InventoryCurrentReport>;
-  downloadInventoryCurrentCsv: (
-    reason: string,
+  fetchInventoryCurrentReport: (
     filters: InventoryCurrentFilters,
-  ) => Promise<void>;
-  downloadInventoryCurrentPdf: (
-    reason: string,
-    filters: InventoryCurrentFilters,
-  ) => Promise<void>;
-  downloadInventoryCurrentXlsx: (
-    reason: string,
-    filters: InventoryCurrentFilters,
-  ) => Promise<void>;
+  ) => Promise<InventoryCurrentReport>;
+  downloadInventoryCurrentCsv: (reason: string, filters: InventoryCurrentFilters) => Promise<void>;
+  downloadInventoryCurrentPdf: (reason: string, filters: InventoryCurrentFilters) => Promise<void>;
+  downloadInventoryCurrentXlsx: (reason: string, filters: InventoryCurrentFilters) => Promise<void>;
   fetchInventoryValueReport: (filters: InventoryValueFilters) => Promise<InventoryValueReport>;
-  fetchInventoryMovementsReport: (filters: InventoryMovementsFilters) => Promise<InventoryMovementsReport>;
+  fetchInventoryMovementsReport: (
+    filters: InventoryMovementsFilters,
+  ) => Promise<InventoryMovementsReport>;
   fetchTopProductsReport: (filters: InventoryTopProductsFilters) => Promise<TopProductsReport>;
   fetchInactiveProductsReport: (
     filters: InactiveProductsFilters,
   ) => Promise<InactiveProductsReport>;
-  fetchSyncDiscrepancyReport: (
-    filters: SyncDiscrepancyFilters,
-  ) => Promise<SyncDiscrepancyReport>;
+  fetchSyncDiscrepancyReport: (filters: SyncDiscrepancyFilters) => Promise<SyncDiscrepancyReport>;
   requestDownloadWithReason: (
     downloader: (reason: string) => Promise<void>,
     successMessage: string,
@@ -149,7 +142,10 @@ type InventoryReportsPanelProps = {
   downloadInventoryValueCsv: (reason: string, filters: InventoryValueFilters) => Promise<void>;
   downloadInventoryValuePdf: (reason: string, filters: InventoryValueFilters) => Promise<void>;
   downloadInventoryValueXlsx: (reason: string, filters: InventoryValueFilters) => Promise<void>;
-  downloadInventoryMovementsCsv: (reason: string, filters: InventoryMovementsFilters) => Promise<void>;
+  downloadInventoryMovementsCsv: (
+    reason: string,
+    filters: InventoryMovementsFilters,
+  ) => Promise<void>;
   downloadInventoryMovementsPdf: (
     reason: string,
     filters: InventoryMovementsFilters,
@@ -191,9 +187,11 @@ function InventoryReportsPanel({
   const normalizedStores = useMemo<Store[]>(() => safeArray(stores) as Store[], [stores]); // [PACK36-inventory-reports]
 
   // Permite que el usuario seleccione una sucursal, pero sin setState en efectos: se deriva del prop cuando el usuario no ha elegido.
-  const [userSelectedStoreFilter, setUserSelectedStoreFilter] = useState<number | "ALL" | null>(null);
+  const [userSelectedStoreFilter, setUserSelectedStoreFilter] = useState<number | "ALL" | null>(
+    null,
+  );
   const storeFilter: number | "ALL" = useMemo(
-    () => userSelectedStoreFilter ?? (selectedStoreId ?? "ALL"),
+    () => userSelectedStoreFilter ?? selectedStoreId ?? "ALL",
     [userSelectedStoreFilter, selectedStoreId],
   );
   const [{ from: dateFrom, to: dateTo }, setDateRange] = useState(createDefaultDateRange);
@@ -203,8 +201,9 @@ function InventoryReportsPanel({
   const [movementsReport, setMovementsReport] = useState<InventoryMovementsReport | null>(null);
   const [topProductsReport, setTopProductsReport] = useState<TopProductsReport | null>(null);
   const [inactiveReport, setInactiveReport] = useState<InactiveProductsReport | null>(null);
-  const [syncDiscrepancyReport, setSyncDiscrepancyReport] =
-    useState<SyncDiscrepancyReport | null>(null);
+  const [syncDiscrepancyReport, setSyncDiscrepancyReport] = useState<SyncDiscrepancyReport | null>(
+    null,
+  );
   const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [pendingCategory, setPendingCategory] = useState("");
@@ -235,8 +234,7 @@ function InventoryReportsPanel({
   }, [storeFilter]);
 
   const valueFilters = useMemo<InventoryValueFilters>(() => {
-    const base: InventoryValueFilters =
-      storeFilter === "ALL" ? {} : { storeIds: [storeFilter] };
+    const base: InventoryValueFilters = storeFilter === "ALL" ? {} : { storeIds: [storeFilter] };
     if (selectedCategories.length > 0) {
       return { ...base, categories: selectedCategories };
     }
@@ -273,10 +271,10 @@ function InventoryReportsPanel({
 
   const syncFilters = useMemo<SyncDiscrepancyFilters>(
     () => ({
-      storeIds: storeFilter === "ALL" ? undefined : [storeFilter],
+      ...(storeFilter !== "ALL" ? { storeIds: [storeFilter] } : {}),
       dateFrom,
       dateTo,
-      severity: selectedSeverity === "todas" ? undefined : selectedSeverity,
+      ...(selectedSeverity !== "todas" ? { severity: selectedSeverity } : {}),
       minDifference: minSyncDifference,
       limit: 50,
     }),
@@ -298,21 +296,25 @@ function InventoryReportsPanel({
     () => safeArray(topProductsReport?.items) as TopProductItemRow[],
     [topProductsReport],
   );
-  const currentTotals = { // [PACK36-inventory-reports]
+  const currentTotals = {
+    // [PACK36-inventory-reports]
     total_units: safeNumber(currentReport?.totals?.total_units),
     total_value: safeNumber(currentReport?.totals?.total_value),
     devices: safeNumber(currentReport?.totals?.devices),
   };
-  const valueTotals = { // [PACK36-inventory-reports]
+  const valueTotals = {
+    // [PACK36-inventory-reports]
     valor_total: safeNumber(valueReport?.totals?.valor_total),
     valor_costo: safeNumber(valueReport?.totals?.valor_costo),
     margen_total: safeNumber(valueReport?.totals?.margen_total),
   };
-  const movementSummary = { // [PACK36-inventory-reports]
+  const movementSummary = {
+    // [PACK36-inventory-reports]
     total_movimientos: safeNumber(movementsReport?.resumen?.total_movimientos),
     total_unidades: safeNumber(movementsReport?.resumen?.total_unidades),
   };
-  const topProductsTotals = { // [PACK36-inventory-reports]
+  const topProductsTotals = {
+    // [PACK36-inventory-reports]
     total_unidades: safeNumber(topProductsReport?.total_unidades),
     total_ingresos: safeNumber(topProductsReport?.total_ingresos),
   };
@@ -321,8 +323,8 @@ function InventoryReportsPanel({
     () => safeArray(inactiveReport?.items) as InactiveProductRow[],
     [inactiveReport],
   );
-  const syncItems = useMemo<SyncConflictLog[]>(
-    () => safeArray(syncDiscrepancyReport?.items) as SyncConflictLog[],
+  const syncItems = useMemo<SyncDiscrepancyLog[]>(
+    () => safeArray(syncDiscrepancyReport?.items) as SyncDiscrepancyLog[],
     [syncDiscrepancyReport],
   );
   const inactiveTotals = {
@@ -493,7 +495,8 @@ function InventoryReportsPanel({
         <div>
           <h2>Reportes y estadísticas</h2>
           <p className="card-subtitle">
-            Visualiza existencias consolidadas, movimientos recientes y los productos con mejor desempeño.
+            Visualiza existencias consolidadas, movimientos recientes y los productos con mejor
+            desempeño.
           </p>
         </div>
         <div className="report-filters">
@@ -502,7 +505,8 @@ function InventoryReportsPanel({
             <select
               value={storeFilter === "ALL" ? "ALL" : String(storeFilter)}
               onChange={(event) => {
-                const value = event.target.value === "ALL" ? "ALL" : Number.parseInt(event.target.value, 10);
+                const value =
+                  event.target.value === "ALL" ? "ALL" : Number.parseInt(event.target.value, 10);
                 setUserSelectedStoreFilter(value);
               }}
             >
@@ -520,7 +524,9 @@ function InventoryReportsPanel({
               type="date"
               value={dateFrom}
               max={dateTo}
-              onChange={(event) => setDateRange((current) => ({ ...current, from: event.target.value }))}
+              onChange={(event) =>
+                setDateRange((current) => ({ ...current, from: event.target.value }))
+              }
             />
           </label>
           <label className="form-field">
@@ -529,7 +535,9 @@ function InventoryReportsPanel({
               type="date"
               value={dateTo}
               min={dateFrom}
-              onChange={(event) => setDateRange((current) => ({ ...current, to: event.target.value }))}
+              onChange={(event) =>
+                setDateRange((current) => ({ ...current, to: event.target.value }))
+              }
             />
           </label>
           <button
@@ -544,7 +552,11 @@ function InventoryReportsPanel({
         </div>
       </header>
       {advancedFiltersOpen ? (
-        <div className="advanced-report-filters" role="region" aria-label="Filtros avanzados de reportes">
+        <div
+          className="advanced-report-filters"
+          role="region"
+          aria-label="Filtros avanzados de reportes"
+        >
           <div className="advanced-filter-group">
             <h3>Categorías analizadas</h3>
             <form
@@ -597,9 +609,7 @@ function InventoryReportsPanel({
                 max={365}
                 value={minInactivityDays}
                 onChange={(event) =>
-                  setMinInactivityDays(
-                    Math.max(0, Number.parseInt(event.target.value, 10) || 0),
-                  )
+                  setMinInactivityDays(Math.max(0, Number.parseInt(event.target.value, 10) || 0))
                 }
               />
             </label>
@@ -607,9 +617,7 @@ function InventoryReportsPanel({
               <span>Severidad</span>
               <select
                 value={selectedSeverity}
-                onChange={(event) =>
-                  setSelectedSeverity(event.target.value as SyncSeverityFilter)
-                }
+                onChange={(event) => setSelectedSeverity(event.target.value as SyncSeverityFilter)}
               >
                 <option value="todas">Todas</option>
                 <option value="alerta">Alertas</option>
@@ -623,9 +631,7 @@ function InventoryReportsPanel({
                 min={0}
                 value={minSyncDifference}
                 onChange={(event) =>
-                  setMinSyncDifference(
-                    Math.max(0, Number.parseInt(event.target.value, 10) || 0),
-                  )
+                  setMinSyncDifference(Math.max(0, Number.parseInt(event.target.value, 10) || 0))
                 }
               />
             </label>
@@ -653,76 +659,105 @@ function InventoryReportsPanel({
       ) : (
         <div className="section-grid reports-grid">
           <section className="card report-card">
-          <header className="card-header">
-            <div>
-              <h3>Existencias actuales</h3>
-              <p className="card-subtitle">Resumen por sucursal y total consolidado.</p>
-            </div>
-            <div className="report-actions">
-              <button type="button" className="btn btn--ghost" onClick={() => void handleCurrentDownload()}>
-                <Download size={16} aria-hidden />
-                CSV
-              </button>
-              <button type="button" className="btn btn--ghost" onClick={() => void handleCurrentPdfDownload()}>
-                <FileText size={16} aria-hidden />
-                PDF
-              </button>
-              <button type="button" className="btn btn--ghost" onClick={() => void handleCurrentExcelDownload()}>
-                <FileSpreadsheet size={16} aria-hidden />
-                Excel
-              </button>
-              <span className="report-icon" aria-hidden>
-                <BarChart3 size={18} />
-              </span>
-            </div>
-          </header>
-          {currentReport ? (
-            <div className="card-content">
-              <p className="report-highlight">
-                {currentTotals.total_units.toLocaleString("es-HN")}
-                <small>unidades</small>
-              </p>
+            <header className="card-header">
+              <div>
+                <h3>Existencias actuales</h3>
+                <p className="card-subtitle">Resumen por sucursal y total consolidado.</p>
+              </div>
+              <div className="report-actions">
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => void handleCurrentDownload()}
+                >
+                  <Download size={16} aria-hidden />
+                  CSV
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => void handleCurrentPdfDownload()}
+                >
+                  <FileText size={16} aria-hidden />
+                  PDF
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => void handleCurrentExcelDownload()}
+                >
+                  <FileSpreadsheet size={16} aria-hidden />
+                  Excel
+                </button>
+                <span className="report-icon" aria-hidden>
+                  <BarChart3 size={18} />
+                </span>
+              </div>
+            </header>
+            {currentReport ? (
+              <div className="card-content">
+                <p className="report-highlight">
+                  {currentTotals.total_units.toLocaleString("es-HN")}
+                  <small>unidades</small>
+                </p>
+                <p className="muted-text">
+                  Valor corporativo: {formatCurrency(currentTotals.total_value)} · Dispositivos
+                  catalogados: {currentTotals.devices}
+                </p>
+                <ul className="report-list">
+                  {currentStores.slice(0, 4).map((store) => {
+                    const totalUnits = safeNumber(store?.total_units); // [PACK36-inventory-reports]
+                    const totalValue = safeNumber(store?.total_value); // [PACK36-inventory-reports]
+                    return (
+                      <li key={store.store_id}>
+                        <strong>{store.store_name}</strong>
+                        <span>
+                          {totalUnits.toLocaleString("es-HN")}
+                          <small> unidades</small>
+                        </span>
+                        <span className="muted-text">{formatCurrency(totalValue)}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : (
               <p className="muted-text">
-                Valor corporativo: {formatCurrency(currentTotals.total_value)} · Dispositivos catalogados: {currentTotals.devices}
+                Aún no hay existencias registradas con los filtros seleccionados.
               </p>
-              <ul className="report-list">
-                {currentStores.slice(0, 4).map((store) => {
-                  const totalUnits = safeNumber(store?.total_units); // [PACK36-inventory-reports]
-                  const totalValue = safeNumber(store?.total_value); // [PACK36-inventory-reports]
-                  return (
-                    <li key={store.store_id}>
-                      <strong>{store.store_name}</strong>
-                      <span>
-                        {totalUnits.toLocaleString("es-HN")}
-                        <small> unidades</small>
-                      </span>
-                      <span className="muted-text">{formatCurrency(totalValue)}</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ) : (
-            <p className="muted-text">Aún no hay existencias registradas con los filtros seleccionados.</p>
-          )}
+            )}
           </section>
 
           <section className="card report-card">
             <header className="card-header">
               <div>
                 <h3>Valor total del inventario</h3>
-                <p className="card-subtitle">Comparativo entre costo registrado y margen proyectado.</p>
+                <p className="card-subtitle">
+                  Comparativo entre costo registrado y margen proyectado.
+                </p>
               </div>
               <div className="report-actions">
-                <button type="button" className="btn btn--ghost" onClick={() => void handleValueDownload()}>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => void handleValueDownload()}
+                >
                   <Download size={16} aria-hidden />
                   CSV
                 </button>
-                <button type="button" className="btn btn--ghost" onClick={() => void handleValuePdfDownload()}>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => void handleValuePdfDownload()}
+                >
                   <FileText size={16} aria-hidden />
                   PDF
                 </button>
-                <button type="button" className="btn btn--ghost" onClick={() => void handleValueExcelDownload()}>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => void handleValueExcelDownload()}
+                >
                   <FileSpreadsheet size={16} aria-hidden />
                   Excel
                 </button>
@@ -732,7 +767,8 @@ function InventoryReportsPanel({
               <div className="card-content">
                 <p className="report-highlight">{formatCurrency(valueTotals.valor_total)}</p>
                 <p className="muted-text">
-                  Costo estimado: {formatCurrency(valueTotals.valor_costo)} · Margen proyectado: {formatCurrency(valueTotals.margen_total)}
+                  Costo estimado: {formatCurrency(valueTotals.valor_costo)} · Margen proyectado:{" "}
+                  {formatCurrency(valueTotals.margen_total)}
                 </p>
                 <ul className="report-list">
                   {valueStores.slice(0, 4).map((store) => {
@@ -760,15 +796,27 @@ function InventoryReportsPanel({
                 <p className="card-subtitle">Entradas, salidas y ajustes filtrados por fechas.</p>
               </div>
               <div className="report-actions">
-                <button type="button" className="btn btn--ghost" onClick={() => void handleMovementsDownload()}>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => void handleMovementsDownload()}
+                >
                   <Download size={16} aria-hidden />
                   CSV
                 </button>
-                <button type="button" className="btn btn--ghost" onClick={() => void handleMovementsPdfDownload()}>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => void handleMovementsPdfDownload()}
+                >
                   <FileText size={16} aria-hidden />
                   PDF
                 </button>
-                <button type="button" className="btn btn--ghost" onClick={() => void handleMovementsExcelDownload()}>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => void handleMovementsExcelDownload()}
+                >
                   <FileSpreadsheet size={16} aria-hidden />
                   Excel
                 </button>
@@ -809,15 +857,27 @@ function InventoryReportsPanel({
                 <p className="card-subtitle">Conoce el desempeño de tus dispositivos destacados.</p>
               </div>
               <div className="report-actions">
-                <button type="button" className="btn btn--ghost" onClick={() => void handleTopProductsDownload()}>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => void handleTopProductsDownload()}
+                >
                   <Download size={16} aria-hidden />
                   CSV
                 </button>
-                <button type="button" className="btn btn--ghost" onClick={() => void handleTopProductsPdfDownload()}>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => void handleTopProductsPdfDownload()}
+                >
                   <FileText size={16} aria-hidden />
                   PDF
                 </button>
-                <button type="button" className="btn btn--ghost" onClick={() => void handleTopProductsExcelDownload()}>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => void handleTopProductsExcelDownload()}
+                >
                   <FileSpreadsheet size={16} aria-hidden />
                   Excel
                 </button>
@@ -854,7 +914,9 @@ function InventoryReportsPanel({
             <header className="card-header">
               <div>
                 <h3>Productos sin movimiento</h3>
-                <p className="card-subtitle">Detecta unidades inmovilizadas y su última actividad.</p>
+                <p className="card-subtitle">
+                  Detecta unidades inmovilizadas y su última actividad.
+                </p>
               </div>
               <span className="report-icon" aria-hidden>
                 <Clock size={18} />
@@ -867,7 +929,8 @@ function InventoryReportsPanel({
                   <small>productos</small>
                 </p>
                 <p className="muted-text">
-                  Unidades detenidas: {inactiveTotals.total_units.toLocaleString("es-HN")} · Valor inmovilizado: {formatCurrency(inactiveTotals.total_value)}
+                  Unidades detenidas: {inactiveTotals.total_units.toLocaleString("es-HN")} · Valor
+                  inmovilizado: {formatCurrency(inactiveTotals.total_value)}
                 </p>
                 {inactiveTotals.average_days !== null ? (
                   <p className="muted-text">
@@ -886,9 +949,7 @@ function InventoryReportsPanel({
                         ? `${item.dias_sin_movimiento.toLocaleString("es-HN")} días`
                         : "Sin datos";
                     const lastActivity = formatDateTime(
-                      item.ultimo_movimiento
-                        ?? item.ultima_venta
-                        ?? item.ultima_compra,
+                      item.ultimo_movimiento ?? item.ultima_venta ?? item.ultima_compra,
                     );
                     return (
                       <li key={`${item.store_id}-${item.device_id}`}>
@@ -903,7 +964,9 @@ function InventoryReportsPanel({
                 </ul>
               </div>
             ) : (
-              <p className="muted-text">No se detectaron productos inactivos con los filtros seleccionados.</p>
+              <p className="muted-text">
+                No se detectaron productos inactivos con los filtros seleccionados.
+              </p>
             )}
           </section>
 
@@ -911,7 +974,9 @@ function InventoryReportsPanel({
             <header className="card-header">
               <div>
                 <h3>Discrepancias de sincronización</h3>
-                <p className="card-subtitle">Conflictos detectados entre sucursales y diferencias de inventario.</p>
+                <p className="card-subtitle">
+                  Conflictos detectados entre sucursales y diferencias de inventario.
+                </p>
               </div>
               <span className="report-icon" aria-hidden>
                 <AlertTriangle size={18} />
@@ -924,7 +989,11 @@ function InventoryReportsPanel({
                   <small>conflictos</small>
                 </p>
                 <p className="muted-text">
-                  SKUs afectados: {syncTotals.affected_skus.toLocaleString("es-HN")} · Máxima diferencia: {syncTotals.max_difference !== null ? syncTotals.max_difference.toLocaleString("es-HN") : "s/d"}
+                  SKUs afectados: {syncTotals.affected_skus.toLocaleString("es-HN")} · Máxima
+                  diferencia:{" "}
+                  {syncTotals.max_difference !== null
+                    ? syncTotals.max_difference.toLocaleString("es-HN")
+                    : "s/d"}
                 </p>
                 <ul className="report-list">
                   {syncItems.slice(0, 5).map((conflict) => {
@@ -940,9 +1009,12 @@ function InventoryReportsPanel({
                         <strong>{conflict.product_name ?? conflict.sku}</strong>
                         <span>{conflict.difference.toLocaleString("es-HN")} unidades</span>
                         <span className="muted-text">
-                          {severityLabels[conflict.severity]} · {formatDateTime(conflict.detected_at)}
+                          {severityLabels[conflict.severity]} ·{" "}
+                          {formatDateTime(conflict.detected_at)}
                         </span>
-                        <span className="muted-text">{storeNames.join(" · ") || "Sucursales no identificadas"}</span>
+                        <span className="muted-text">
+                          {storeNames.join(" · ") || "Sucursales no identificadas"}
+                        </span>
                       </li>
                     );
                   })}

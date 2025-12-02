@@ -2,8 +2,8 @@ import { useMemo, useState, useEffect } from "react";
 import type React from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
-import Loader from "../../shared/components/Loader";
-import PageHeader from "../../shared/components/ui/PageHeader";
+import { Loader } from "@components/ui/Loader";
+import PageHeader from "@components/ui/PageHeader";
 import {
   fetchFeedbackMetrics,
   submitFeedback,
@@ -12,7 +12,7 @@ import {
   type FeedbackPayload,
   type FeedbackPriority,
   type FeedbackResponse,
-} from "../../services/api/support";
+} from "@api/support";
 
 const moduleOptions = [
   { value: "inventory", label: "Inventario" },
@@ -71,9 +71,13 @@ function FeedbackPage() {
   const [impact, setImpact] = useState("");
   const [steps, setSteps] = useState("");
   const [tracking, setTracking] = useState<FeedbackResponse | null>(null);
-  const usageContext = useMemo(buildUsageContext, []);
+  const usageContext = useMemo(() => buildUsageContext(), []);
 
-  const { data: metrics, isLoading: loadingMetrics, refetch } = useQuery<FeedbackMetrics>({
+  const {
+    data: metrics,
+    isLoading: loadingMetrics,
+    refetch,
+  } = useQuery<FeedbackMetrics>({
     queryKey: ["support", "metrics"],
     queryFn: fetchFeedbackMetrics,
   });
@@ -94,7 +98,8 @@ function FeedbackPage() {
     return () => window.clearTimeout(timeoutId);
   }, [tracking]);
 
-  const handleChange = (field: keyof FeedbackPayload) =>
+  const handleChange =
+    (field: keyof FeedbackPayload) =>
     (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
       setPayload((prev) => ({ ...prev, [field]: event.target.value }));
     };
@@ -130,7 +135,8 @@ function FeedbackPage() {
             <p className="eyebrow">Clasificación y seguimiento</p>
             <h2>Registrar nuevo feedback</h2>
             <p className="muted">
-              Describe el módulo, impacto y pasos. Usamos estas señales y las métricas de uso para priorizar mejoras.
+              Describe el módulo, impacto y pasos. Usamos estas señales y las métricas de uso para
+              priorizar mejoras.
             </p>
           </header>
 
@@ -227,13 +233,15 @@ function FeedbackPage() {
               {pending ? "Enviando…" : "Enviar feedback"}
             </button>
             <p className="muted">
-              Incluimos zona horaria, idioma y ruta navegada para acelerar la reproducción controlada.
+              Incluimos zona horaria, idioma y ruta navegada para acelerar la reproducción
+              controlada.
             </p>
           </div>
 
           {tracking && (
             <div className="support-feedback__alert" role="status" aria-live="polite">
-              <strong>Seguimiento listo:</strong> código {tracking.tracking_id} — estado {tracking.status}.
+              <strong>Seguimiento listo:</strong> código {tracking.tracking_id} — estado{" "}
+              {tracking.status}.
             </div>
           )}
         </form>
@@ -243,7 +251,8 @@ function FeedbackPage() {
             <p className="eyebrow">Métricas recientes</p>
             <h2>Cómo priorizamos</h2>
             <p className="muted">
-              Calculamos un puntaje combinando prioridad reportada, estado y uso real de cada módulo.
+              Calculamos un puntaje combinando prioridad reportada, estado y uso real de cada
+              módulo.
             </p>
           </header>
 
@@ -281,7 +290,9 @@ function FeedbackPage() {
           <header className="card__header">
             <p className="eyebrow">Prioridades sugeridas</p>
             <h2>Hotspots por uso</h2>
-            <p className="muted">Multiplicamos urgencia y actividad para resaltar mejoras con mayor impacto.</p>
+            <p className="muted">
+              Multiplicamos urgencia y actividad para resaltar mejoras con mayor impacto.
+            </p>
           </header>
           {loadingMetrics ? (
             <Loader message="Cargando hotspots…" />
@@ -293,7 +304,8 @@ function FeedbackPage() {
                     <p className="eyebrow">{hotspot.module}</p>
                     <strong>{hotspot.priority_score.toFixed(2)}</strong>
                     <p className="muted">
-                      {hotspot.open_feedback} abiertos · {hotspot.interactions_last_30d} interacciones / 30 días
+                      {hotspot.open_feedback} abiertos · {hotspot.interactions_last_30d}{" "}
+                      interacciones / 30 días
                     </p>
                   </div>
                 </li>
@@ -308,7 +320,9 @@ function FeedbackPage() {
           <header className="card__header">
             <p className="eyebrow">Seguimiento</p>
             <h2>Últimos registros</h2>
-            <p className="muted">Toma nota del código de seguimiento para dar continuidad con soporte.</p>
+            <p className="muted">
+              Toma nota del código de seguimiento para dar continuidad con soporte.
+            </p>
           </header>
           {loadingMetrics ? (
             <Loader message="Leyendo feedback reciente…" />
@@ -317,9 +331,13 @@ function FeedbackPage() {
               {metrics.recent_feedback.map((item) => (
                 <li key={item.tracking_id}>
                   <div>
-                    <p className="eyebrow">{item.module} · {item.category}</p>
+                    <p className="eyebrow">
+                      {item.module} · {item.category}
+                    </p>
                     <strong>{item.title}</strong>
-                    <p className="muted">Estado: {item.status} · {formatRelative(item.created_at)}</p>
+                    <p className="muted">
+                      Estado: {item.status} · {formatRelative(item.created_at)}
+                    </p>
                   </div>
                 </li>
               ))}

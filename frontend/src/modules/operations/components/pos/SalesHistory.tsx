@@ -1,6 +1,6 @@
 import { FormEvent, useState } from "react";
 
-import type { PosReturnPayload, PosSaleDetailResponse } from "../../../../services/api/pos";
+import type { PosReturnPayload, PosSaleDetailResponse } from "@api/pos";
 
 type SalesHistoryProps = {
   loading: boolean;

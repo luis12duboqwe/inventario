@@ -70,23 +70,17 @@ function FiltersBar({ value, onChange }: OrdersFiltersBarProps) {
   };
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "2fr repeat(4, 1fr) 1.1fr",
-        gap: 8,
-      }}
-    >
+    <div className="orders-list-filters-bar">
       <input
         placeholder="Buscar (cliente o #pedido)"
         value={nextValue.query ?? ""}
         onChange={(event) => changeQuery(event.target.value)}
-        style={{ padding: 8, borderRadius: 8 }}
+        className="orders-list-filters-input"
       />
       <select
         value={nextValue.status ?? "ALL"}
         onChange={(event) => changeStatus(event.target.value as OrderFilters["status"])}
-        style={{ padding: 8, borderRadius: 8 }}
+        className="orders-list-filters-input"
       >
         <option value="ALL">Todos</option>
         <option value="DRAFT">Borrador</option>
@@ -97,7 +91,7 @@ function FiltersBar({ value, onChange }: OrdersFiltersBarProps) {
       <select
         value={nextValue.payment ?? "ALL"}
         onChange={(event) => changePayment(event.target.value as OrderFilters["payment"])}
-        style={{ padding: 8, borderRadius: 8 }}
+        className="orders-list-filters-input"
       >
         <option value="ALL">Pago</option>
         <option value="UNPAID">No pagado</option>
@@ -108,7 +102,7 @@ function FiltersBar({ value, onChange }: OrdersFiltersBarProps) {
       <select
         value={nextValue.channel ?? "ALL"}
         onChange={(event) => changeChannel(event.target.value as OrderFilters["channel"])}
-        style={{ padding: 8, borderRadius: 8 }}
+        className="orders-list-filters-input"
       >
         <option value="ALL">Canal</option>
         <option value="POS">POS</option>
@@ -119,13 +113,13 @@ function FiltersBar({ value, onChange }: OrdersFiltersBarProps) {
         type="date"
         value={nextValue.dateFrom ?? ""}
         onChange={(event) => changeDate("dateFrom", event.target.value)}
-        style={{ padding: 8, borderRadius: 8 }}
+        className="orders-list-filters-input"
       />
       <input
         type="date"
         value={nextValue.dateTo ?? ""}
         onChange={(event) => changeDate("dateTo", event.target.value)}
-        style={{ padding: 8, borderRadius: 8 }}
+        className="orders-list-filters-input"
       />
     </div>
   );

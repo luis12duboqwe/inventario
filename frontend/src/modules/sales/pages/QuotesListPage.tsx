@@ -13,7 +13,7 @@ import { useAuthz, PERMS } from "../../../auth/useAuthz";
 import ExportDropdown from "@/components/ExportDropdown";
 // [PACK27-INJECT-EXPORT-QUOTES-END]
 // [PACK25-SKELETON-USE-START]
-import { Skeleton } from "@/ui/Skeleton";
+import { Skeleton } from "@components/ui/Skeleton";
 // [PACK25-SKELETON-USE-END]
 import { readQueue } from "@/services/offline";
 import { flushOffline } from "../utils/offline";
@@ -149,7 +149,7 @@ export function QuotesListPage() {
         total: formatCurrency(quote.totals?.grand),
         status: statusLabels[quote.status] ?? quote.status,
         actions: (
-          <Link to={`/sales/quotes/${quote.id}`} style={{ color: "#38bdf8" }}>
+          <Link to={`/sales/quotes/${quote.id}`} className="sales-link-action">
             Ver
           </Link>
         ),
@@ -182,7 +182,7 @@ export function QuotesListPage() {
   // [PACK26-QUOTES-GUARD-END]
 
   return (
-    <div data-testid="quotes-list" style={{ display: "grid", gap: 12 }}>
+    <div data-testid="quotes-list" className="quotes-list-container">
       <SummaryCards
         items={[
           { label: "Cotizaciones", value: loading ? "Cargando…" : total.toString() },
@@ -196,22 +196,14 @@ export function QuotesListPage() {
           },
         ]}
       />
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 12,
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <form onSubmit={onSearch} style={{ flex: "1 1 320px" }}>
+      <div className="quotes-list-filters-container">
+        <form onSubmit={onSearch} className="quotes-list-form">
           <FiltersBar>
             <input
               placeholder="#Q/Cliente"
               value={q}
               onChange={(event) => setQ(event.target.value)}
-              style={{ padding: 8, borderRadius: 8 }}
+              className="quotes-list-input"
             />
             <select
               value={status ?? ""}
@@ -220,7 +212,7 @@ export function QuotesListPage() {
                   event.target.value ? (event.target.value as Quote["status"]) : undefined,
                 )
               }
-              style={{ padding: 8, borderRadius: 8 }}
+              className="quotes-list-input"
             >
               {statusOptions.map((option) => (
                 <option key={option.label} value={option.value ?? ""}>
@@ -228,73 +220,16 @@ export function QuotesListPage() {
                 </option>
               ))}
             </select>
-            <button
-              type="submit"
-              style={{
-                padding: "8px 16px",
-                borderRadius: 8,
-                background: "#38bdf8",
-                color: "#0f172a",
-                border: "none",
-              }}
-              disabled={loading}
-            >
+            <button type="submit" className="quotes-list-btn-search" disabled={loading}>
               Buscar
             </button>
           </FiltersBar>
         </form>
         <ExportDropdown entity="quotes" currentItems={items} />
       </div>
-      <Table
-        cols={columns}
-        rows={rows}
-        onRowClick={(row) => {
-          const rowId = String((row as QuoteRow).id ?? "");
-          const found = items.find((item) => String(item.id) === rowId);
-          setSelectedRow(found ?? null);
-        }}
-      />
-      <form onSubmit={onSearch}>
-        <FiltersBar>
-          <input
-            placeholder="#Q/Cliente"
-            value={q}
-            onChange={(event) => setQ(event.target.value)}
-            style={{ padding: 8, borderRadius: 8 }}
-          />
-          <select
-            value={status ?? ""}
-            onChange={(event) =>
-              onStatusChange(
-                event.target.value ? (event.target.value as Quote["status"]) : undefined,
-              )
-            }
-            style={{ padding: 8, borderRadius: 8 }}
-          >
-            {statusOptions.map((option) => (
-              <option key={option.label} value={option.value ?? ""}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <button
-            type="submit"
-            style={{
-              padding: "8px 16px",
-              borderRadius: 8,
-              background: "#38bdf8",
-              color: "#0f172a",
-              border: "none",
-            }}
-            disabled={loading}
-          >
-            Buscar
-          </button>
-        </FiltersBar>
-      </form>
       {pendingOffline > 0 ? (
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ color: "#fbbf24" }}>Pendientes offline: {pendingOffline}</span>
+        <div className="quotes-list-offline-bar">
+          <span className="quotes-list-offline-text">Pendientes offline: {pendingOffline}</span>
           <button
             type="button"
             onClick={async () => {
@@ -310,40 +245,28 @@ export function QuotesListPage() {
               }
             }}
             disabled={flushing}
-            style={{
-              padding: "6px 12px",
-              borderRadius: 8,
-              border: "none",
-              background: "rgba(56,189,248,0.16)",
-              color: "#e0f2fe",
-            }}
+            className="quotes-list-offline-btn"
           >
             {flushing ? "Reintentando…" : "Reintentar pendientes"}
           </button>
         </div>
       ) : null}
-      {flushMessage ? <div style={{ color: "#9ca3af", fontSize: 12 }}>{flushMessage}</div> : null}
+      {flushMessage ? <div className="quotes-list-flush-message">{flushMessage}</div> : null}
       {loading ? (
         <Skeleton lines={10} />
       ) : (
         <Table cols={columns} rows={rows} onRowClick={handleRowSelect} />
       )}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ color: "#9ca3af" }}>
+      <div className="quotes-list-pagination">
+        <span className="quotes-list-pagination-info">
           Página {page} de {pages}
         </span>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div className="quotes-list-pagination-actions">
           <button
             type="button"
             onClick={() => setPage((current) => Math.max(1, current - 1))}
             disabled={loading || page <= 1}
-            style={{
-              padding: "6px 12px",
-              borderRadius: 8,
-              background: "rgba(56,189,248,0.12)",
-              color: "#e0f2fe",
-              border: "none",
-            }}
+            className="quotes-list-btn-page"
           >
             Anterior
           </button>
@@ -351,13 +274,7 @@ export function QuotesListPage() {
             type="button"
             onClick={() => setPage((current) => (current < pages ? current + 1 : current))}
             disabled={loading || page >= pages}
-            style={{
-              padding: "6px 12px",
-              borderRadius: 8,
-              background: "rgba(56,189,248,0.12)",
-              color: "#e0f2fe",
-              border: "none",
-            }}
+            className="quotes-list-btn-page"
           >
             Siguiente
           </button>

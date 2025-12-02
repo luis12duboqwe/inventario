@@ -1,12 +1,16 @@
 import React from "react";
+import { useDashboard } from "../../dashboard/context/DashboardContext";
+import Returns from "../components/Returns";
 
 export default function OperationsReturns() {
+  const { token, stores, selectedStoreId, refreshInventoryAfterTransfer } = useDashboard();
+
   return (
-    <div style={{ display: "grid", gap: 12 }}>
-      <h2 style={{ margin: 0 }}>Devoluciones</h2>
-      <p style={{ margin: 0, color: "#9ca3af" }}>
-        Devoluciones por cliente y por proveedor con notas de crédito.
-      </p>
-    </div>
+    <Returns
+      token={token}
+      stores={stores}
+      defaultStoreId={selectedStoreId}
+      onInventoryRefresh={refreshInventoryAfterTransfer}
+    />
   );
 }

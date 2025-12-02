@@ -3,7 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import PageHeader from "../../../components/layout/PageHeader";
 import PageToolbar from "../../../components/layout/PageToolbar";
 import type { PageHeaderAction } from "../../../components/layout/PageHeader";
-import { getDevices, listRepairOrders, type RepairOrder } from "../../../api";
+import { getDevices } from "@api/inventory";
+import { listRepairOrders, type RepairOrder } from "@api/repairs";
 import { useRepairsLayout } from "./context/RepairsLayoutContext";
 
 type PartSummary = {
@@ -15,7 +16,8 @@ type PartSummary = {
 };
 
 function RepairsPartsPage() {
-  const { token, stores, selectedStoreId, setSelectedStoreId, onInventoryRefresh } = useRepairsLayout();
+  const { token, stores, selectedStoreId, setSelectedStoreId, onInventoryRefresh } =
+    useRepairsLayout();
   const [summaries, setSummaries] = useState<PartSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +37,9 @@ function RepairsPartsPage() {
           listRepairOrders(token, { store_id: selectedStoreId, limit: 200 }),
           getDevices(token, selectedStoreId),
         ]);
-        const devicesById = new Map(devices.map((device) => [device.id, `${device.sku} · ${device.name}`]));
+        const devicesById = new Map(
+          devices.map((device) => [device.id, `${device.sku} · ${device.name}`]),
+        );
         const aggregate = new Map<number, PartSummary>();
         orders.forEach((order: RepairOrder) => {
           order.parts.forEach((part) => {
@@ -55,9 +59,12 @@ function RepairsPartsPage() {
             aggregate.set(part.device_id, current);
           });
         });
-        setSummaries(Array.from(aggregate.values()).sort((a, b) => b.totalQuantity - a.totalQuantity));
+        setSummaries(
+          Array.from(aggregate.values()).sort((a, b) => b.totalQuantity - a.totalQuantity),
+        );
       } catch (err) {
-        const message = err instanceof Error ? err.message : "No fue posible obtener el uso de repuestos.";
+        const message =
+          err instanceof Error ? err.message : "No fue posible obtener el uso de repuestos.";
         setError(message);
       } finally {
         setLoading(false);
@@ -132,7 +139,9 @@ function RepairsPartsPage() {
           {loading ? <p className="muted-text">Cargando historial de piezas…</p> : null}
           {error ? <div className="alert error">{error}</div> : null}
           {!loading && !error && filteredSummaries.length === 0 ? (
-            <p className="muted-text">No se registran repuestos para las reparaciones con los filtros actuales.</p>
+            <p className="muted-text">
+              No se registran repuestos para las reparaciones con los filtros actuales.
+            </p>
           ) : null}
           {!loading && !error && filteredSummaries.length > 0 ? (
             <div className="table-wrapper">
@@ -151,7 +160,13 @@ function RepairsPartsPage() {
                       <td>{summary.deviceLabel}</td>
                       <td>{summary.totalQuantity}</td>
                       <td>{summary.usageCount}</td>
-                      <td>${summary.totalCost.toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td>
+                        $
+                        {summary.totalCost.toLocaleString("es-HN", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -161,7 +176,9 @@ function RepairsPartsPage() {
         </section>
       ) : (
         <section className="card">
-          <p className="muted-text">Selecciona una sucursal para revisar el consumo de repuestos.</p>
+          <p className="muted-text">
+            Selecciona una sucursal para revisar el consumo de repuestos.
+          </p>
         </section>
       )}
     </div>

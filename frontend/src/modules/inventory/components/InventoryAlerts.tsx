@@ -5,8 +5,8 @@ import type {
   InventoryAlertItem,
   InventoryAlertSettings,
   InventoryAlertSummary,
-} from "../../../api";
-import Button from "../../../shared/components/ui/Button";
+} from "@api/inventory";
+import Button from "@components/ui/Button";
 
 type InventoryAlertsProps = {
   items: InventoryAlertItem[];
@@ -212,8 +212,8 @@ function InventoryAlerts({
                         item.projected_days <= 3
                           ? "critical"
                           : item.projected_days <= 7
-                            ? "warning"
-                            : "notice"
+                          ? "warning"
+                          : "notice"
                       }`}
                     >
                       Pronóstico {item.projected_days}d
@@ -227,7 +227,10 @@ function InventoryAlerts({
                     </span>
                   ) : null}
                   {item.insights.map((insight, index) => (
-                    <span key={`${item.device_id}-insight-${index}`} className="stock-tag tag-insight">
+                    <span
+                      key={`${item.device_id}-insight-${index}`}
+                      className="stock-tag tag-insight"
+                    >
                       {insight}
                     </span>
                   ))}

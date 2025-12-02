@@ -41,7 +41,7 @@ export const apiMap = {
     bulk: `${ROOT}/audit/ui/bulk`,
     list: `${ROOT}/audit/ui`,
     export: `${ROOT}/audit/ui/export`,
-  } as any,
+  },
   // [PACK26-AUDIT-APIMAP-END]
 } as const;
 

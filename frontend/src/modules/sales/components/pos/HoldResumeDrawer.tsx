@@ -27,59 +27,41 @@ export default function HoldResumeDrawer({ open, items, onClose, onResume, onDel
   const data = Array.isArray(items) ? items : [];
 
   return (
-    <aside
-      style={{
-        position: "fixed",
-        right: 0,
-        top: 0,
-        bottom: 0,
-        width: 460,
-        background: "#0b1220",
-        borderLeft: "1px solid rgba(255,255,255,0.08)",
-        padding: 16,
-        overflow: "auto",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h3 style={{ margin: 0 }}>Ventas en espera</h3>
-        <button onClick={onClose} style={{ padding: "6px 10px", borderRadius: 8 }}>
+    <aside className="pos-resume-drawer">
+      <div className="pos-resume-drawer-header">
+        <h3 className="pos-resume-drawer-title">Ventas en espera</h3>
+        <button onClick={onClose} className="pos-resume-drawer-close-btn">
           Cerrar
         </button>
       </div>
-      <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+      <div className="pos-resume-drawer-list">
         {data.length ? (
           data.map((item) => (
-            <div
-              key={item.id}
-              style={{
-                border: "1px solid rgba(255,255,255,0.08)",
-                borderRadius: 10,
-                padding: 10,
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <div key={item.id} className="pos-resume-drawer-item">
+              <div className="pos-resume-drawer-item-header">
                 <div>
-                  <b>{item.number}</b>
-                  <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                  <b className="pos-resume-drawer-item-number">{item.number}</b>
+                  <div className="pos-resume-drawer-item-date">
                     {new Date(item.date).toLocaleString()}
                   </div>
                 </div>
-                <div style={{ textAlign: "right" }}>
+                <div className="pos-resume-drawer-item-total">
                   {Intl.NumberFormat().format(item.total)}
                 </div>
               </div>
-              <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>
-                {item.customer ?? "Mostrador"}
-              </div>
-              <div style={{ display: "flex", gap: 8, marginTop: 8, justifyContent: "flex-end" }}>
+              <div className="pos-resume-drawer-item-customer">{item.customer ?? "Mostrador"}</div>
+              <div className="pos-resume-drawer-item-actions">
                 <RequirePerm perm={PERMS.POS_RESUME} fallback={null}>
-                  <button onClick={() => onResume?.(item.id)} style={{ padding: "6px 10px", borderRadius: 8 }}>
+                  <button
+                    onClick={() => onResume?.(item.id)}
+                    className="pos-resume-drawer-resume-btn"
+                  >
                     Reanudar
                   </button>
                 </RequirePerm>
                 <button
                   onClick={() => onDelete?.(item.id)}
-                  style={{ padding: "6px 10px", borderRadius: 8, background: "#b91c1c", color: "#fff", border: 0 }}
+                  className="pos-resume-drawer-delete-btn"
                 >
                   Eliminar
                 </button>
@@ -87,7 +69,7 @@ export default function HoldResumeDrawer({ open, items, onClose, onResume, onDel
             </div>
           ))
         ) : (
-          <div style={{ color: "#9ca3af" }}>Sin ventas en espera</div>
+          <div className="pos-resume-drawer-empty">Sin ventas en espera</div>
         )}
       </div>
     </aside>

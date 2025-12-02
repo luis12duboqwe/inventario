@@ -49,11 +49,11 @@ export default function ReturnEditor({ onSubmit }: Props) {
   const valid = lines.length > 0 && lines.every((line) => line.qty > 0);
 
   return (
-    <div style={{ display: "grid", gap: 10 }}>
+    <div className="return-editor">
       <select
         value={reason}
         onChange={(event) => setReason(event.target.value)}
-        style={{ padding: 8, borderRadius: 8 }}
+        className="return-editor-select"
       >
         <option value="DEFECT">Defecto</option>
         <option value="BUYER_REMORSE">Arrepentimiento</option>
@@ -64,74 +64,66 @@ export default function ReturnEditor({ onSubmit }: Props) {
         placeholder="Notas"
         value={note}
         onChange={(event) => setNote(event.target.value)}
-        style={{ padding: 8, borderRadius: 8, minHeight: 80 }}
+        className="return-editor-textarea"
       />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ fontWeight: 700 }}>Ítems</div>
-        <button onClick={addLine} style={{ padding: "6px 10px", borderRadius: 8 }}>
+      <div className="return-editor-header">
+        <div className="return-editor-title">Ítems</div>
+        <button onClick={addLine} className="return-editor-add-btn">
           Agregar
         </button>
       </div>
-      <div style={{ display: "grid", gap: 8 }}>
+      <div className="return-editor-lines">
         {lines.map((line) => (
-          <div
-            key={line.id}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "140px 160px 1fr 90px 90px 100px 28px",
-              gap: 8,
-              alignItems: "center",
-            }}
-          >
+          <div key={line.id} className="return-editor-line">
             <input
               placeholder="#Ticket"
               value={line.ticket ?? ""}
               onChange={(event) => updateLine(line.id, { ticket: event.target.value })}
-              style={{ padding: 8, borderRadius: 8 }}
+              className="return-editor-input"
             />
             <input
               placeholder="IMEI/serial"
               value={line.imei ?? ""}
               onChange={(event) => updateLine(line.id, { imei: event.target.value })}
-              style={{ padding: 8, borderRadius: 8 }}
+              className="return-editor-input"
             />
             <input
               placeholder="Producto"
               value={line.name}
               onChange={(event) => updateLine(line.id, { name: event.target.value })}
-              style={{ padding: 8, borderRadius: 8 }}
+              className="return-editor-input"
             />
             <input
               type="number"
               value={line.qty}
               onChange={(event) => updateLine(line.id, { qty: Number(event.target.value ?? 0) })}
-              style={{ padding: 8, borderRadius: 8 }}
+              className="return-editor-input"
             />
             <input
               type="number"
               value={line.price}
               onChange={(event) => updateLine(line.id, { price: Number(event.target.value ?? 0) })}
-              style={{ padding: 8, borderRadius: 8 }}
+              className="return-editor-input"
             />
-            <label style={{ fontSize: 12 }}>
+            <label className="return-editor-checkbox-label">
               <input
                 type="checkbox"
                 checked={!!line.restock}
                 onChange={(event) => updateLine(line.id, { restock: event.target.checked })}
-              />
-              {" "}Reingresar
+              />{" "}
+              Reingresar
             </label>
-            <button onClick={() => removeLine(line.id)} style={{ padding: "6px 8px", borderRadius: 8 }}>
+            <button onClick={() => removeLine(line.id)} className="return-editor-remove-btn">
               ×
             </button>
           </div>
         ))}
       </div>
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+      <div className="return-editor-actions">
         <button
           disabled={!valid}
           onClick={() => onSubmit?.({ lines, reason, note })}
-          style={{ padding: "8px 12px", borderRadius: 8, background: "#22c55e", color: "#0b1220", border: 0 }}
+          className="return-editor-submit-btn"
         >
           Generar devolución
         </button>

@@ -75,24 +75,25 @@ function PaymentModal({ open, orderId, onClose, onSubmit }: PaymentModalProps) {
     onClose?.();
   };
 
-  const handleAmountChange = (setter: (value: number) => void) => (event: React.ChangeEvent<HTMLInputElement>) => {
-    const next = Number(event.target.value);
-    setter(Number.isNaN(next) ? 0 : Math.max(0, next));
-  };
+  const handleAmountChange =
+    (setter: (value: number) => void) => (event: React.ChangeEvent<HTMLInputElement>) => {
+      const next = Number(event.target.value);
+      setter(Number.isNaN(next) ? 0 : Math.max(0, next));
+    };
 
   if (!open) {
     return null;
   }
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(8, 15, 35, 0.7)", display: "grid", placeItems: "center", zIndex: 50 }}>
-      <div style={{ width: 520, background: "#0b1220", borderRadius: 12, border: "1px solid rgba(56, 189, 248, 0.2)", padding: 16 }}>
-        <h3 style={{ marginTop: 0 }}>Registrar cobro {orderId ? `(#${orderId})` : ""}</h3>
-        <div style={{ display: "grid", gap: 12 }}>
+    <div className="payment-modal-overlay">
+      <div className="payment-modal-content">
+        <h3 className="payment-modal-title">Registrar cobro {orderId ? `(#${orderId})` : ""}</h3>
+        <div className="payment-modal-form">
           <PaymentMethodSelector method={method} onChange={setMethod} />
           {method === "MIXED" ? (
             <>
-              <label style={{ display: "grid", gap: 4 }}>
+              <label className="payment-modal-label">
                 <span>Efectivo</span>
                 <input
                   type="number"
@@ -100,10 +101,10 @@ function PaymentModal({ open, orderId, onClose, onSubmit }: PaymentModalProps) {
                   step="0.01"
                   value={cashAmount}
                   onChange={handleAmountChange(setCashAmount)}
-                  style={{ width: "100%", padding: 8, borderRadius: 8 }}
+                  className="payment-modal-input"
                 />
               </label>
-              <label style={{ display: "grid", gap: 4 }}>
+              <label className="payment-modal-label">
                 <span>Tarjeta</span>
                 <input
                   type="number"
@@ -111,12 +112,12 @@ function PaymentModal({ open, orderId, onClose, onSubmit }: PaymentModalProps) {
                   step="0.01"
                   value={cardAmount}
                   onChange={handleAmountChange(setCardAmount)}
-                  style={{ width: "100%", padding: 8, borderRadius: 8 }}
+                  className="payment-modal-input"
                 />
               </label>
             </>
           ) : (
-            <label style={{ display: "grid", gap: 4 }}>
+            <label className="payment-modal-label">
               <span>Monto</span>
               <input
                 type="number"
@@ -124,32 +125,32 @@ function PaymentModal({ open, orderId, onClose, onSubmit }: PaymentModalProps) {
                 step="0.01"
                 value={amount}
                 onChange={handleAmountChange(setAmount)}
-                style={{ width: "100%", padding: 8, borderRadius: 8 }}
+                className="payment-modal-input"
               />
             </label>
           )}
-          <label style={{ display: "grid", gap: 4 }}>
+          <label className="payment-modal-label">
             <span>Referencia</span>
             <input
               value={reference}
               onChange={(event) => setReference(event.target.value)}
-              style={{ width: "100%", padding: 8, borderRadius: 8 }}
+              className="payment-modal-input"
             />
           </label>
-          <label style={{ display: "grid", gap: 4 }}>
+          <label className="payment-modal-label">
             <span>Motivo corporativo (mín. 5 caracteres)</span>
             <textarea
               value={reason}
               onChange={(event) => setReason(event.target.value)}
-              style={{ width: "100%", padding: 8, borderRadius: 8, minHeight: 72 }}
+              className="payment-modal-textarea"
               placeholder="Describe el motivo corporativo"
             />
           </label>
-          <div style={{ textAlign: "right", fontSize: 14, color: "#38bdf8" }}>
+          <div className="payment-modal-total">
             Total a registrar: {formatCurrency.format(Math.max(0, totalDisplayed))}
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
+        <div className="payment-modal-actions">
           <button
             onClick={() => {
               setMethod("CASH");
@@ -160,7 +161,7 @@ function PaymentModal({ open, orderId, onClose, onSubmit }: PaymentModalProps) {
               setReason("");
               onClose?.();
             }}
-            style={{ padding: "8px 12px", borderRadius: 8 }}
+            className="payment-modal-btn-cancel"
           >
             Cancelar
           </button>
@@ -168,14 +169,9 @@ function PaymentModal({ open, orderId, onClose, onSubmit }: PaymentModalProps) {
             type="button"
             disabled={!isValid}
             onClick={handleSubmit}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 8,
-              background: isValid ? "#22c55e" : "rgba(34, 197, 94, 0.35)",
-              color: isValid ? "#0b1220" : "#1e3a34",
-              border: 0,
-              cursor: isValid ? "pointer" : "not-allowed",
-            }}
+            className={`payment-modal-btn-submit ${
+              isValid ? "payment-modal-btn-submit-valid" : "payment-modal-btn-submit-invalid"
+            }`}
           >
             Registrar
           </button>

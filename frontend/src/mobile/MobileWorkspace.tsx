@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, BatteryCharging, Camera, ClipboardCheck, Smartphone } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertCircle, BatteryCharging, Camera, ClipboardCheck } from "lucide-react";
 
 import {
   registerInventoryCycleCount,
@@ -10,8 +10,8 @@ import {
   type InventoryCycleCountRequest,
   type InventoryReceivingLineInput,
   type InventoryReceivingRequest,
-} from "../api";
-import PageHeader from "../shared/components/ui/PageHeader";
+} from "@api/inventory";
+import PageHeader from "@components/ui/PageHeader";
 import POSQuickScan from "../modules/sales/components/pos/POSQuickScan";
 import { useDashboard } from "../modules/dashboard/context/DashboardContext";
 
@@ -25,7 +25,8 @@ type BarcodeDetectorCtor = new (config?: { formats?: string[] }) => {
 
 const getBarcodeDetector = (): BarcodeDetectorCtor | null => {
   if (typeof window === "undefined") return null;
-  const maybe = (window as typeof window & { BarcodeDetector?: BarcodeDetectorCtor }).BarcodeDetector;
+  const maybe = (window as typeof window & { BarcodeDetector?: BarcodeDetectorCtor })
+    .BarcodeDetector;
   return typeof maybe === "function" ? maybe : null;
 };
 
@@ -78,7 +79,6 @@ function MobileWorkspace({ title = "Softmobile móvil" }: MobileWorkspaceProps) 
       searchCatalogDevices(token, {
         imei: lookupQuery.trim(),
         serial: lookupQuery.trim(),
-        estado_comercial: undefined,
       })
         .then(setLookupResults)
         .catch((error: unknown) => {
@@ -95,6 +95,51 @@ function MobileWorkspace({ title = "Softmobile móvil" }: MobileWorkspaceProps) 
       window.clearTimeout(timer);
     };
   }, [lookupQuery, token]);
+
+  const stopTracks = useCallback((stream: MediaStream | null) => {
+    stream?.getTracks().forEach((track) => track.stop());
+  }, []);
+
+  const stopCamera = useCallback(() => {
+    stopTracks(streamRef.current);
+    streamRef.current = null;
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  }, [stopTracks]);
+
+  const addCountLine = useCallback((identifier: string) => {
+    setCountLines((current) => {
+      const existing = current.find((line) => line.identifier === identifier);
+      if (existing) {
+        return current.map((line) =>
+          line.identifier === identifier ? { ...line, quantity: line.quantity + 1 } : line,
+        );
+      }
+      return [{ id: crypto.randomUUID(), identifier, quantity: 1 }, ...current].slice(0, 25);
+    });
+  }, []);
+
+  const addReceivingLine = useCallback((identifier: string) => {
+    setReceivingLines((current) => {
+      const existing = current.find((line) => line.identifier === identifier);
+      if (existing) {
+        return current.map((line) =>
+          line.identifier === identifier ? { ...line, quantity: line.quantity + 1 } : line,
+        );
+      }
+      return [{ id: crypto.randomUUID(), identifier, quantity: 1 }, ...current].slice(0, 25);
+    });
+  }, []);
+
+  const handleCameraDetection = useCallback(
+    async (value: string) => {
+      addCountLine(value);
+      addReceivingLine(value);
+      pushToast({ message: `Capturado ${value} desde la cámara.`, variant: "success" });
+    },
+    [addCountLine, addReceivingLine, pushToast],
+  );
 
   useEffect(() => {
     if (!cameraEnabled) {
@@ -163,49 +208,7 @@ function MobileWorkspace({ title = "Softmobile móvil" }: MobileWorkspaceProps) 
       cancelled = true;
       stopCamera();
     };
-  }, [cameraEnabled]);
-
-  const stopTracks = (stream: MediaStream | null) => {
-    stream?.getTracks().forEach((track) => track.stop());
-  };
-
-  const stopCamera = () => {
-    stopTracks(streamRef.current);
-    streamRef.current = null;
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-  };
-
-  const addCountLine = (identifier: string) => {
-    setCountLines((current) => {
-      const existing = current.find((line) => line.identifier === identifier);
-      if (existing) {
-        return current.map((line) =>
-          line.identifier === identifier ? { ...line, quantity: line.quantity + 1 } : line,
-        );
-      }
-      return [
-        { id: crypto.randomUUID(), identifier, quantity: 1 },
-        ...current,
-      ].slice(0, 25);
-    });
-  };
-
-  const addReceivingLine = (identifier: string) => {
-    setReceivingLines((current) => {
-      const existing = current.find((line) => line.identifier === identifier);
-      if (existing) {
-        return current.map((line) =>
-          line.identifier === identifier ? { ...line, quantity: line.quantity + 1 } : line,
-        );
-      }
-      return [
-        { id: crypto.randomUUID(), identifier, quantity: 1 },
-        ...current,
-      ].slice(0, 25);
-    });
-  };
+  }, [cameraEnabled, handleCameraDetection, stopCamera, stopTracks]);
 
   const handleScan = async (raw: string) => {
     const value = raw.trim();
@@ -215,13 +218,12 @@ function MobileWorkspace({ title = "Softmobile móvil" }: MobileWorkspaceProps) 
     return { label: value };
   };
 
-  const handleCameraDetection = async (value: string) => {
-    addCountLine(value);
-    addReceivingLine(value);
-    pushToast({ message: `Capturado ${value} desde la cámara.`, variant: "success" });
-  };
-
-  const handleUpdateLine = (list: ScanLine[], id: string, quantity: number, setter: (lines: ScanLine[]) => void) => {
+  const handleUpdateLine = (
+    list: ScanLine[],
+    id: string,
+    quantity: number,
+    setter: (lines: ScanLine[]) => void,
+  ) => {
     setter(
       list.map((line) => (line.id === id ? { ...line, quantity: Math.max(0, quantity) } : line)),
     );
@@ -244,27 +246,33 @@ function MobileWorkspace({ title = "Softmobile móvil" }: MobileWorkspaceProps) 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedStoreId) {
-      pushToast({ message: "Selecciona una sucursal para registrar el movimiento.", variant: "error" });
+      pushToast({
+        message: "Selecciona una sucursal para registrar el movimiento.",
+        variant: "error",
+      });
       return;
     }
     const trimmedNote = note.trim();
     if (trimmedNote.length < 5) {
-      pushToast({ message: "El motivo corporativo debe tener al menos 5 caracteres.", variant: "warning" });
+      pushToast({
+        message: "El motivo corporativo debe tener al menos 5 caracteres.",
+        variant: "warning",
+      });
       return;
     }
     const countPayload: InventoryCycleCountRequest = {
       store_id: selectedStoreId,
       note: trimmedNote,
-      responsible: responsible.trim() || undefined,
-      reference: reference.trim() || undefined,
       lines: mapLinesToCountPayload(countLines),
+      ...(responsible.trim() ? { responsible: responsible.trim() } : {}),
+      ...(reference.trim() ? { reference: reference.trim() } : {}),
     };
     const receivingPayload: InventoryReceivingRequest = {
       store_id: selectedStoreId,
       note: trimmedNote,
-      responsible: responsible.trim() || undefined,
-      reference: reference.trim() || undefined,
       lines: mapLinesToReceivingPayload(receivingLines),
+      ...(responsible.trim() ? { responsible: responsible.trim() } : {}),
+      ...(reference.trim() ? { reference: reference.trim() } : {}),
     };
     if (countPayload.lines.length === 0 && receivingPayload.lines.length === 0) {
       pushToast({ message: "Escanea o captura al menos un código.", variant: "warning" });
@@ -308,8 +316,7 @@ function MobileWorkspace({ title = "Softmobile móvil" }: MobileWorkspaceProps) 
     <div className="mobile-workspace">
       <PageHeader
         title={title}
-        subtitle="Conteos rápidos, recepciones y consulta express optimizados para lector Bluetooth o cámara."
-        icon={<Smartphone aria-hidden="true" />}
+        description="Conteos rápidos, recepciones y consulta express optimizados para lector Bluetooth o cámara."
       />
 
       <div className="mobile-grid">
@@ -319,7 +326,8 @@ function MobileWorkspace({ title = "Softmobile móvil" }: MobileWorkspaceProps) 
               <p className="eyebrow">Escucha activa</p>
               <h2>Escáner rápido</h2>
               <p className="muted-text">
-                Usa tu lector Bluetooth o la cámara del dispositivo para poblar conteos y recepciones.
+                Usa tu lector Bluetooth o la cámara del dispositivo para poblar conteos y
+                recepciones.
               </p>
             </div>
             <div className="mobile-card__actions">
@@ -329,15 +337,25 @@ function MobileWorkspace({ title = "Softmobile móvil" }: MobileWorkspaceProps) 
                 onClick={() => setCameraEnabled((current) => !current)}
                 aria-pressed={cameraEnabled}
               >
-                <Camera size={18} aria-hidden /> {cameraEnabled ? "Detener cámara" : "Activar cámara"}
+                <Camera size={18} aria-hidden />{" "}
+                {cameraEnabled ? "Detener cámara" : "Activar cámara"}
               </button>
             </div>
           </header>
 
           <div className="mobile-scan-wrapper">
-            <POSQuickScan onSubmit={handleScan} captureTimeout={35} onEnabledChange={() => setCameraEnabled(false)} />
+            <POSQuickScan
+              onSubmit={handleScan}
+              captureTimeout={35}
+              onEnabledChange={() => setCameraEnabled(false)}
+            />
             <div className="mobile-camera-preview" aria-live="polite">
-              <video ref={videoRef} muted playsInline className={cameraEnabled ? "camera-live" : "camera-idle"} />
+              <video
+                ref={videoRef}
+                muted
+                playsInline
+                className={cameraEnabled ? "camera-live" : "camera-idle"}
+              />
               {cameraError && (
                 <p className="mobile-inline-alert">
                   <AlertCircle size={16} aria-hidden /> {cameraError}
@@ -425,7 +443,12 @@ function MobileWorkspace({ title = "Softmobile móvil" }: MobileWorkspaceProps) 
                         min={0}
                         value={line.quantity}
                         onChange={(event) =>
-                          handleUpdateLine(countLines, line.id, Number(event.target.value), setCountLines)
+                          handleUpdateLine(
+                            countLines,
+                            line.id,
+                            Number(event.target.value),
+                            setCountLines,
+                          )
                         }
                       />
                       <button
@@ -494,7 +517,9 @@ function MobileWorkspace({ title = "Softmobile móvil" }: MobileWorkspaceProps) 
             <div>
               <p className="eyebrow">Consulta express</p>
               <h2>Disponibilidad y estado</h2>
-              <p className="muted-text">Busca por IMEI o serie para confirmar ubicación y estado comercial.</p>
+              <p className="muted-text">
+                Busca por IMEI o serie para confirmar ubicación y estado comercial.
+              </p>
             </div>
             <ClipboardCheck size={18} aria-hidden />
           </header>
@@ -520,11 +545,18 @@ function MobileWorkspace({ title = "Softmobile móvil" }: MobileWorkspaceProps) 
           {lookupResults.length > 0 ? (
             <ul className="mobile-lookup-results">
               {lookupResults.map((device) => (
-                <li key={`${device.id}-${device.imei ?? device.serial}`} className="mobile-lookup-item">
+                <li
+                  key={`${device.id}-${device.imei ?? device.serial}`}
+                  className="mobile-lookup-item"
+                >
                   <div>
                     <p className="lookup-title">{device.modelo ?? device.name ?? "Equipo"}</p>
-                    <p className="muted-text">IMEI: {device.imei ?? "—"} · Serie: {device.serial ?? "—"}</p>
-                    <p className="muted-text">Color: {device.color ?? "—"} · Capacidad: {device.capacidad_gb ?? "—"} GB</p>
+                    <p className="muted-text">
+                      IMEI: {device.imei ?? "—"} · Serie: {device.serial ?? "—"}
+                    </p>
+                    <p className="muted-text">
+                      Color: {device.color ?? "—"} · Capacidad: {device.capacidad_gb ?? "—"} GB
+                    </p>
                   </div>
                   <div className="lookup-pill">{device.estado_comercial ?? "Sin estado"}</div>
                 </li>
@@ -536,8 +568,8 @@ function MobileWorkspace({ title = "Softmobile móvil" }: MobileWorkspaceProps) 
 
           {selectedStore && (
             <p className="mobile-hint" role="status">
-              Operando en <strong>{selectedStore.name}</strong>. Los movimientos enviarán cabecera <code>X-Reason</code> con
-              tu motivo corporativo.
+              Operando en <strong>{selectedStore.name}</strong>. Los movimientos enviarán cabecera{" "}
+              <code>X-Reason</code> con tu motivo corporativo.
             </p>
           )}
         </section>

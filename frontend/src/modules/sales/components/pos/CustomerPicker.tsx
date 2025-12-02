@@ -15,28 +15,25 @@ type Props = {
 
 export default function CustomerPicker({ customer, onPick, onClear }: Props) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 12, color: "#94a3b8" }}>Cliente</div>
+    <div className="pos-customer-picker">
+      <div className="pos-customer-picker-info">
+        <div className="pos-customer-picker-label">Cliente</div>
         {customer ? (
-          <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
+          <div className="pos-customer-picker-details">
             <strong>{customer.name}</strong>
-            <span style={{ color: "#94a3b8", fontSize: 12 }}>
+            <span className="pos-customer-picker-contact">
               {customer.phone || customer.email || ""}
             </span>
           </div>
         ) : (
-          <div style={{ color: "#9ca3af" }}>Sin cliente</div>
+          <div className="pos-customer-picker-empty">Sin cliente</div>
         )}
       </div>
-      <button
-        onClick={onPick}
-        style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(255,255,255,0.08)", color: "#e5e7eb", border: 0 }}
-      >
+      <button onClick={onPick} className="pos-customer-picker-select-btn">
         Seleccionar
       </button>
       {customer ? (
-        <button onClick={onClear} style={{ padding: "8px 12px", borderRadius: 8 }}>
+        <button onClick={onClear} className="pos-customer-picker-clear-btn">
           Quitar
         </button>
       ) : null}

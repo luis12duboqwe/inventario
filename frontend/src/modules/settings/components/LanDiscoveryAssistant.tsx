@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import Button from "../../../shared/components/ui/Button";
+import Button from "@components/ui/Button";
 import {
   applyApiBaseUrlOverride,
   getCurrentApiBaseUrl,
   resetApiBaseUrlOverride,
-} from "../../../services/api/http";
-import { fetchLanDiscovery, type LanDiscoveryResponse } from "../../../services/api/discovery";
+} from "@api/http";
+import { fetchLanDiscovery, type LanDiscoveryResponse } from "@api/discovery";
 
 type Props = {
   onApplied?: (baseUrl: string) => void;

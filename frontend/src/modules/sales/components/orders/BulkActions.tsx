@@ -14,33 +14,30 @@ function BulkActions({ selectedCount, onExport, onEmail, onCancel, onRefund }: P
   }
 
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-      <div style={{ color: "#94a3b8", fontSize: 13 }}>{selectedCount} seleccionadas</div>
-      <div style={{ display: "flex", gap: 8 }}>
+    <div className="orders-bulk-actions">
+      <div className="orders-bulk-actions-count">{selectedCount} seleccionadas</div>
+      <div className="orders-bulk-actions-group">
         <button
           onClick={onExport}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 8,
-            background: "rgba(255, 255, 255, 0.08)",
-            color: "#e5e7eb",
-            border: 0,
-          }}
+          className="orders-bulk-actions-btn orders-bulk-actions-btn--export"
         >
           Exportar
         </button>
-        <button onClick={onEmail} style={{ padding: "8px 12px", borderRadius: 8 }}>
+        <button
+          onClick={onEmail}
+          className="orders-bulk-actions-btn orders-bulk-actions-btn--email"
+        >
           Enviar factura
         </button>
         <button
           onClick={onCancel}
-          style={{ padding: "8px 12px", borderRadius: 8, background: "#b91c1c", color: "#fff", border: 0 }}
+          className="orders-bulk-actions-btn orders-bulk-actions-btn--cancel"
         >
           Cancelar
         </button>
         <button
           onClick={onRefund}
-          style={{ padding: "8px 12px", borderRadius: 8, background: "#f59e0b", color: "#0b1220", border: 0 }}
+          className="orders-bulk-actions-btn orders-bulk-actions-btn--refund"
         >
           Reembolsar
         </button>

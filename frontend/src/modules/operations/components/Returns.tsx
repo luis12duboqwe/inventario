@@ -1,21 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import type { PurchaseOrder } from "@api/purchases";
+import { listPurchaseOrders, registerPurchaseReturn } from "@api/purchases";
 import type {
-  PurchaseOrder,
   ReturnDisposition,
   ReturnReasonCategory,
   ReturnRecord,
   ReturnsTotals,
   Sale,
-  Store,
-} from "../../../api";
-import {
-  listPurchaseOrders,
-  listReturns,
-  listSales,
-  registerPurchaseReturn,
-  registerSaleReturn,
-} from "../../../api";
+} from "@api/sales";
+import { listReturns, listSales, registerSaleReturn } from "@api/sales";
+import type { Store } from "@api/inventory";
 import ReturnsSearch from "./ReturnsSearch";
 
 type Props = {
@@ -227,7 +222,7 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
       setHistoryLoading(true);
       try {
         const overview = await listReturns(token, {
-          storeId: typeof storeId === "number" ? storeId : undefined,
+          ...(typeof storeId === "number" ? { storeId } : {}),
           limit: 25,
         });
         setHistory(overview.items);
@@ -357,7 +352,7 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
       const { code, text } = parseErrorMessage(
         err instanceof Error ? err.message : "No fue posible registrar la devolución de venta",
       );
-      setError(text);
+      setError(text ?? null);
       if (code && code.startsWith("sale_return_supervisor_")) {
         setSaleApprovalVisible(true);
         if (code === "sale_return_supervisor_required") {

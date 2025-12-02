@@ -18,7 +18,9 @@ type RefundModalProps = {
 function RefundModal({ open, orderId, onClose, onSubmit }: RefundModalProps) {
   const [amount, setAmount] = useState<number>(0);
   const [method, setMethod] = useState<"CASH" | "CARD" | "TRANSFER">("CASH");
-  const [reason, setReason] = useState<"DEFECT" | "CUSTOMER_CHANGE" | "PRICE_ADJUST" | "OTHER">("OTHER");
+  const [reason, setReason] = useState<"DEFECT" | "CUSTOMER_CHANGE" | "PRICE_ADJUST" | "OTHER">(
+    "OTHER",
+  );
   const [notes, setNotes] = useState<string>("");
 
   // Sin setState en efectos: limpiar en handlers.
@@ -60,11 +62,11 @@ function RefundModal({ open, orderId, onClose, onSubmit }: RefundModalProps) {
   }
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(8, 15, 35, 0.7)", display: "grid", placeItems: "center", zIndex: 50 }}>
-      <div style={{ width: 520, background: "#0b1220", borderRadius: 12, border: "1px solid rgba(248, 113, 113, 0.3)", padding: 16 }}>
-        <h3 style={{ marginTop: 0 }}>Reembolso {orderId ? `(#${orderId})` : ""}</h3>
-        <div style={{ display: "grid", gap: 12 }}>
-          <label style={{ display: "grid", gap: 4 }}>
+    <div className="refund-modal-overlay">
+      <div className="refund-modal-content">
+        <h3 className="refund-modal-title">Reembolso {orderId ? `(#${orderId})` : ""}</h3>
+        <div className="refund-modal-form">
+          <label className="refund-modal-label">
             <span>Monto</span>
             <input
               type="number"
@@ -72,37 +74,45 @@ function RefundModal({ open, orderId, onClose, onSubmit }: RefundModalProps) {
               step="0.01"
               value={amount}
               onChange={handleAmountChange}
-              style={{ width: "100%", padding: 8, borderRadius: 8 }}
+              className="refund-modal-input"
             />
           </label>
-          <label style={{ display: "grid", gap: 4 }}>
+          <label className="refund-modal-label">
             <span>Método</span>
-            <select value={method} onChange={(event) => setMethod(event.target.value as typeof method)} style={{ width: "100%", padding: 8, borderRadius: 8 }}>
+            <select
+              value={method}
+              onChange={(event) => setMethod(event.target.value as typeof method)}
+              className="refund-modal-input"
+            >
               <option value="CASH">Efectivo</option>
               <option value="CARD">Tarjeta</option>
               <option value="TRANSFER">Transferencia</option>
             </select>
           </label>
-          <label style={{ display: "grid", gap: 4 }}>
+          <label className="refund-modal-label">
             <span>Motivo</span>
-            <select value={reason} onChange={(event) => setReason(event.target.value as typeof reason)} style={{ width: "100%", padding: 8, borderRadius: 8 }}>
+            <select
+              value={reason}
+              onChange={(event) => setReason(event.target.value as typeof reason)}
+              className="refund-modal-input"
+            >
               <option value="DEFECT">Defecto</option>
               <option value="CUSTOMER_CHANGE">Cambio de opinión</option>
               <option value="PRICE_ADJUST">Ajuste de precio</option>
               <option value="OTHER">Otro</option>
             </select>
           </label>
-          <label style={{ display: "grid", gap: 4 }}>
+          <label className="refund-modal-label">
             <span>Motivo corporativo (mín. 5 caracteres)</span>
             <textarea
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
-              style={{ width: "100%", padding: 8, borderRadius: 8, minHeight: 96 }}
+              className="refund-modal-textarea"
               placeholder="Describe el motivo corporativo"
             />
           </label>
         </div>
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
+        <div className="refund-modal-actions">
           <button
             onClick={() => {
               setAmount(0);
@@ -111,7 +121,7 @@ function RefundModal({ open, orderId, onClose, onSubmit }: RefundModalProps) {
               setNotes("");
               onClose?.();
             }}
-            style={{ padding: "8px 12px", borderRadius: 8 }}
+            className="refund-modal-btn-cancel"
           >
             Cancelar
           </button>
@@ -119,14 +129,9 @@ function RefundModal({ open, orderId, onClose, onSubmit }: RefundModalProps) {
             type="button"
             disabled={!isValid}
             onClick={handleSubmit}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 8,
-              background: isValid ? "#ef4444" : "rgba(239, 68, 68, 0.35)",
-              color: "#fef2f2",
-              border: 0,
-              cursor: isValid ? "pointer" : "not-allowed",
-            }}
+            className={`refund-modal-btn-submit ${
+              isValid ? "refund-modal-btn-submit-valid" : "refund-modal-btn-submit-invalid"
+            }`}
           >
             Reembolsar
           </button>

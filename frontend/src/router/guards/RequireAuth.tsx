@@ -2,7 +2,7 @@ import { type ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 
 import { useAuth } from "../../auth/useAuth";
-import Loader from "../../shared/components/Loader";
+import { Loader } from "@components/ui/Loader";
 
 // [PACK28-guards]
 type RequireAuthProps = {

@@ -1,12 +1,13 @@
-import { Skeleton } from "@/ui/Skeleton"; // [PACK36-customers]
+import { Skeleton } from "@components/ui/Skeleton"; // [PACK36-customers-sidepanel]
+
 import { safeArray, safeDate, safeString } from "@/utils/safeValues"; // [PACK36-customers]
+import type { ContactHistoryEntry } from "@api/types";
 import type {
-  ContactHistoryEntry,
   Customer,
   CustomerAccountsReceivable,
   CustomerSummary,
   CreditScheduleEntry,
-} from "../../../../api";
+} from "@api/customers";
 import type { LedgerEntryWithDetails } from "../../../../types/customers";
 
 type Invoice = CustomerSummary["invoices"][number];
@@ -59,7 +60,8 @@ const CustomersSidePanel = ({
   const summarySales = safeArray(summary?.sales); // [PACK36-customers]
   const summaryPayments = safeArray(summary?.payments); // [PACK36-customers]
   const summaryLedger = safeArray(summary?.ledger); // [PACK36-customers]
-  const summaryTotals = summary?.totals ?? { // [PACK36-customers]
+  const summaryTotals = summary?.totals ?? {
+    // [PACK36-customers]
     outstanding_debt: 0,
     available_credit: 0,
     credit_limit: 0,
@@ -68,11 +70,17 @@ const CustomersSidePanel = ({
   const receivableBuckets = safeArray(receivableData?.aging); // [PACK36-customers]
   const receivableEntries = safeArray(receivableData?.open_entries); // [PACK36-customers]
   const receivableSchedule = safeArray(receivableData?.credit_schedule); // [PACK36-customers]
-  const privacyTypeLabels: Record<CustomerSummary["privacy_requests"][number]["request_type"], string> = {
+  const privacyTypeLabels: Record<
+    CustomerSummary["privacy_requests"][number]["request_type"],
+    string
+  > = {
     consent: "Consentimiento",
     anonymization: "Anonimización",
   };
-  const privacyStatusTone: Record<CustomerSummary["privacy_requests"][number]["request_type"], string> = {
+  const privacyStatusTone: Record<
+    CustomerSummary["privacy_requests"][number]["request_type"],
+    string
+  > = {
     consent: "info",
     anonymization: "warning",
   };
@@ -98,23 +106,28 @@ const CustomersSidePanel = ({
   const segmentCategory = safeString(summary?.customer.segment_category, "—");
   const taxId = safeString(summary?.customer.tax_id, "—");
   const tagsList = Array.isArray(summary?.customer.tags)
-    ? summary?.customer.tags.filter((tag) => typeof tag === "string" && tag.trim().length > 0).join(", ") || "Sin etiquetas"
+    ? summary?.customer.tags
+        .filter((tag) => typeof tag === "string" && tag.trim().length > 0)
+        .join(", ") || "Sin etiquetas"
     : "Sin etiquetas";
-  const formatDateTime = (value: unknown) => { // [PACK36-customers]
+  const formatDateTime = (value: unknown) => {
+    // [PACK36-customers]
     const parsed = safeDate(value);
     if (!parsed) {
       return "Fecha desconocida";
     }
     return parsed.toLocaleString("es-HN");
   };
-  const formatDateOnly = (value: unknown) => { // [PACK36-customers]
+  const formatDateOnly = (value: unknown) => {
+    // [PACK36-customers]
     const parsed = safeDate(value);
     if (!parsed) {
       return "—";
     }
     return parsed.toLocaleDateString("es-HN");
   };
-  const resolveReference = (entry: CustomerAccountsReceivable["open_entries"][number]) => { // [PACK36-customers]
+  const resolveReference = (entry: CustomerAccountsReceivable["open_entries"][number]) => {
+    // [PACK36-customers]
     if (entry.reference) {
       return entry.reference;
     }
@@ -123,7 +136,8 @@ const CustomersSidePanel = ({
     }
     return `Movimiento #${entry.ledger_entry_id}`;
   };
-  const handleStatementClick = () => { // [PACK36-customers]
+  const handleStatementClick = () => {
+    // [PACK36-customers]
     if (selectedCustomer) {
       onDownloadStatement(selectedCustomer);
     }
@@ -141,10 +155,7 @@ const CustomersSidePanel = ({
   const receivableSummary = receivableData?.summary ?? null; // [PACK36-customers]
   const statementDisabled = !selectedCustomer || receivableLoading || !receivableSummary; // [PACK36-customers]
   const primaryContact = receivableSummary
-    ? safeString(
-        receivableSummary.contact_email || receivableSummary.contact_phone,
-        "—",
-      )
+    ? safeString(receivableSummary.contact_email || receivableSummary.contact_phone, "—")
     : "—"; // [PACK36-customers]
 
   return (
@@ -176,7 +187,8 @@ const CustomersSidePanel = ({
             <div>
               <h4>{summary.customer.name ?? "Cliente sin nombre"}</h4>
               <p className="muted-text">
-                Tipo {safeString(summary.customer.customer_type, "—")} · Estado {safeString(summary.customer.status, "—")}
+                Tipo {safeString(summary.customer.customer_type, "—")} · Estado{" "}
+                {safeString(summary.customer.status, "—")}
               </p>
               <p className="muted-text small">
                 Categoría {segmentCategory} · Etiquetas {tagsList} · RTN {taxId}
@@ -196,229 +208,238 @@ const CustomersSidePanel = ({
                 <strong>${formatCurrency(summaryTotals.credit_limit)}</strong>
               </div>
             </div>
-            </div>
+          </div>
 
-            {privacyEnabled ? (
-              <div className="privacy-section" aria-live="polite">
-                <div className="privacy-section__header">
-                  <div>
-                    <h5>Privacidad y consentimientos</h5>
-                    <p className="muted-text small">
-                      Administra consentimientos y anonimización bajo solicitud formal.
-                    </p>
-                  </div>
-                  <div className="privacy-actions">
-                    <button
-                      type="button"
-                      className="button button-secondary"
-                      onClick={handleConsentClick}
-                      disabled={!selectedCustomer || privacyProcessing}
-                    >
-                      Registrar consentimiento
-                    </button>
-                    <button
-                      type="button"
-                      className="button button-secondary"
-                      onClick={handleAnonymizationClick}
-                      disabled={!selectedCustomer || privacyProcessing}
-                    >
-                      Aplicar anonimización
-                    </button>
-                  </div>
-                </div>
-                {privacyProcessing ? (
-                  <p className="muted-text">Procesando solicitud de privacidad…</p>
-                ) : privacyRequests.length === 0 ? (
-                  <p className="muted-text">Sin solicitudes de privacidad registradas.</p>
-                ) : (
-                  <ul className="privacy-log">
-                    {privacyRequests.map((request) => {
-                      const detailSummary =
-                        request.request_type === "consent"
-                          ? Object.entries(request.consent_snapshot)
-                              .map(([key, value]) => `${key}:${value ? "sí" : "no"}`)
-                              .join(" · ") || "Sin cambios"
-                          : (request.masked_fields ?? []).map((field) => field || "—").join(", ") ||
-                            "Campos predeterminados";
-                      return (
-                        <li key={`privacy-${request.id}`}>
-                          <div className="privacy-log__header">
-                            <span className={`status-pill tone-${privacyStatusTone[request.request_type]}`}>
-                              {privacyTypeLabels[request.request_type]}
-                            </span>
-                            <span className="muted-text small">
-                              {formatDateTime(request.processed_at ?? request.created_at)}
-                            </span>
-                          </div>
-                          <div className="privacy-log__body">
-                            <strong>{request.details ?? "Solicitud registrada en el sistema"}</strong>
-                            <span className="muted-text small">{detailSummary}</span>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
-            ) : null}
-
-            <div className="receivable-section" aria-live="polite">
-              <div className="receivable-header">
+          {privacyEnabled ? (
+            <div className="privacy-section" aria-live="polite">
+              <div className="privacy-section__header">
                 <div>
-                  <h5>Cuentas por cobrar</h5>
+                  <h5>Privacidad y consentimientos</h5>
                   <p className="muted-text small">
-                    Vigila vencimientos, aging y recordatorios automáticos para este cliente.
+                    Administra consentimientos y anonimización bajo solicitud formal.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  className="button button-secondary"
-                  onClick={handleStatementClick}
-                  disabled={statementDisabled}
-                >
-                  Descargar estado de cuenta
-                </button>
-              </div>
-              {receivableLoading ? (
-                <div className="receivable-skeleton" role="status" aria-live="polite">
-                  <Skeleton lines={3} />
-                  <Skeleton lines={2} />
+                <div className="privacy-actions">
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    onClick={handleConsentClick}
+                    disabled={!selectedCustomer || privacyProcessing}
+                  >
+                    Registrar consentimiento
+                  </button>
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    onClick={handleAnonymizationClick}
+                    disabled={!selectedCustomer || privacyProcessing}
+                  >
+                    Aplicar anonimización
+                  </button>
                 </div>
-              ) : receivableError ? (
-                <p className="error-text">{receivableError}</p>
-              ) : receivableSummary ? (
-                <>
-                  <div className="receivable-overview">
-                    <div>
-                      <span className="muted-text small">Saldo por cobrar</span>
-                      <strong>${formatCurrency(receivableSummary.total_outstanding)}</strong>
-                    </div>
-                    <div>
-                      <span className="muted-text small">Crédito disponible</span>
-                      <strong>${formatCurrency(receivableSummary.available_credit)}</strong>
-                      <span className="muted-text small">
-                        Límite ${formatCurrency(receivableSummary.credit_limit)}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="muted-text small">Próximo vencimiento</span>
-                      <strong>{formatDateOnly(receivableSummary.next_due_date)}</strong>
-                      <span className="muted-text small">
-                        Promedio {Math.round(receivableSummary.average_days_outstanding)} días
-                      </span>
-                    </div>
-                    <div>
-                      <span className="muted-text small">Último pago</span>
-                      <strong>{formatDateOnly(receivableSummary.last_payment_at)}</strong>
-                      <span className="muted-text small">Contacto principal · {primaryContact}</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h6>Distribución por antigüedad</h6>
-                    {receivableBuckets.length === 0 ? (
-                      <p className="muted-text">Sin documentos con saldo pendiente.</p>
-                    ) : (
-                      <div className="aging-bars">
-                        {receivableBuckets.map((bucket) => (
-                          <div key={`${bucket.label}-${bucket.days_from}`} className="aging-bar">
-                              <div className="aging-bar__header">
-                                <strong>{bucket.label}</strong>
-                                <span className="muted-text small">{bucket.count} documentos</span>
-                              </div>
-                            <div
-                              className="aging-bar__track"
-                              role="presentation"
-                              aria-hidden
-                            >
-                              <div
-                                className="aging-bar__fill"
-                                style={{ width: `${Math.min(100, Math.max(0, bucket.percentage))}%` }}
-                              />
-                            </div>
-                            <div className="aging-bar__meta">
-                              <span className="summary-amount">${formatCurrency(bucket.amount)}</span>
-                              <span className="muted-text small">{bucket.percentage.toFixed(0)}%</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div>
-                    <h6>Recordatorios programados</h6>
-                    {receivableSchedule.length === 0 ? (
-                      <p className="muted-text">No hay recordatorios pendientes para este cliente.</p>
-                    ) : (
-                      <ul className="schedule-list">
-                        {receivableSchedule.map((item) => (
-                          <li key={`schedule-${item.sequence}`} className={`schedule-item tone-${scheduleStatusTone[item.status]}`}>
-                            <div className="schedule-item__header">
-                              <span className={`status-pill tone-${scheduleStatusTone[item.status]}`}>
-                                {scheduleStatusLabels[item.status]}
-                              </span>
-                              <strong>{formatDateOnly(item.due_date)}</strong>
-                            </div>
-                            <div className="schedule-item__body">
-                              <span className="summary-amount">${formatCurrency(item.amount)}</span>
-                              <span className="muted-text small">
-                                {item.reminder ? item.reminder : "Recordatorio automático"}
-                              </span>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-
-                  <div>
-                    <h6>Documentos pendientes</h6>
-                    {receivableEntries.length === 0 ? (
-                      <p className="muted-text">No hay documentos por cobrar en este momento.</p>
-                    ) : (
-                      <div className="table-wrapper receivable-table">
-                        <table>
-                          <thead>
-                            <tr>
-                              <th>Referencia</th>
-                              <th>Emitido</th>
-                              <th>Estado</th>
-                              <th>Días</th>
-                              <th>Saldo</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {receivableEntries.map((entry) => (
-                              <tr key={`receivable-${entry.ledger_entry_id}`}>
-                                <td>
-                                  <div className="receivable-reference">
-                                    <strong>{resolveReference(entry)}</strong>
-                                    {entry.note ? (
-                                      <span className="muted-text small">{entry.note}</span>
-                                    ) : null}
-                                  </div>
-                                </td>
-                                <td>{formatDateOnly(entry.issued_at)}</td>
-                                <td>
-                                  <span className={`status-pill tone-${receivableStatusTone[entry.status]}`}>
-                                    {receivableStatusLabels[entry.status]}
-                                  </span>
-                                </td>
-                                <td>{entry.days_outstanding}</td>
-                                <td>${formatCurrency(entry.balance_due)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                </>
+              </div>
+              {privacyProcessing ? (
+                <p className="muted-text">Procesando solicitud de privacidad…</p>
+              ) : privacyRequests.length === 0 ? (
+                <p className="muted-text">Sin solicitudes de privacidad registradas.</p>
               ) : (
-                <p className="muted-text">Selecciona un cliente para ver sus cuentas por cobrar.</p>
+                <ul className="privacy-log">
+                  {privacyRequests.map((request) => {
+                    const detailSummary =
+                      request.request_type === "consent"
+                        ? Object.entries(request.consent_snapshot)
+                            .map(([key, value]) => `${key}:${value ? "sí" : "no"}`)
+                            .join(" · ") || "Sin cambios"
+                        : (request.masked_fields ?? []).map((field) => field || "—").join(", ") ||
+                          "Campos predeterminados";
+                    return (
+                      <li key={`privacy-${request.id}`}>
+                        <div className="privacy-log__header">
+                          <span
+                            className={`status-pill tone-${
+                              privacyStatusTone[request.request_type]
+                            }`}
+                          >
+                            {privacyTypeLabels[request.request_type]}
+                          </span>
+                          <span className="muted-text small">
+                            {formatDateTime(request.processed_at ?? request.created_at)}
+                          </span>
+                        </div>
+                        <div className="privacy-log__body">
+                          <strong>{request.details ?? "Solicitud registrada en el sistema"}</strong>
+                          <span className="muted-text small">{detailSummary}</span>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
             </div>
+          ) : null}
+
+          <div className="receivable-section" aria-live="polite">
+            <div className="receivable-header">
+              <div>
+                <h5>Cuentas por cobrar</h5>
+                <p className="muted-text small">
+                  Vigila vencimientos, aging y recordatorios automáticos para este cliente.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={handleStatementClick}
+                disabled={statementDisabled}
+              >
+                Descargar estado de cuenta
+              </button>
+            </div>
+            {receivableLoading ? (
+              <div className="receivable-skeleton" role="status" aria-live="polite">
+                <Skeleton lines={3} />
+                <Skeleton lines={2} />
+              </div>
+            ) : receivableError ? (
+              <p className="error-text">{receivableError}</p>
+            ) : receivableSummary ? (
+              <>
+                <div className="receivable-overview">
+                  <div>
+                    <span className="muted-text small">Saldo por cobrar</span>
+                    <strong>${formatCurrency(receivableSummary.total_outstanding)}</strong>
+                  </div>
+                  <div>
+                    <span className="muted-text small">Crédito disponible</span>
+                    <strong>${formatCurrency(receivableSummary.available_credit)}</strong>
+                    <span className="muted-text small">
+                      Límite ${formatCurrency(receivableSummary.credit_limit)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="muted-text small">Próximo vencimiento</span>
+                    <strong>{formatDateOnly(receivableSummary.next_due_date)}</strong>
+                    <span className="muted-text small">
+                      Promedio {Math.round(receivableSummary.average_days_outstanding)} días
+                    </span>
+                  </div>
+                  <div>
+                    <span className="muted-text small">Último pago</span>
+                    <strong>{formatDateOnly(receivableSummary.last_payment_at)}</strong>
+                    <span className="muted-text small">Contacto principal · {primaryContact}</span>
+                  </div>
+                </div>
+
+                <div>
+                  <h6>Distribución por antigüedad</h6>
+                  {receivableBuckets.length === 0 ? (
+                    <p className="muted-text">Sin documentos con saldo pendiente.</p>
+                  ) : (
+                    <div className="aging-bars">
+                      {receivableBuckets.map((bucket) => (
+                        <div key={`${bucket.label}-${bucket.days_from}`} className="aging-bar">
+                          <div className="aging-bar__header">
+                            <strong>{bucket.label}</strong>
+                            <span className="muted-text small">{bucket.count} documentos</span>
+                          </div>
+                          <div className="aging-bar__track" role="presentation" aria-hidden>
+                            <div
+                              className="aging-bar__fill"
+                              style={{ width: `${Math.min(100, Math.max(0, bucket.percentage))}%` }}
+                            />
+                          </div>
+                          <div className="aging-bar__meta">
+                            <span className="summary-amount">${formatCurrency(bucket.amount)}</span>
+                            <span className="muted-text small">
+                              {bucket.percentage.toFixed(0)}%
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <h6>Recordatorios programados</h6>
+                  {receivableSchedule.length === 0 ? (
+                    <p className="muted-text">No hay recordatorios pendientes para este cliente.</p>
+                  ) : (
+                    <ul className="schedule-list">
+                      {receivableSchedule.map((item) => (
+                        <li
+                          key={`schedule-${item.sequence}`}
+                          className={`schedule-item tone-${scheduleStatusTone[item.status]}`}
+                        >
+                          <div className="schedule-item__header">
+                            <span className={`status-pill tone-${scheduleStatusTone[item.status]}`}>
+                              {scheduleStatusLabels[item.status]}
+                            </span>
+                            <strong>{formatDateOnly(item.due_date)}</strong>
+                          </div>
+                          <div className="schedule-item__body">
+                            <span className="summary-amount">${formatCurrency(item.amount)}</span>
+                            <span className="muted-text small">
+                              {item.reminder ? item.reminder : "Recordatorio automático"}
+                            </span>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div>
+                  <h6>Documentos pendientes</h6>
+                  {receivableEntries.length === 0 ? (
+                    <p className="muted-text">No hay documentos por cobrar en este momento.</p>
+                  ) : (
+                    <div className="table-wrapper receivable-table">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Referencia</th>
+                            <th>Emitido</th>
+                            <th>Estado</th>
+                            <th>Días</th>
+                            <th>Saldo</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {receivableEntries.map((entry) => (
+                            <tr key={`receivable-${entry.ledger_entry_id}`}>
+                              <td>
+                                <div className="receivable-reference">
+                                  <strong>{resolveReference(entry)}</strong>
+                                  {entry.note ? (
+                                    <span className="muted-text small">{entry.note}</span>
+                                  ) : null}
+                                </div>
+                              </td>
+                              <td>{formatDateOnly(entry.issued_at)}</td>
+                              <td>
+                                <span
+                                  className={`status-pill tone-${
+                                    receivableStatusTone[entry.status]
+                                  }`}
+                                >
+                                  {receivableStatusLabels[entry.status]}
+                                </span>
+                              </td>
+                              <td>{entry.days_outstanding}</td>
+                              <td>${formatCurrency(entry.balance_due)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <p className="muted-text">Selecciona un cliente para ver sus cuentas por cobrar.</p>
+            )}
+          </div>
 
           <div className="summary-columns">
             <div>
@@ -455,9 +476,7 @@ const CustomersSidePanel = ({
                           {formatDateTime(payment.created_at)}
                         </span>
                       </div>
-                      <span className="summary-amount">
-                        ${formatCurrency(payment.amount)}
-                      </span>
+                      <span className="summary-amount">${formatCurrency(payment.amount)}</span>
                     </li>
                   ))}
                 </ul>
@@ -559,7 +578,9 @@ const CustomersSidePanel = ({
                               <span className="muted-text"> · {enriched.detailsValue}</span>
                             ) : null}
                             {entry.created_by ? (
-                              <span className="muted-text note-meta">· Registrado por {entry.created_by}</span>
+                              <span className="muted-text note-meta">
+                                · Registrado por {entry.created_by}
+                              </span>
                             ) : null}
                           </td>
                           <td>${formatCurrency(entry.amount)}</td>

@@ -1,13 +1,13 @@
 import React, { useCallback, useMemo } from "react";
 import { Row } from "../Row";
 
-type CustomerRow = {
+export type CustomerRow = {
   id: string;
   name: string;
-  phone?: string;
-  email?: string;
-  tier?: string;
-  lastSale?: string;
+  phone?: string | undefined;
+  email?: string | undefined;
+  tier?: string | undefined;
+  lastSale?: string | undefined;
 };
 
 type Props = {
@@ -47,7 +47,12 @@ export default function Table({ rows, onRowClick }: Props) {
         row,
         id: row.id,
         cells: columns.map((column) => (
-          <span key={column.key} style={{ display: "block", textAlign: column.key === "tier" ? "center" : "left" }}>
+          <span
+            key={column.key}
+            className={`customer-table-cell ${
+              column.key === "tier" ? "customer-table-cell-center" : "customer-table-cell-left"
+            }`}
+          >
             {renderCellValue(row[column.key] as string | undefined)}
           </span>
         )),
@@ -63,9 +68,9 @@ export default function Table({ rows, onRowClick }: Props) {
   );
 
   return (
-    <div style={{ overflow: "hidden", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)" }}>
-      <div role="table" style={{ width: "100%", fontSize: 14 }}>
-        <div role="row" style={{ background: "rgba(255,255,255,0.03)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+    <div className="customer-table-container">
+      <div role="table" className="customer-table">
+        <div role="row" className="customer-table-header">
           <Row cells={headerCells} />
         </div>
         <div>
@@ -74,14 +79,21 @@ export default function Table({ rows, onRowClick }: Props) {
               <div
                 key={id}
                 role="row"
+                tabIndex={onRowClick ? 0 : undefined}
                 onClick={() => handleRowClick(row)}
-                style={{ cursor: onRowClick ? "pointer" : "default", borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+                onKeyDown={(e) => {
+                  if (onRowClick && (e.key === "Enter" || e.key === " ")) {
+                    e.preventDefault();
+                    handleRowClick(row);
+                  }
+                }}
+                className={`customer-table-row ${onRowClick ? "customer-table-row-clickable" : ""}`}
               >
                 <Row cells={cells} />
               </div>
             ))
           ) : (
-            <div style={{ padding: 12, color: "#9ca3af" }}>Sin clientes</div>
+            <div className="customer-table-empty">Sin clientes</div>
           )}
         </div>
       </div>

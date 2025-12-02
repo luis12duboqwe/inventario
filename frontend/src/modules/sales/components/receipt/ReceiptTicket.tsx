@@ -58,7 +58,15 @@ function ReceiptTicket({ business, order, customer }: ReceiptTicketProps) {
       businessTaxId: businessInfo.taxId ?? null,
       type: docType.toLowerCase(),
     };
-  }, [orderInfo.number, orderInfo.date, orderInfo.total, customerInfo.name, customerInfo.taxId, businessInfo.taxId, docType]);
+  }, [
+    orderInfo.number,
+    orderInfo.date,
+    orderInfo.total,
+    customerInfo.name,
+    customerInfo.taxId,
+    businessInfo.taxId,
+    docType,
+  ]);
 
   useEffect(() => {
     let alive = true;
@@ -77,73 +85,67 @@ function ReceiptTicket({ business, order, customer }: ReceiptTicketProps) {
   }, [qrPayload]);
 
   return (
-    <div
-      style={{
-        width: 320,
-        padding: 12,
-        color: "#111827",
-        background: "#ffffff",
-        fontFamily: "monospace",
-        fontSize: 12,
-        borderRadius: 8,
-      }}
-    >
-      <div style={{ textAlign: "center", fontWeight: 700 }}>{businessInfo.name ?? "SOFTMOBILE"}</div>
-      {businessInfo.address ? <div style={{ textAlign: "center" }}>{businessInfo.address}</div> : null}
-      {businessInfo.phone ? <div style={{ textAlign: "center" }}>{businessInfo.phone}</div> : null}
-      {businessInfo.taxId ? <div style={{ textAlign: "center" }}>RTN: {businessInfo.taxId}</div> : null}
+    <div className="receipt-ticket">
+      <div className="receipt-header">{businessInfo.name ?? "SOFTMOBILE"}</div>
+      {businessInfo.address ? (
+        <div className="receipt-text-center">{businessInfo.address}</div>
+      ) : null}
+      {businessInfo.phone ? <div className="receipt-text-center">{businessInfo.phone}</div> : null}
+      {businessInfo.taxId ? (
+        <div className="receipt-text-center">RTN: {businessInfo.taxId}</div>
+      ) : null}
       <hr />
-      <div style={{ fontWeight: 600 }}>{docType}</div>
+      <div className="receipt-title">{docType}</div>
       <div>Pedido: {orderInfo.number ?? "—"}</div>
       <div>Fecha: {orderInfo.date ? new Date(orderInfo.date).toLocaleString() : "—"}</div>
       {customerInfo.name ? <div>Cliente: {customerInfo.name}</div> : null}
       {customerInfo.taxId ? <div>RTN: {customerInfo.taxId}</div> : null}
       <hr />
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <table className="receipt-table">
         <tbody>
           {items.map((item, index) => (
             <tr key={`${item.name}-${index}`}>
-              <td style={{ width: "55%" }}>{item.name}</td>
-              <td style={{ width: "15%", textAlign: "right" }}>{item.qty}</td>
-              <td style={{ width: "15%", textAlign: "right" }}>{currency.format(item.price)}</td>
-              <td style={{ width: "15%", textAlign: "right" }}>{currency.format(item.subtotal)}</td>
+              <td className="receipt-col-name">{item.name}</td>
+              <td className="receipt-col-qty">{item.qty}</td>
+              <td className="receipt-col-price">{currency.format(item.price)}</td>
+              <td className="receipt-col-subtotal">{currency.format(item.subtotal)}</td>
             </tr>
           ))}
         </tbody>
       </table>
       <hr />
-      <div style={{ display: "grid", gap: 2 }}>
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
+      <div className="receipt-totals">
+        <div className="receipt-row">
           <span>Subtotal</span>
           <span>{currency.format(orderInfo.subtotal ?? 0)}</span>
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
+        <div className="receipt-row">
           <span>Descuento</span>
           <span>{currency.format(orderInfo.discount ?? 0)}</span>
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
+        <div className="receipt-row">
           <span>Impuestos</span>
           <span>{currency.format(orderInfo.taxes ?? 0)}</span>
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
+        <div className="receipt-row-bold">
           <span>Total</span>
           <span>{currency.format(orderInfo.total ?? 0)}</span>
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
+        <div className="receipt-row">
           <span>Pagado</span>
           <span>{currency.format(orderInfo.paid ?? 0)}</span>
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
+        <div className="receipt-row">
           <span>Cambio</span>
           <span>{currency.format(orderInfo.change ?? 0)}</span>
         </div>
       </div>
       <hr />
-      <div style={{ textAlign: "center" }}>¡Gracias por su compra!</div>
+      <div className="receipt-text-center">¡Gracias por su compra!</div>
       {qrSrc ? (
-        <div style={{ marginTop: 12, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-          <img src={qrSrc} alt="Código QR de validación" style={{ width: 120, height: 120 }} />
-          <span style={{ fontSize: 10, color: "#64748b" }}>Escanea para validar el comprobante</span>
+        <div className="receipt-qr-container">
+          <img src={qrSrc} alt="Código QR de validación" className="receipt-qr-image" />
+          <span className="receipt-qr-text">Escanea para validar el comprobante</span>
         </div>
       ) : null}
     </div>

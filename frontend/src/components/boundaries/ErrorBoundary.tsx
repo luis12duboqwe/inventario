@@ -1,4 +1,5 @@
 import React from "react";
+import { API_URL } from "@api/client";
 
 type Props = { children: React.ReactNode };
 type State = { hasError: boolean; info: string | null; errMsg: string | null };
@@ -16,13 +17,13 @@ export class ErrorBoundary extends React.Component<Props, State> {
       const payload = {
         type: "react_error",
         message: String(error),
-        stack: (error as any)?.stack || "",
+        stack: error instanceof Error ? error.stack || "" : "",
         componentStack: info.componentStack || "",
         ts: Date.now(),
       };
       if (navigator?.sendBeacon) {
         const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
-        navigator.sendBeacon("/api/metrics", blob);
+        navigator.sendBeacon(`${API_URL}/metrics`, blob);
       } else {
         // fallback
         console.error("[ErrorBoundary]", payload);

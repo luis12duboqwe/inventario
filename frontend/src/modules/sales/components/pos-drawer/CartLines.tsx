@@ -22,41 +22,27 @@ function CartLines({ items, onQty, onRemove }: POSCartLinesProps) {
   const data = Array.isArray(items) ? items : [];
 
   if (data.length === 0) {
-    return <div style={{ color: "#9ca3af" }}>Carrito vacío</div>;
+    return <div className="pos-cart-empty">Carrito vacío</div>;
   }
 
   return (
-    <div style={{ display: "grid", gap: 6 }}>
+    <div className="pos-cart-lines">
       {data.map((line) => (
-        <div
-          key={line.id}
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 80px 90px 100px 36px",
-            gap: 8,
-            alignItems: "center",
-            border: "1px solid rgba(255, 255, 255, 0.08)",
-            borderRadius: 8,
-            padding: 8,
-          }}
-        >
+        <div key={line.id} className="pos-cart-line">
           <div>
-            <div style={{ fontWeight: 700 }}>{line.name}</div>
-            <div style={{ fontSize: 12, color: "#94a3b8" }}>{line.sku ?? "—"}</div>
+            <div className="pos-cart-line-name">{line.name}</div>
+            <div className="pos-cart-line-sku">{line.sku ?? "—"}</div>
           </div>
           <input
             type="number"
             min={0}
             value={line.qty}
             onChange={(event) => onQty?.(line.id, Number(event.target.value || 0))}
-            style={{ width: "100%", padding: 6, borderRadius: 8 }}
+            className="pos-cart-line-qty"
           />
-          <div style={{ textAlign: "right" }}>{currency.format(line.price)}</div>
-          <div style={{ textAlign: "right" }}>{currency.format(line.subtotal)}</div>
-          <button
-            onClick={() => onRemove?.(line.id)}
-            style={{ padding: "6px 8px", borderRadius: 8, background: "#b91c1c", color: "#fff", border: 0 }}
-          >
+          <div className="pos-cart-line-price">{currency.format(line.price)}</div>
+          <div className="pos-cart-line-subtotal">{currency.format(line.subtotal)}</div>
+          <button onClick={() => onRemove?.(line.id)} className="pos-cart-line-remove">
             ×
           </button>
         </div>

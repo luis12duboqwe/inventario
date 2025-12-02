@@ -1,4 +1,4 @@
-import type { Customer } from "../../../../api";
+import type { Customer } from "@api/customers";
 
 type CustomersTableProps = {
   customers: Customer[];
@@ -31,9 +31,7 @@ const CustomersTable = ({
 
   if (customers.length === 0) {
     return (
-      <p className="muted-text">
-        No hay clientes que coincidan con los filtros seleccionados.
-      </p>
+      <p className="muted-text">No hay clientes que coincidan con los filtros seleccionados.</p>
     );
   }
 
@@ -82,8 +80,7 @@ const CustomersTable = ({
                 <td>
                   <strong>{customer.name}</strong>
                   <div className="muted-text small">
-                    Registrado el {" "}
-                    {new Date(customer.created_at).toLocaleDateString("es-HN")}
+                    Registrado el {new Date(customer.created_at).toLocaleDateString("es-HN")}
                   </div>
                 </td>
                 <td>{customer.customer_type ?? "—"}</td>

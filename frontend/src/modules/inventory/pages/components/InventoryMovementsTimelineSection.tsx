@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { RefreshCcw } from "lucide-react";
 
-import Button from "../../../../shared/components/ui/Button";
+import Button from "@components/ui/Button";
 import { useInventoryLayout } from "../context/InventoryLayoutContext";
 
 function InventoryMovementsTimelineSection() {

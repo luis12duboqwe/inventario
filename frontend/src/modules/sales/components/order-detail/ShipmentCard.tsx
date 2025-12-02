@@ -18,19 +18,10 @@ function ShipmentCard({ shipment }: OrderShipmentCardProps) {
   }
 
   return (
-    <div
-      style={{
-        padding: 12,
-        borderRadius: 12,
-        background: "rgba(255, 255, 255, 0.04)",
-        border: "1px solid rgba(255, 255, 255, 0.08)",
-        display: "grid",
-        gap: 4,
-      }}
-    >
-      <span style={{ fontSize: 12, color: "#94a3b8" }}>Envío</span>
+    <div className="shipment-card">
+      <span className="shipment-card-label">Envío</span>
       <span>{info.address ?? "—"}</span>
-      <span style={{ fontSize: 12, color: "#94a3b8" }}>
+      <span className="shipment-card-details">
         {[info.company, info.tracking].filter(Boolean).join(" · ")}
       </span>
     </div>

@@ -1,10 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { MapPin, Building2, Hash, Clock, CheckCircle2 } from "lucide-react";
 import ModuleHeader from "../../../shared/components/ModuleHeader";
-import TextField from "../../../shared/components/ui/TextField";
-import Button from "../../../shared/components/ui/Button";
+import TextField from "@components/ui/TextField";
+import Button from "@components/ui/Button";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
-import { createStore, updateStore, type Store, type StoreCreateInput, type StoreUpdateInput } from "../../../api";
+import {
+  createStore,
+  updateStore,
+  type Store,
+  type StoreCreateInput,
+  type StoreUpdateInput,
+} from "@api/stores";
 
 function StoresPage() {
   const { token, currentUser, pushToast, refreshStores, stores } = useDashboard();
@@ -37,7 +43,9 @@ function StoresPage() {
         if (mounted) setLoading(false);
       }
     })();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [refreshStores]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -180,8 +188,19 @@ function StoresPage() {
                 helperText="Usa solo caracteres ASCII; mínimo 5 caracteres"
               />
               <div className="form-actions">
-                <Button type="submit" variant="primary" disabled={loading || !canManage} leadingIcon={<CheckCircle2 size={16} />}>
-                  {loading ? (editingId ? "Actualizando…" : "Guardando…") : (editingId ? "Actualizar sucursal" : "Guardar sucursal")}
+                <Button
+                  type="submit"
+                  variant="primary"
+                  disabled={loading || !canManage}
+                  leadingIcon={<CheckCircle2 size={16} />}
+                >
+                  {loading
+                    ? editingId
+                      ? "Actualizando…"
+                      : "Guardando…"
+                    : editingId
+                    ? "Actualizar sucursal"
+                    : "Guardar sucursal"}
                 </Button>
                 {editingId ? (
                   <Button type="button" variant="ghost" onClick={cancelEdit} disabled={loading}>
@@ -189,7 +208,11 @@ function StoresPage() {
                   </Button>
                 ) : null}
               </div>
-              {error ? <div className="alert error" role="alert">{error}</div> : null}
+              {error ? (
+                <div className="alert error" role="alert">
+                  {error}
+                </div>
+              ) : null}
             </form>
           </section>
 
@@ -222,13 +245,23 @@ function StoresPage() {
                     </thead>
                     <tbody>
                       {stores.map((s) => (
-                        <tr key={s.id} onClick={() => startEdit(s)} style={{ cursor: "pointer" }} aria-label={`Editar ${s.name}`}>
+                        <tr
+                          key={s.id}
+                          onClick={() => startEdit(s)}
+                          style={{ cursor: "pointer" }}
+                          aria-label={`Editar ${s.name}`}
+                        >
                           <td>{s.id}</td>
                           <td>{s.name}</td>
                           <td>{s.code}</td>
                           <td>{s.status}</td>
                           <td>{s.timezone}</td>
-                          <td>{new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" }).format(s.inventory_value)}</td>
+                          <td>
+                            {new Intl.NumberFormat("es-HN", {
+                              style: "currency",
+                              currency: "MXN",
+                            }).format(s.inventory_value)}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

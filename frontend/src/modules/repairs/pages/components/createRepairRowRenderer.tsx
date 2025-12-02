@@ -1,11 +1,9 @@
 import type { ReactNode } from "react";
 
-import type { Device, RepairOrder } from "../../../../api";
+import type { Device } from "@api/inventory";
+import type { RepairOrder } from "@api/repairs";
 
-import {
-  repairStatusLabels,
-  repairStatusOptions,
-} from "./repairOrdersBoardConstants";
+import { repairStatusLabels, repairStatusOptions } from "./repairOrdersBoardConstants";
 
 type RepairRowRendererDependencies = {
   devicesById: Map<number, Device>;
@@ -76,7 +74,8 @@ const createRepairRowRenderer = ({
                       : "Repuesto externo";
                     return (
                       <li key={`${order.id}-${part.id}`}>
-                        {part.quantity} × {label} — {part.source === "EXTERNAL" ? "Compra externa" : "Inventario"} (
+                        {part.quantity} × {label} —{" "}
+                        {part.source === "EXTERNAL" ? "Compra externa" : "Inventario"} (
                         {part.unit_cost.toLocaleString("es-HN", {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
@@ -96,7 +95,9 @@ const createRepairRowRenderer = ({
         <td data-label="Estado">
           <select
             value={order.status}
-            onChange={(event) => handleStatusChange(order, event.target.value as RepairOrder["status"])}
+            onChange={(event) =>
+              handleStatusChange(order, event.target.value as RepairOrder["status"])
+            }
           >
             {repairStatusOptions.map((status) => (
               <option key={status} value={status}>
@@ -121,7 +122,11 @@ const createRepairRowRenderer = ({
               </button>
             ) : null}
             {order.status !== "ENTREGADO" && order.status !== "CANCELADO" ? (
-              <button type="button" className="btn btn--ghost" onClick={() => void handleClose(order)}>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => void handleClose(order)}
+              >
                 Cerrar y PDF
               </button>
             ) : null}
@@ -137,12 +142,13 @@ const createRepairRowRenderer = ({
     );
   }
 
-  (RepairRow as any).displayName = "RepairRow";
+  (RepairRow as unknown as { displayName: string }).displayName = "RepairRow";
   return RepairRow;
 };
 
 // Nota: se deja el nombre de fábrica para depuración de creación del renderer
-(createRepairRowRenderer as any).displayName = "createRepairRowRenderer";
+(createRepairRowRenderer as unknown as { displayName: string }).displayName =
+  "createRepairRowRenderer";
 
 export type { RepairRowRendererDependencies };
 export { createRepairRowRenderer };

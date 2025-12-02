@@ -1,7 +1,7 @@
 // [PACK29-*] Filtros interactivos para reportes de ventas
 import type { ChangeEvent, FormEvent } from "react";
 
-import Button from "@/shared/components/ui/Button";
+import Button from "@components/ui/Button";
 import type { Store } from "@/api";
 
 import type { SalesFiltersState } from "../pages/SalesReportsPage";

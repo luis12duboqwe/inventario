@@ -2,7 +2,7 @@ import { Suspense, memo, useMemo } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { Cog } from "lucide-react";
 
-import Loader from "../../../components/common/Loader";
+import { Loader } from "@components/ui/Loader";
 import ModuleHeader, { type ModuleStatus } from "../../../shared/components/ModuleHeader";
 import { useOperationsModule } from "../hooks/useOperationsModule";
 

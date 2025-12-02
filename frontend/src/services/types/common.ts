@@ -16,11 +16,11 @@ export interface ListParams {
 }
 
 export interface ResultOK<T> { ok: true; data: T; }
-export interface ResultErr  { ok: false; error: { status?: number; message: string; details?: any } }
+export interface ResultErr  { ok: false; error: { status?: number; message: string; details?: unknown } }
 export type Result<T> = ResultOK<T> | ResultErr;
 
 export function ok<T>(data: T): Result<T> { return { ok: true, data }; }
-export function err(message: string, status?: number, details?: any): Result<never> {
+export function err(message: string, status?: number, details?: unknown): Result<never> {
   const errorPayload: ResultErr["error"] = { message };
   if (typeof status === "number") {
     errorPayload.status = status;
@@ -32,5 +32,5 @@ export function err(message: string, status?: number, details?: any): Result<nev
 }
 
 // Type guards (suaves) para protección mínima en runtime
-export function isArray<T = unknown>(v: any): v is T[] { return Array.isArray(v); }
-export function isObject(v: any): v is Record<string, any> { return v !== null && typeof v === "object" && !Array.isArray(v); }
+export function isArray<T = unknown>(v: unknown): v is T[] { return Array.isArray(v); }
+export function isObject(v: unknown): v is Record<string, unknown> { return v !== null && typeof v === "object" && !Array.isArray(v); }

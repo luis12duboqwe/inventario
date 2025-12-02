@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import Button from "../../../shared/components/ui/Button";
-import TextField from "../../../shared/components/ui/TextField";
+import Button from "@components/ui/Button";
+import TextField from "@components/ui/TextField";
 import {
   getImportValidationReport,
   getPendingImportValidations,
@@ -9,7 +9,7 @@ import {
   type DeviceUpdateInput,
   type ImportValidationDetail,
   type ImportValidationSummary,
-} from "../../../api";
+} from "@api/inventory";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 
 const DEFAULT_REASON = "Corrección validación importación";
@@ -121,7 +121,13 @@ function CorreccionesPendientesPage() {
       try {
         setSaving(true);
         setError(null);
-        await updateDevice(token, selected.device.store_id, selected.device.id, updates, normalizedReason);
+        await updateDevice(
+          token,
+          selected.device.store_id,
+          selected.device.id,
+          updates,
+          normalizedReason,
+        );
         await markImportValidationCorrected(token, selected.id, normalizedReason);
         pushToast({ message: "Registro corregido", variant: "success" });
         setSelected(null);
@@ -145,11 +151,18 @@ function CorreccionesPendientesPage() {
           <div>
             <h1>Validación avanzada</h1>
             <p className="card-subtitle">
-              Revisa los hallazgos posteriores a la importación y aplica correcciones sobre los registros pendientes.
+              Revisa los hallazgos posteriores a la importación y aplica correcciones sobre los
+              registros pendientes.
             </p>
           </div>
           <div className="card-actions">
-            <Button variant="ghost" size="sm" type="button" onClick={() => void refresh()} disabled={loading}>
+            <Button
+              variant="ghost"
+              size="sm"
+              type="button"
+              onClick={() => void refresh()}
+              disabled={loading}
+            >
               Actualizar
             </Button>
             <a
@@ -187,7 +200,11 @@ function CorreccionesPendientesPage() {
               </div>
               <div>
                 <dt>Campos faltantes</dt>
-                <dd>{summary.campos_faltantes.length > 0 ? summary.campos_faltantes.join(", ") : "Ninguno"}</dd>
+                <dd>
+                  {summary.campos_faltantes.length > 0
+                    ? summary.campos_faltantes.join(", ")
+                    : "Ninguno"}
+                </dd>
               </div>
               <div>
                 <dt>Tiempo total (s)</dt>
@@ -199,7 +216,9 @@ function CorreccionesPendientesPage() {
               </div>
             </dl>
           ) : (
-            <p className="muted-text">El resumen estará disponible después de la siguiente importación.</p>
+            <p className="muted-text">
+              El resumen estará disponible después de la siguiente importación.
+            </p>
           )}
           {error ? <p className="error-text">{error}</p> : null}
         </div>
@@ -210,7 +229,8 @@ function CorreccionesPendientesPage() {
           <div>
             <h2>Registros por corregir</h2>
             <p className="card-subtitle">
-              Selecciona un elemento para editar los datos críticos y marcar la incidencia como corregida.
+              Selecciona un elemento para editar los datos críticos y marcar la incidencia como
+              corregida.
             </p>
           </div>
         </header>
@@ -234,7 +254,9 @@ function CorreccionesPendientesPage() {
                 <tbody>
                   {validations.map((validation) => {
                     const isSelected = validation.id === selected?.id;
-                    const deviceLabel = validation.device ? `${validation.device.sku} · ${validation.device.name}` : "Sin dispositivo";
+                    const deviceLabel = validation.device
+                      ? `${validation.device.sku} · ${validation.device.name}`
+                      : "Sin dispositivo";
                     return (
                       <tr
                         key={validation.id}
@@ -244,7 +266,11 @@ function CorreccionesPendientesPage() {
                         <td>{validation.id}</td>
                         <td>{validation.descripcion}</td>
                         <td>
-                          <span className={`badge ${validation.severidad === "error" ? "badge-critical" : "badge-warning"}`}>
+                          <span
+                            className={`badge ${
+                              validation.severidad === "error" ? "badge-critical" : "badge-warning"
+                            }`}
+                          >
                             {validation.severidad}
                           </span>
                         </td>
@@ -320,7 +346,8 @@ function CorreccionesPendientesPage() {
             </form>
           ) : (
             <p className="muted-text">
-              Selecciona una validación con dispositivo asociado para habilitar la edición rápida de campos.
+              Selecciona una validación con dispositivo asociado para habilitar la edición rápida de
+              campos.
             </p>
           )}
         </div>

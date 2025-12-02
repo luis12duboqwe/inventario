@@ -5,23 +5,26 @@ import { describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import type { Device } from "../../../../api";
 
-vi.mock("framer-motion", () => {
-  const React = require("react");
-  return {
-    AnimatePresence: ({ children }: { children: ReactNode }) => (
-      <>{children}</>
+vi.mock("framer-motion", async () => {
+  const React = await import("react");
+  const MotionDiv = React.forwardRef(
+    (props: React.ComponentProps<"div">, ref: React.Ref<HTMLDivElement>) => (
+      <div ref={ref} {...props} />
     ),
+  );
+  MotionDiv.displayName = "MotionDiv";
+  const MotionButton = React.forwardRef(
+    (props: React.ComponentProps<"button">, ref: React.Ref<HTMLButtonElement>) => (
+      <button ref={ref} {...props} />
+    ),
+  );
+  MotionButton.displayName = "MotionButton";
+
+  return {
+    AnimatePresence: ({ children }: { children: ReactNode }) => <>{children}</>,
     motion: {
-      div: React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-        ({ children, ...props }, ref) =>
-          React.createElement("div", { ...props, ref }, children),
-      ),
-      button: React.forwardRef<
-        HTMLButtonElement,
-        React.ButtonHTMLAttributes<HTMLButtonElement>
-      >(({ children, ...props }, ref) =>
-        React.createElement("button", { ...props, ref }, children),
-      ),
+      div: MotionDiv,
+      button: MotionButton,
     },
   };
 });
@@ -62,9 +65,7 @@ describe("DeviceEditDialog", () => {
     imagen_url: "https://softmobile.test/devices/sku-700.png",
     imeis_adicionales: ["490154203237510"],
     imagenes: ["https://softmobile.test/devices/sku-700-front.png"],
-    enlaces: [
-      { titulo: "Ficha", url: "https://softmobile.test/ficha.pdf" },
-    ],
+    enlaces: [{ titulo: "Ficha", url: "https://softmobile.test/ficha.pdf" }],
     precio_venta: 8999,
     identifier: null,
   };
@@ -74,14 +75,7 @@ describe("DeviceEditDialog", () => {
     const onClose = vi.fn();
     const onSubmit = vi.fn().mockResolvedValue(undefined);
 
-    render(
-      <DeviceEditDialog
-        device={baseDevice}
-        open
-        onClose={onClose}
-        onSubmit={onSubmit}
-      />,
-    );
+    render(<DeviceEditDialog device={baseDevice} open onClose={onClose} onSubmit={onSubmit} />);
 
     const nameInput = await screen.findByLabelText("Nombre comercial");
     await user.clear(nameInput);
@@ -93,10 +87,7 @@ describe("DeviceEditDialog", () => {
 
     const imeisTextarea = screen.getByPlaceholderText("Ingresa un IMEI por línea");
     await user.clear(imeisTextarea);
-    await user.type(
-      imeisTextarea,
-      "490154203237521\n\n490154203237521\n  490154203237522  ",
-    );
+    await user.type(imeisTextarea, "490154203237521\n\n490154203237521\n  490154203237522  ");
 
     const imagesTextarea = screen.getByPlaceholderText("https://cdn.softmobile.test/foto.png");
     await user.clear(imagesTextarea);
@@ -126,17 +117,13 @@ describe("DeviceEditDialog", () => {
       expect(onSubmit).toHaveBeenCalled();
     });
 
-    const [updates, reason] = onSubmit.mock.calls[0];
+    const [updates, reason] = onSubmit.mock.calls[0]!;
     expect(reason).toBe("Actualización integral del catálogo");
     expect(updates).toMatchObject({
       name: "Dispositivo actualizado",
       imei: "490154203237520",
       descripcion: "Equipo con accesorios completos",
-      imeis_adicionales: [
-        "490154203237521",
-        "490154203237521",
-        "490154203237522",
-      ],
+      imeis_adicionales: ["490154203237521", "490154203237521", "490154203237522"],
       imagenes: [
         "https://softmobile.test/devices/sku-700-back.png",
         "https://softmobile.test/devices/sku-700-box.png",
@@ -154,14 +141,7 @@ describe("DeviceEditDialog", () => {
     const onClose = vi.fn();
     const onSubmit = vi.fn().mockResolvedValue(undefined);
 
-    render(
-      <DeviceEditDialog
-        device={baseDevice}
-        open
-        onClose={onClose}
-        onSubmit={onSubmit}
-      />,
-    );
+    render(<DeviceEditDialog device={baseDevice} open onClose={onClose} onSubmit={onSubmit} />);
 
     const descriptionTextarea = await screen.findByLabelText("Descripción");
     await user.clear(descriptionTextarea);
@@ -174,9 +154,7 @@ describe("DeviceEditDialog", () => {
     await user.click(submitButton);
 
     expect(
-      await screen.findByText(
-        "Ingresa un motivo corporativo de al menos 5 caracteres.",
-      ),
+      await screen.findByText("Ingresa un motivo corporativo de al menos 5 caracteres."),
     ).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();

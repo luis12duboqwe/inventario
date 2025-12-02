@@ -32,7 +32,10 @@ export default function StockMoveDetailPage() {
   }, [mov]);
 
   const calcAdjustments = React.useCallback(() => 0, []);
-  const calcTotal = React.useCallback(() => calcSubtotal() + calcAdjustments(), [calcAdjustments, calcSubtotal]);
+  const calcTotal = React.useCallback(
+    () => calcSubtotal() + calcAdjustments(),
+    [calcAdjustments, calcSubtotal],
+  );
 
   const handleApprove = React.useCallback(() => {
     // TODO: conectar con aprobación real
@@ -50,7 +53,7 @@ export default function StockMoveDetailPage() {
   const safeStatus = mov?.status || "PENDING";
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
+    <div className="stock-move-detail-container">
       <MoveHeader
         number={mov?.number ?? ""}
         status={safeStatus}
@@ -60,12 +63,12 @@ export default function StockMoveDetailPage() {
         onApprove={handleApprove}
         onCancel={handleCancel}
       />
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
-        <div style={{ display: "grid", gap: 12 }}>
+      <div className="stock-move-detail-grid">
+        <div className="stock-move-detail-column">
           <MoveItemsTable items={mov?.items ?? []} />
           <MoveNotes value={mov?.note ?? ""} />
         </div>
-        <div style={{ display: "grid", gap: 12 }}>
+        <div className="stock-move-detail-column">
           <MoveSourceCard node={mov?.source ?? { id: "", name: "" }} />
           <MoveDestinationCard node={mov?.dest ?? { id: "", name: "" }} />
           <MoveTotalsCard

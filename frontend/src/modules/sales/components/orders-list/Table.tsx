@@ -1,4 +1,5 @@
 import React from "react";
+import { Skeleton } from "@components/ui/Skeleton";
 
 import ChannelBadge from "./ChannelBadge";
 import PaymentStatusBadge from "./PaymentStatusBadge";
@@ -41,30 +42,30 @@ function Table({
   const allSelected = data.length > 0 && data.every((row) => selected.includes(row.id));
 
   if (loading) {
-    return <div style={{ padding: 12 }}>Cargando…</div>;
+    return <Skeleton lines={5} />;
   }
 
   if (data.length === 0) {
-    return <div style={{ padding: 12, color: "#9ca3af" }}>Sin resultados</div>;
+    return <div className="orders-list-table__empty">Sin resultados</div>;
   }
 
   return (
-    <div style={{ overflow: "auto", borderRadius: 12, border: "1px solid rgba(255, 255, 255, 0.08)" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+    <div className="orders-list-table-container">
+      <table className="orders-list-table">
         <thead>
-          <tr style={{ background: "rgba(255, 255, 255, 0.03)" }}>
-            <th style={{ textAlign: "center", padding: 10, width: 36 }}>
+          <tr className="orders-list-table__header-row">
+            <th className="orders-list-table__th--checkbox">
               <input type="checkbox" checked={allSelected} onChange={() => onToggleSelectAll?.()} />
             </th>
-            <th style={{ textAlign: "left", padding: 10 }}>Fecha</th>
-            <th style={{ textAlign: "left", padding: 10 }}>#</th>
-            <th style={{ textAlign: "left", padding: 10 }}>Cliente</th>
-            <th style={{ textAlign: "center", padding: 10 }}>Items</th>
-            <th style={{ textAlign: "right", padding: 10 }}>Total</th>
-            <th style={{ textAlign: "right", padding: 10 }}>Pagado</th>
-            <th style={{ textAlign: "left", padding: 10 }}>Pago</th>
-            <th style={{ textAlign: "left", padding: 10 }}>Estado</th>
-            <th style={{ textAlign: "left", padding: 10 }}>Canal</th>
+            <th className="orders-list-table__th">Fecha</th>
+            <th className="orders-list-table__th">#</th>
+            <th className="orders-list-table__th">Cliente</th>
+            <th className="orders-list-table__th--center">Items</th>
+            <th className="orders-list-table__th--right">Total</th>
+            <th className="orders-list-table__th--right">Pagado</th>
+            <th className="orders-list-table__th">Pago</th>
+            <th className="orders-list-table__th">Estado</th>
+            <th className="orders-list-table__th">Canal</th>
           </tr>
         </thead>
         <tbody>
@@ -72,10 +73,10 @@ function Table({
             <tr
               key={row.id}
               onClick={() => onRowClick?.(row)}
-              style={{ cursor: onRowClick ? "pointer" : "default" }}
+              className={onRowClick ? "orders-list-table__row--clickable" : ""}
             >
               <td
-                style={{ textAlign: "center", padding: 10 }}
+                className="orders-list-table__td--center"
                 onClick={(event) => event.stopPropagation()}
               >
                 <input
@@ -87,19 +88,19 @@ function Table({
                   }}
                 />
               </td>
-              <td style={{ padding: 10 }}>{row.date}</td>
-              <td style={{ padding: 10 }}>{row.number ?? "-"}</td>
-              <td style={{ padding: 10 }}>{row.customer ?? "—"}</td>
-              <td style={{ padding: 10, textAlign: "center" }}>{row.itemsCount}</td>
-              <td style={{ padding: 10, textAlign: "right" }}>{numberFormatter.format(row.total)}</td>
-              <td style={{ padding: 10, textAlign: "right" }}>{numberFormatter.format(row.paid)}</td>
-              <td style={{ padding: 10 }}>
+              <td className="orders-list-table__td">{row.date}</td>
+              <td className="orders-list-table__td">{row.number ?? "-"}</td>
+              <td className="orders-list-table__td">{row.customer ?? "—"}</td>
+              <td className="orders-list-table__td--center">{row.itemsCount}</td>
+              <td className="orders-list-table__td--right">{numberFormatter.format(row.total)}</td>
+              <td className="orders-list-table__td--right">{numberFormatter.format(row.paid)}</td>
+              <td className="orders-list-table__td">
                 <PaymentStatusBadge value={row.paymentStatus} />
               </td>
-              <td style={{ padding: 10 }}>
+              <td className="orders-list-table__td">
                 <StatusBadge value={row.status} />
               </td>
-              <td style={{ padding: 10 }}>
+              <td className="orders-list-table__td">
                 <ChannelBadge value={row.channel} />
               </td>
             </tr>

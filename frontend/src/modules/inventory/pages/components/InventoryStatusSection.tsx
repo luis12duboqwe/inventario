@@ -2,7 +2,7 @@ import { Suspense, lazy } from "react";
 
 import { motion } from "framer-motion";
 
-import Loader from "../../../../components/common/Loader";
+import { Loader } from "@components/ui/Loader";
 import { useInventoryLayout } from "../context/InventoryLayoutContext";
 
 const InventoryCategoryChart = lazy(() => import("../../components/InventoryCategoryChart"));

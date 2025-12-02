@@ -1,4 +1,4 @@
-import type { RepairOrder } from "../../../../api";
+import type { RepairOrder } from "@api/repairs";
 
 import type { RepairForm } from "../../../../types/repairs";
 
@@ -36,7 +36,10 @@ const initialRepairForm: RepairForm = {
   deviceModel: "",
   imei: "",
   deviceDescription: "",
+  problemDescription: "",
   notes: "",
+  estimatedCost: 0,
+  depositAmount: 0,
   laborCost: 0,
   parts: [],
 };

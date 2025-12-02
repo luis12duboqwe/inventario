@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { Skeleton } from "@/ui/Skeleton"; // [PACK36-operations-history]
+import { Skeleton } from "@components/ui/Skeleton"; // [PACK36-operations-history]
 import { safeArray, safeDate, safeNumber, safeString } from "@/utils/safeValues"; // [PACK36-operations-history]
-import type {
-  OperationsHistoryRecord,
-  OperationsTechnicianSummary,
-  Store,
-} from "../../../api";
-import { listOperationsHistory } from "../../../api";
+import {
+  type OperationsHistoryRecord,
+  type OperationsTechnicianSummary,
+  listOperationsHistory,
+} from "@api/operations";
+import { type Store } from "@api/inventory";
 
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 
@@ -52,7 +52,8 @@ function OperationsHistoryPanel({ stores, token }: Props) {
 
   const normalizedStores = useMemo(() => safeArray(stores), [stores]); // [PACK36-operations-history]
 
-  const formatOccurredAt = (value: unknown) => { // [PACK36-operations-history]
+  const formatOccurredAt = (value: unknown) => {
+    // [PACK36-operations-history]
     const parsed = safeDate(value);
     if (!parsed) {
       return "Fecha desconocida";
@@ -60,7 +61,8 @@ function OperationsHistoryPanel({ stores, token }: Props) {
     return parsed.toLocaleString("es-HN");
   };
 
-  const friendlyErrorMessage = (message: string) => { // [PACK36-operations-history]
+  const friendlyErrorMessage = (message: string) => {
+    // [PACK36-operations-history]
     if (message.toLowerCase().includes("failed to fetch")) {
       return "No fue posible conectar con el servicio Softmobile. Intenta nuevamente en unos segundos.";
     }
@@ -104,14 +106,7 @@ function OperationsHistoryPanel({ stores, token }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [
-    token,
-    filters.storeId,
-    filters.technicianId,
-    filters.startDate,
-    filters.endDate,
-    pushToast,
-  ]);
+  }, [token, filters.storeId, filters.technicianId, filters.startDate, filters.endDate, pushToast]);
 
   const filteredRecords = useMemo(() => {
     return safeArray(records).filter(
@@ -219,10 +214,13 @@ function OperationsHistoryPanel({ stores, token }: Props) {
       <div className="section-divider">
         <h3>Últimos movimientos</h3>
         {filteredRecords.length === 0 && !loading ? (
-          <p className="muted-text">No hay operaciones que coincidan con los filtros seleccionados.</p>
+          <p className="muted-text">
+            No hay operaciones que coincidan con los filtros seleccionados.
+          </p>
         ) : null}
         {loading ? (
-          <div className="table-wrapper" role="status" aria-busy="true">{/* [PACK36-operations-history] */}
+          <div className="table-wrapper" role="status" aria-busy="true">
+            {/* [PACK36-operations-history] */}
             <Skeleton lines={6} />
           </div>
         ) : filteredRecords.length > 0 ? (
@@ -242,7 +240,8 @@ function OperationsHistoryPanel({ stores, token }: Props) {
               <tbody>
                 {filteredRecords.map((record) => {
                   const storeName = record.store_id
-                    ? normalizedStores.find((store) => store.id === record.store_id)?.name ?? "Desconocida"
+                    ? normalizedStores.find((store) => store.id === record.store_id)?.name ??
+                      "Desconocida"
                     : "Corporativo";
                   const typeLabel =
                     OPERATION_TYPES.find((option) => option.id === record.operation_type)?.label ??

@@ -31,8 +31,8 @@ import Sidebar, { type SidebarNavItem } from "../components/Sidebar";
 import { useDashboard } from "../context/DashboardContext";
 import type { ToastMessage } from "../context/DashboardContext";
 import { getRiskAlerts, type RiskAlert } from "../../../api";
-import Button from "../../../shared/components/ui/Button";
-import PageHeader from "../../../shared/components/ui/PageHeader";
+import Button from "@components/ui/Button";
+import PageHeader from "@components/ui/PageHeader";
 import AdminControlPanel, { type AdminControlPanelModule } from "../components/AdminControlPanel";
 import ActionIndicatorBar from "../components/ActionIndicatorBar";
 import type { NotificationCenterItem } from "../components/NotificationCenter";
@@ -119,7 +119,6 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     lastOutboxConflict,
     observability,
     observabilityError,
-    refreshObservability,
     token,
   } = useDashboard();
   const location = useLocation();
@@ -171,32 +170,22 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     setIsSidebarOpen(false);
   };
 
-  // Debug de usuario (solo en desarrollo) y normalización de roles
-  useEffect(() => {
-    if (process.env.NODE_ENV !== "production") {
-      // eslint-disable-next-line no-console
-      console.log("[DEBUG] currentUser:", currentUser);
-      // eslint-disable-next-line no-console
-      console.log("[DEBUG] currentUser?.roles:", currentUser?.roles);
-    }
-  }, [currentUser]);
-
   const roleNames = Array.isArray(currentUser?.roles)
     ? currentUser!.roles.map((role) => role?.name ?? String(role))
     : [];
-  const singleRole = (currentUser as any)?.rol ?? (currentUser as any)?.role ?? null;
+  const singleRole = currentUser?.rol ?? null;
   const allRoleNames = singleRole ? [...roleNames, String(singleRole)] : roleNames;
   const isAdmin = allRoleNames.includes("ADMIN");
   const isManager = allRoleNames.includes("GERENTE");
   const isOperator = allRoleNames.includes("OPERADOR");
   const hasBasicAccess = isAdmin || isManager || isOperator;
 
-  const observabilityNotifications = observability?.notifications ?? [];
   const techNotificationItems = useMemo<NotificationCenterItem[]>(() => {
-    if (observabilityNotifications.length === 0) {
+    const notifications = observability?.notifications ?? [];
+    if (notifications.length === 0) {
       return [];
     }
-    return observabilityNotifications.map((notification) => {
+    return notifications.map((notification) => {
       const severity = (notification.severity ?? "info").toLowerCase();
       const variant: NotificationCenterItem["variant"] =
         severity === "critical" || severity === "error"
@@ -220,7 +209,7 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
         variant,
       } satisfies NotificationCenterItem;
     });
-  }, [observabilityNotifications]);
+  }, [observability]);
 
   const roleVisual = useMemo(() => {
     if (isAdmin) {
@@ -536,6 +525,7 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     outboxError,
     syncStatus,
     toasts,
+    riskAlerts,
   ]);
 
   const panelModules = useMemo<AdminControlPanelModule[]>(() => {

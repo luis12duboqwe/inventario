@@ -17,13 +17,23 @@ import {
 } from "recharts";
 import { useDashboard } from "../context/DashboardContext";
 import { colors } from "../../../theme/designTokens";
-import { Skeleton } from "@/ui/Skeleton"; // [PACK36-metrics]
+import { Skeleton } from "@components/ui/Skeleton"; // [PACK36-metrics]
 import { safeArray, safeNumber, safeString } from "@/utils/safeValues"; // [PACK36-metrics]
 import type { DashboardAuditAlerts } from "@/api";
 
-const PIE_COLORS = [colors.chartCyan, colors.accentBright, colors.accent, colors.chartSky, colors.chartTeal];
+const PIE_COLORS = [
+  colors.chartCyan,
+  colors.accentBright,
+  colors.accent,
+  colors.chartSky,
+  colors.chartTeal,
+];
 
-function resolveStatusTone(value: number, threshold: number, inverse = false): "good" | "alert" | "info" {
+function resolveStatusTone(
+  value: number,
+  threshold: number,
+  inverse = false,
+): "good" | "alert" | "info" {
   if (inverse) {
     return value <= threshold ? "good" : "alert";
   }
@@ -72,18 +82,19 @@ function GlobalMetrics({ auditAlertsMock }: GlobalMetricsProps) {
   const receivableTotal = safeNumber(receivables.total_outstanding_debt);
   const receivableCustomers = safeNumber(receivables.customers_with_debt);
   const receivableMorosos = safeNumber(receivables.moroso_flagged);
-  const auditAlerts = metrics?.audit_alerts ?? auditAlertsMock ?? {
-    // [PACK36-metrics]
-    total: 0,
-    critical: 0,
-    warning: 0,
-    info: 0,
-    has_alerts: false,
-    pending_count: 0,
-    acknowledged_count: 0,
-    highlights: [],
-    acknowledged_entities: [],
-  };
+  const auditAlerts = metrics?.audit_alerts ??
+    auditAlertsMock ?? {
+      // [PACK36-metrics]
+      total: 0,
+      critical: 0,
+      warning: 0,
+      info: 0,
+      has_alerts: false,
+      pending_count: 0,
+      acknowledged_count: 0,
+      highlights: [],
+      acknowledged_entities: [],
+    };
   const totalAlerts = safeNumber(auditAlerts.total);
   const criticalCount = safeNumber(auditAlerts.critical);
   const warningCount = safeNumber(auditAlerts.warning);
@@ -132,16 +143,23 @@ function GlobalMetrics({ auditAlertsMock }: GlobalMetricsProps) {
     quantity: (entry as SalesMetric).quantity ?? null,
     percentage: safeNumber((entry as SalesMetric).percentage ?? 0),
   }));
-  const receivableCaption = receivableCustomers > 0
-    ? `${receivableCustomers} clientes con saldo${receivableMorosos > 0 ? ` · ${receivableMorosos} morosos` : ""}`
-    : "Sin cuentas por cobrar activas";
-  const alertsTone = (pendingCount > 0 || criticalCount > 0)
-    ? ("alert" as const)
-    : (warningCount > 0 ? ("info" as const) : ("good" as const));
+  const receivableCaption =
+    receivableCustomers > 0
+      ? `${receivableCustomers} clientes con saldo${
+          receivableMorosos > 0 ? ` · ${receivableMorosos} morosos` : ""
+        }`
+      : "Sin cuentas por cobrar activas";
+  const alertsTone =
+    pendingCount > 0 || criticalCount > 0
+      ? ("alert" as const)
+      : warningCount > 0
+      ? ("info" as const)
+      : ("good" as const);
 
-  const alertsValue = totalAlerts === 0
-    ? "Sin eventos"
-    : `${pendingCount} pendientes · ${acknowledgedCount} atendidas`;
+  const alertsValue =
+    totalAlerts === 0
+      ? "Sin eventos"
+      : `${pendingCount} pendientes · ${acknowledgedCount} atendidas`;
 
   const cards = [
     {
@@ -180,7 +198,9 @@ function GlobalMetrics({ auditAlertsMock }: GlobalMetricsProps) {
       title: "Reparaciones abiertas",
       value: `${safeNumber(performance.open_repairs)}`,
       caption:
-        safeNumber(performance.open_repairs) === 0 ? "Sin pendientes" : "Coordina cierres con taller",
+        safeNumber(performance.open_repairs) === 0
+          ? "Sin pendientes"
+          : "Coordina cierres con taller",
       tone: resolveStatusTone(safeNumber(performance.open_repairs), 0, true),
     },
     {
@@ -202,7 +222,7 @@ function GlobalMetrics({ auditAlertsMock }: GlobalMetricsProps) {
     (entry: { label: string; value: number }) => ({
       ...entry,
       value: Number(safeNumber(entry.value).toFixed(2)),
-    })
+    }),
   );
   const stockBreakdown = safeArray(metrics?.stock_breakdown);
   type Slice = { label: string; value: number };
@@ -219,7 +239,9 @@ function GlobalMetrics({ auditAlertsMock }: GlobalMetricsProps) {
     acknowledged_at: string;
     note?: string | null;
   };
-  const acknowledgedEntities = (safeArray(auditAlerts.acknowledged_entities) as AcknowledgedEntity[]).slice(0, 3);
+  const acknowledgedEntities = (
+    safeArray(auditAlerts.acknowledged_entities) as AcknowledgedEntity[]
+  ).slice(0, 3);
   const latestAcknowledgement = acknowledgedEntities.length > 0 ? acknowledgedEntities[0] : null;
 
   return (
@@ -292,14 +314,16 @@ function GlobalMetrics({ auditAlertsMock }: GlobalMetricsProps) {
                 </div>
               </dl>
               {topDebtors.length > 0 ? (
-                <ul className="receivables-list" role="list">
+                <ul className="receivables-list">
                   {topDebtors.map((debtor) => {
                     const outstanding = formatCurrency(safeNumber(debtor.outstanding_debt));
                     const available = debtor.available_credit;
                     return (
-                      <li key={debtor.customer_id} className="receivables-item" role="listitem">
+                      <li key={debtor.customer_id} className="receivables-item">
                         <div className="receivables-item__header">
-                          <span className="receivables-name">{safeString(debtor.name, "Cliente")}</span>
+                          <span className="receivables-name">
+                            {safeString(debtor.name, "Cliente")}
+                          </span>
                           <span className="receivables-amount">{outstanding}</span>
                         </div>
                         {available != null ? (
@@ -323,24 +347,24 @@ function GlobalMetrics({ auditAlertsMock }: GlobalMetricsProps) {
                 <h3>Alertas y respuestas rápidas</h3>
                 <span className="chart-caption">Consolidado corporativo</span>
               </header>
-              <div className="alerts-summary" role="list">
-                <div className="summary-item critical" role="listitem">
+              <div className="alerts-summary">
+                <div className="summary-item critical">
                   <span className="summary-value">{criticalCount}</span>
                   <span className="summary-label">Críticas</span>
                 </div>
-                <div className="summary-item warning" role="listitem">
+                <div className="summary-item warning">
                   <span className="summary-value">{warningCount}</span>
                   <span className="summary-label">Preventivas</span>
                 </div>
-                <div className="summary-item info" role="listitem">
+                <div className="summary-item info">
                   <span className="summary-value">{infoCount}</span>
                   <span className="summary-label">Informativas</span>
                 </div>
-                <div className="summary-item pending" role="listitem">
+                <div className="summary-item pending">
                   <span className="summary-value">{pendingCount}</span>
                   <span className="summary-label">Pendientes</span>
                 </div>
-                <div className="summary-item acknowledged" role="listitem">
+                <div className="summary-item acknowledged">
                   <span className="summary-value">{acknowledgedCount}</span>
                   <span className="summary-label">Atendidas</span>
                 </div>
@@ -349,7 +373,7 @@ function GlobalMetrics({ auditAlertsMock }: GlobalMetricsProps) {
                 {latestAcknowledgement ? (
                   <p className="muted-text">
                     Último acuse: {safeString(latestAcknowledgement.entity_type, "Entidad")} #
-                    {safeString(latestAcknowledgement.entity_id, "-")} · {" "}
+                    {safeString(latestAcknowledgement.entity_id, "-")} ·{" "}
                     {formatHighlightDate(latestAcknowledgement.acknowledged_at)}
                     {latestAcknowledgement.acknowledged_by_name
                       ? ` por ${latestAcknowledgement.acknowledged_by_name}`
@@ -388,10 +412,11 @@ function GlobalMetrics({ auditAlertsMock }: GlobalMetricsProps) {
                   {acknowledgedEntities.map((entity) => (
                     <li key={`${entity.entity_type}-${entity.entity_id}`}>
                       <span className="acknowledged-entity">
-                        {safeString(entity.entity_type, "Entidad")} #{safeString(entity.entity_id, "-")}
+                        {safeString(entity.entity_type, "Entidad")} #
+                        {safeString(entity.entity_id, "-")}
                       </span>
                       <span className="acknowledged-meta">
-                        {entity.acknowledged_by_name ?? "Usuario corporativo"} · {" "}
+                        {entity.acknowledged_by_name ?? "Usuario corporativo"} ·{" "}
                         {formatHighlightDate(entity.acknowledged_at)}
                         {entity.note ? ` — ${entity.note}` : ""}
                       </span>
@@ -424,7 +449,14 @@ function GlobalMetrics({ auditAlertsMock }: GlobalMetricsProps) {
                     />
                     <Tooltip formatter={(value: number) => formatCurrency(value)} />
                     <Legend />
-                    <Line type="monotone" dataKey="value" stroke={colors.chartCyan} strokeWidth={2} dot={{ r: 3 }} name="Ventas" />
+                    <Line
+                      type="monotone"
+                      dataKey="value"
+                      stroke={colors.chartCyan}
+                      strokeWidth={2}
+                      dot={{ r: 3 }}
+                      name="Ventas"
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               )}
@@ -449,10 +481,20 @@ function GlobalMetrics({ auditAlertsMock }: GlobalMetricsProps) {
                           stroke="var(--text-secondary)"
                           tickFormatter={(value) => formatCurrency(value).replace("MX$", "")}
                         />
-                        <YAxis type="category" dataKey="label" stroke="var(--text-secondary)" width={140} />
+                        <YAxis
+                          type="category"
+                          dataKey="label"
+                          stroke="var(--text-secondary)"
+                          width={140}
+                        />
                         <Tooltip formatter={(value: number) => formatCurrency(value)} />
                         <Legend />
-                        <Bar dataKey="value" fill={colors.chartCyan} name="Ingresos" radius={[6, 6, 6, 6]} />
+                        <Bar
+                          dataKey="value"
+                          fill={colors.chartCyan}
+                          name="Ingresos"
+                          radius={[6, 6, 6, 6]}
+                        />
                       </BarChart>
                     </ResponsiveContainer>
                   )}
@@ -460,7 +502,9 @@ function GlobalMetrics({ auditAlertsMock }: GlobalMetricsProps) {
                 <div className="ranking-list-wrapper">
                   <h4>Top clientes</h4>
                   {topCustomers.length === 0 ? (
-                    <p className="muted-text">Sin clientes destacados por ventas en este periodo.</p>
+                    <p className="muted-text">
+                      Sin clientes destacados por ventas en este periodo.
+                    </p>
                   ) : (
                     <ul className="sales-ranking-list">
                       {topCustomers.map((customer, index) => {
@@ -469,9 +513,15 @@ function GlobalMetrics({ auditAlertsMock }: GlobalMetricsProps) {
                           <li key={`${customer.label}-${index}`}>
                             <span className="ranking-position">#{index + 1}</span>
                             <div className="ranking-details">
-                              <span className="ranking-name">{safeString(customer.label, "Cliente")}</span>
-                              <span className="ranking-amount">{formatCurrency(safeNumber(customer.value))}</span>
-                              <span className="ranking-orders">{ordersCount.toLocaleString("es-HN")} órdenes</span>
+                              <span className="ranking-name">
+                                {safeString(customer.label, "Cliente")}
+                              </span>
+                              <span className="ranking-amount">
+                                {formatCurrency(safeNumber(customer.value))}
+                              </span>
+                              <span className="ranking-orders">
+                                {ordersCount.toLocaleString("es-HN")} órdenes
+                              </span>
                             </div>
                           </li>
                         );
@@ -500,7 +550,12 @@ function GlobalMetrics({ auditAlertsMock }: GlobalMetricsProps) {
                         <YAxis stroke="var(--text-secondary)" />
                         <Tooltip />
                         <Legend />
-                        <Bar dataKey="value" fill={colors.chartIndigo} name="Unidades" radius={[6, 6, 0, 0]} />
+                        <Bar
+                          dataKey="value"
+                          fill={colors.chartIndigo}
+                          name="Unidades"
+                          radius={[6, 6, 0, 0]}
+                        />
                       </BarChart>
                     </ResponsiveContainer>
                   )}
@@ -514,7 +569,14 @@ function GlobalMetrics({ auditAlertsMock }: GlobalMetricsProps) {
                       <PieChart>
                         <Tooltip formatter={(value: number) => formatCurrency(value)} />
                         <Legend />
-                        <Pie data={profitSlices} dataKey="value" nameKey="label" innerRadius={60} outerRadius={90} paddingAngle={4}>
+                        <Pie
+                          data={profitSlices}
+                          dataKey="value"
+                          nameKey="label"
+                          innerRadius={60}
+                          outerRadius={90}
+                          paddingAngle={4}
+                        >
                           {profitSlices.map((entry, index) => (
                             <Cell key={entry.label} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                           ))}
@@ -547,12 +609,21 @@ function GlobalMetrics({ auditAlertsMock }: GlobalMetricsProps) {
                       <PieChart>
                         <Tooltip
                           formatter={(value: number, _name, payload) => {
-                            const percentage = safeNumber((payload as { payload?: SalesMetric })?.payload?.percentage ?? 0);
+                            const percentage = safeNumber(
+                              (payload as { payload?: SalesMetric })?.payload?.percentage ?? 0,
+                            );
                             return `${formatCurrency(value)} · ${percentage.toFixed(2)}%`;
                           }}
                         />
                         <Legend />
-                        <Pie data={paymentMix} dataKey="value" nameKey="label" innerRadius={55} outerRadius={85} paddingAngle={4}>
+                        <Pie
+                          data={paymentMix}
+                          dataKey="value"
+                          nameKey="label"
+                          innerRadius={55}
+                          outerRadius={85}
+                          paddingAngle={4}
+                        >
                           {paymentMix.map((entry, index) => (
                             <Cell key={entry.label} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                           ))}
@@ -573,7 +644,12 @@ function GlobalMetrics({ auditAlertsMock }: GlobalMetricsProps) {
                         <YAxis stroke="var(--text-secondary)" />
                         <Tooltip />
                         <Legend />
-                        <Bar dataKey="value" fill={colors.accentBright} name="Órdenes" radius={[6, 6, 0, 0]} />
+                        <Bar
+                          dataKey="value"
+                          fill={colors.accentBright}
+                          name="Órdenes"
+                          radius={[6, 6, 0, 0]}
+                        />
                       </BarChart>
                     </ResponsiveContainer>
                   )}

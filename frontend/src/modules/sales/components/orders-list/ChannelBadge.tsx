@@ -4,32 +4,21 @@ export type ChannelBadgeProps = {
   value: "POS" | "WEB" | "MANUAL" | string;
 };
 
-const CHANNEL_COLORS: Record<string, string> = {
-  POS: "#2563eb",
-  WEB: "#9333ea",
-  MANUAL: "#94a3b8",
-};
-
 function ChannelBadge({ value }: ChannelBadgeProps) {
-  const background = CHANNEL_COLORS[value] ?? "#6b7280";
+  const getBadgeClass = (channel: string) => {
+    switch (channel) {
+      case "POS":
+        return "orders-channel-badge--pos";
+      case "WEB":
+        return "orders-channel-badge--web";
+      case "MANUAL":
+        return "orders-channel-badge--manual";
+      default:
+        return "orders-channel-badge--default";
+    }
+  };
 
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        padding: "2px 8px",
-        borderRadius: 999,
-        background,
-        color: "#0b1220",
-        fontSize: 12,
-        fontWeight: 700,
-        textTransform: "uppercase",
-      }}
-    >
-      {value}
-    </span>
-  );
+  return <span className={`orders-channel-badge ${getBadgeClass(value)}`}>{value}</span>;
 }
 
 export default ChannelBadge;

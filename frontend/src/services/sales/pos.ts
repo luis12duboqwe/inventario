@@ -1,5 +1,4 @@
-// src/services/sales/pos.ts
-import { httpPost, httpGet, httpPut } from "../http";
+import { httpClient } from "@api/http";
 import {
   Totals,
   CheckoutRequest,
@@ -12,36 +11,40 @@ import {
 import { apiMap } from "./apiMap";
 
 export async function priceDraft(dto: CheckoutRequest): Promise<Totals> {
-  return httpPost<Totals>(apiMap.pos.price, dto, { withAuth: true });
+  const response = await httpClient.post<Totals>(apiMap.pos.price, dto);
+  return response.data;
 }
 
 export async function holdSale(dto: CheckoutRequest): Promise<{ holdId: string }> {
-  return httpPost<{ holdId: string }>(apiMap.pos.hold, dto, { withAuth: true });
+  const response = await httpClient.post<{ holdId: string }>(apiMap.pos.hold, dto);
+  return response.data;
 }
 
 export async function resumeHold(holdId: string): Promise<CheckoutRequest> {
-  return httpGet<CheckoutRequest>(apiMap.pos.resume(holdId), { withAuth: true });
+  const response = await httpClient.get<CheckoutRequest>(apiMap.pos.resume(holdId));
+  return response.data;
 }
 
 export async function checkout(dto: CheckoutRequest): Promise<CheckoutResponse> {
-  return httpPost<CheckoutResponse>(apiMap.pos.checkout, dto, { withAuth: true });
+  const response = await httpClient.post<CheckoutResponse>(apiMap.pos.checkout, dto);
+  return response.data;
 }
 
 const PROMOTION_REASON_HEADER = { "X-Reason": "Panel promociones POS" } as const;
 
 export async function getPromotions(storeId: string | number): Promise<PosPromotionsConfig> {
-  return httpGet<PosPromotionsConfig>(apiMap.pos.promotions, {
-    withAuth: true,
+  const response = await httpClient.get<PosPromotionsConfig>(apiMap.pos.promotions, {
     headers: PROMOTION_REASON_HEADER,
-    query: { store_id: storeId },
+    params: { store_id: storeId },
   });
+  return response.data;
 }
 
 export async function updatePromotions(dto: PosPromotionsUpdate): Promise<PosPromotionsConfig> {
-  return httpPut<PosPromotionsConfig>(apiMap.pos.promotions, dto, {
-    withAuth: true,
+  const response = await httpClient.put<PosPromotionsConfig>(apiMap.pos.promotions, dto, {
     headers: PROMOTION_REASON_HEADER,
   });
+  return response.data;
 }
 
 export async function sendReceipt(
@@ -49,8 +52,8 @@ export async function sendReceipt(
   payload: ReceiptDeliveryPayload,
   reason: string,
 ): Promise<ReceiptDeliveryResponse> {
-  return httpPost<ReceiptDeliveryResponse>(apiMap.pos.sendReceipt(saleId), payload, {
-    withAuth: true,
+  const response = await httpClient.post<ReceiptDeliveryResponse>(apiMap.pos.sendReceipt(saleId), payload, {
     headers: { "X-Reason": reason },
   });
+  return response.data;
 }

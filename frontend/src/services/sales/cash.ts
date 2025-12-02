@@ -1,12 +1,13 @@
-// src/services/sales/cash.ts
-import { httpGet, httpPost } from "../http";
+import { httpClient } from "@api/http";
 import { CashSummary, CashClosePayload } from "./types";
 import { apiMap } from "./apiMap";
 
 export async function getCashSummary(date: string): Promise<CashSummary> {
-  return httpGet<CashSummary>(apiMap.cash.summary, { withAuth: true, query: { date } });
+  const response = await httpClient.get<CashSummary>(apiMap.cash.summary, { params: { date } });
+  return response.data;
 }
 
 export async function closeCash(payload: CashClosePayload): Promise<{ ok: true }> {
-  return httpPost<{ ok: true }>(apiMap.cash.close, payload, { withAuth: true });
+  const response = await httpClient.post<{ ok: true }>(apiMap.cash.close, payload);
+  return response.data;
 }

@@ -1,5 +1,5 @@
 // [PACK29-*] Tarjetas KPI para el resumen de ventas
-import type { SalesSummaryReport, CashCloseReport } from "@/services/api/reports";
+import type { SalesSummaryReport, CashCloseReport } from "@api/reports";
 
 export type SalesKpiGridProps = {
   summary?: SalesSummaryReport;

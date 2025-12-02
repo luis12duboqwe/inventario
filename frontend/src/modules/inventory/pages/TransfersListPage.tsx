@@ -9,7 +9,7 @@ import {
   TransfersSidePanel,
 } from "../components/transfers/list";
 import type { TransferFilters, TransferRow } from "../components/transfers/list";
-import { listTransfers, type TransferOrder } from "../../../api";
+import { listTransfers, type TransferOrder } from "@api/transfers";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 
 function TransfersListPage() {
@@ -38,7 +38,8 @@ function TransfersListPage() {
       const data = await listTransfers(token, selectedStoreId ?? undefined);
       setTransfers(data);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "No fue posible cargar las transferencias";
+      const message =
+        error instanceof Error ? error.message : "No fue posible cargar las transferencias";
       pushToast({ message, variant: "error" });
     } finally {
       setLoading(false);
@@ -68,7 +69,8 @@ function TransfersListPage() {
     return transfers
       .map((transfer) => {
         const origin = storeMap.get(transfer.origin_store_id) ?? `#${transfer.origin_store_id}`;
-        const destination = storeMap.get(transfer.destination_store_id) ?? `#${transfer.destination_store_id}`;
+        const destination =
+          storeMap.get(transfer.destination_store_id) ?? `#${transfer.destination_store_id}`;
         const quantity = transfer.items.reduce((sum, item) => sum + (item.quantity ?? 0), 0);
         const formattedNumber = `TRF-${String(transfer.id).padStart(6, "0")}`;
         const rawStatus = transfer.status;
@@ -105,8 +107,8 @@ function TransfersListPage() {
       if (!queryMatch) {
         return false;
       }
-  const rowStatus = row.rawStatus ?? row.status;
-  if (filters.status && filters.status !== "ALL" && rowStatus !== filters.status) {
+      const rowStatus = row.rawStatus ?? row.status;
+      if (filters.status && filters.status !== "ALL" && rowStatus !== filters.status) {
         return false;
       }
       if (filters.from && !row.from?.toLowerCase().includes(filters.from.toLowerCase())) {
@@ -130,7 +132,15 @@ function TransfersListPage() {
       }
       return true;
     });
-  }, [filters.dateFrom, filters.dateTo, filters.from, filters.query, filters.status, filters.to, normalizedRows]);
+  }, [
+    filters.dateFrom,
+    filters.dateTo,
+    filters.from,
+    filters.query,
+    filters.status,
+    filters.to,
+    normalizedRows,
+  ]);
 
   useEffect(() => {
     if (!selected) {
@@ -145,14 +155,11 @@ function TransfersListPage() {
   }, [filteredRows, selected]);
 
   const summaryItems = useMemo(() => {
-    const totals = filteredRows.reduce(
-      (acc, row) => {
-  const statusKey = row.rawStatus ?? row.status;
-        acc[statusKey] = (acc[statusKey] ?? 0) + 1;
-        return acc;
-      },
-      {} as Record<string, number>,
-    );
+    const totals = filteredRows.reduce((acc, row) => {
+      const statusKey = row.rawStatus ?? row.status;
+      acc[statusKey] = (acc[statusKey] ?? 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
     return [
       { label: "Solicitadas", value: totals.SOLICITADA ?? 0 },
       { label: "En tránsito", value: totals.EN_TRANSITO ?? 0, status: "in-progress" as const },

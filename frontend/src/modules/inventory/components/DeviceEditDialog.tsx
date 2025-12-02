@@ -1,8 +1,8 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
-import type { Device, DeviceUpdateInput } from "../../../api";
-import Modal from "../../../shared/components/ui/Modal";
-import Button from "../../../shared/components/ui/Button";
+import type { Device, DeviceUpdateInput } from "@api/inventory";
+import Modal from "@components/ui/Modal";
+import Button from "@components/ui/Button";
 
 type Props = {
   device: Device | null;
@@ -89,13 +89,9 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
     }
     const toTextareaList = (items?: string[] | null) =>
       items && items.length > 0 ? items.join("\n") : "";
-    const toLinkTextareaList = (
-      links?: Array<{ titulo?: string | null; url: string }> | null,
-    ) =>
+    const toLinkTextareaList = (links?: Array<{ titulo?: string | null; url: string }> | null) =>
       links && links.length > 0
-        ? links
-            .map((link) => `${(link.titulo ?? "Recurso").trim()}|${link.url.trim()}`)
-            .join("\n")
+        ? links.map((link) => `${(link.titulo ?? "Recurso").trim()}|${link.url.trim()}`).join("\n")
         : "";
     setForm({
       name: device.name,
@@ -203,10 +199,10 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
       }
       try {
         return new URL(trimmed).toString();
-      } catch (error) {
+      } catch {
         try {
           return new URL(`https://${trimmed}`).toString();
-        } catch (retryError) {
+        } catch {
           return null;
         }
       }
@@ -364,7 +360,7 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
 
     const normalizedEnlaces = parseListField(form.enlaces)
       .map((entry) => {
-        const [rawTitle, rawUrl] = entry.includes("|")
+        const [rawTitle = "", rawUrl = ""] = entry.includes("|")
           ? entry.split("|", 2)
           : ["", entry];
         const normalizedLinkUrl = normalizeUrl(rawUrl ?? "");
@@ -435,272 +431,277 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
     >
       {device ? (
         <form id="device-edit-form" onSubmit={handleSubmit} className="device-edit-dialog__form">
-              <div className="device-edit-dialog__grid">
-                <label>
-                  <span>Nombre comercial</span>
-                  <input
-                    value={form.name}
-                    onChange={(event) => handleChange("name", event.target.value)}
-                    required
-                    maxLength={120}
-                  />
-                </label>
-                <label>
-                  <span>Modelo</span>
-                  <input
-                    value={form.modelo}
-                    onChange={(event) => handleChange("modelo", event.target.value)}
-                    maxLength={120}
-                  />
-                </label>
-                <label>
-                  <span>Categoría</span>
-                  <input
-                    value={form.categoria}
-                    onChange={(event) => handleChange("categoria", event.target.value)}
-                    maxLength={80}
-                  />
-                </label>
-                <label>
-                  <span>Marca</span>
-                  <input
-                    value={form.marca}
-                    onChange={(event) => handleChange("marca", event.target.value)}
-                    maxLength={80}
-                  />
-                </label>
-                <label>
-                  <span>Color</span>
-                  <input
-                    value={form.color}
-                    onChange={(event) => handleChange("color", event.target.value)}
-                    maxLength={60}
-                  />
-                </label>
-                <label>
-                  <span>Condición</span>
-                  <input
-                    value={form.condicion}
-                    onChange={(event) => handleChange("condicion", event.target.value)}
-                    maxLength={60}
-                  />
-                </label>
-                <label>
-                  <span>Proveedor</span>
-                  <input
-                    value={form.proveedor}
-                    onChange={(event) => handleChange("proveedor", event.target.value)}
-                    maxLength={120}
-                  />
-                </label>
-                <label>
-                  <span>Estado comercial</span>
-                  <select
-                    value={form.estado}
-                    onChange={(event) => handleChange("estado", event.target.value as FormState["estado"])}
-                  >
-                    {estadoOptions.map((option) => (
-                      <option key={option.value || "none"} value={option.value ?? ""}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>Estado inventario</span>
-                  <input
-                    value={form.estadoInventario}
-                    onChange={(event) => handleChange("estadoInventario", event.target.value)}
-                    maxLength={40}
-                  />
-                </label>
-                <label>
-                  <span>Existencias disponibles</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={form.quantity}
-                    onChange={(event) => handleChange("quantity", event.target.value)}
-                    placeholder={`Actual: ${device.quantity}`}
-                  />
-                  <small className="device-edit-dialog__hint muted-text">
-                    Deja el campo vacío para conservar el total actual o ingresa el valor corregido.
-                  </small>
-                </label>
-                <label>
-                  <span>Capacidad (GB)</span>
-                  <input
-                    type="number"
-                    min={0}
-                    value={form.capacidadGb}
-                    onChange={(event) => handleChange("capacidadGb", event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>Capacidad (texto)</span>
-                  <input
-                    value={form.capacidadTexto}
-                    onChange={(event) => handleChange("capacidadTexto", event.target.value)}
-                    maxLength={80}
-                  />
-                </label>
-                <label>
-                  <span>Precio de venta (MXN)</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    value={form.unitPrice}
-                    onChange={(event) => handleChange("unitPrice", event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>Costo unitario (MXN)</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    value={form.costoUnitario}
-                    onChange={(event) => handleChange("costoUnitario", event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>Margen (%)</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    value={form.margen}
-                    onChange={(event) => handleChange("margen", event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>Garantía (meses)</span>
-                  <input
-                    type="number"
-                    min={0}
-                    value={form.garantia}
-                    onChange={(event) => handleChange("garantia", event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>IMEI</span>
-                  <input
-                    value={form.imei}
-                    onChange={(event) => handleChange("imei", event.target.value)}
-                    maxLength={18}
-                  />
-                </label>
-                <label>
-                  <span>IMEIs adicionales</span>
-                  <textarea
-                    value={form.imeisAdicionales}
-                    onChange={(event) => handleChange("imeisAdicionales", event.target.value)}
-                    placeholder="Ingresa un IMEI por línea"
-                    rows={3}
-                  />
-                  <small className="device-edit-dialog__hint muted-text">
-                    Limpia espacios extra y usa una línea por IMEI para evitar duplicados o registros sucios.
-                  </small>
-                </label>
-                <label>
-                  <span>Serie</span>
-                  <input
-                    value={form.serial}
-                    onChange={(event) => handleChange("serial", event.target.value)}
-                    maxLength={120}
-                  />
-                </label>
-                <label>
-                  <span>Lote</span>
-                  <input
-                    value={form.lote}
-                    onChange={(event) => handleChange("lote", event.target.value)}
-                    maxLength={80}
-                  />
-                </label>
-                <label>
-                  <span>Ubicación</span>
-                  <input
-                    value={form.ubicacion}
-                    onChange={(event) => handleChange("ubicacion", event.target.value)}
-                    maxLength={120}
-                  />
-                </label>
-                <label>
-                  <span>Fecha de compra</span>
-                  <input
-                    type="date"
-                    value={form.fechaCompra}
-                    onChange={(event) => handleChange("fechaCompra", event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>Fecha de ingreso</span>
-                  <input
-                    type="date"
-                    value={form.fechaIngreso}
-                    onChange={(event) => handleChange("fechaIngreso", event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>Descripción</span>
-                  <textarea
-                    value={form.descripcion}
-                    onChange={(event) => handleChange("descripcion", event.target.value)}
-                    maxLength={1024}
-                    rows={2}
-                  />
-                </label>
-                <label>
-                  <span>URL de imagen</span>
-                  <input
-                    type="url"
-                    value={form.imagenUrl}
-                    onChange={(event) => handleChange("imagenUrl", event.target.value)}
-                    maxLength={255}
-                  />
-                </label>
-                <label>
-                  <span>Imágenes adicionales</span>
-                  <textarea
-                    value={form.imagenes}
-                    onChange={(event) => handleChange("imagenes", event.target.value)}
-                    placeholder="https://cdn.softmobile.test/foto.png"
-                    rows={3}
-                  />
-                  <small className="device-edit-dialog__hint muted-text">
-                    Escribe una URL por línea; agregamos https:// automáticamente si falta y omitimos enlaces vacíos.
-                  </small>
-                </label>
-                <label>
-                  <span>Enlaces relacionados</span>
-                  <textarea
-                    value={form.enlaces}
-                    onChange={(event) => handleChange("enlaces", event.target.value)}
-                    placeholder="Manual|https://softmobile.test/manual.pdf"
-                    rows={3}
-                  />
-                  <small className="device-edit-dialog__hint muted-text">
-                    Usa «Título|URL» por línea o solo la URL; el título se normaliza y los espacios se eliminan.
-                  </small>
-                </label>
-              </div>
-              <label className="device-edit-dialog__reason">
-                <span>Motivo corporativo</span>
-                <textarea
-                  value={reason}
-                  onChange={(event) => setReason(event.target.value)}
-                  minLength={5}
-                  maxLength={255}
-                  required
-                  placeholder="Describe brevemente la razón de la actualización"
-                  rows={3}
-                />
-              </label>
-              {error ? <p className="device-edit-dialog__error">{error}</p> : null}
-            </form>
+          <div className="device-edit-dialog__grid">
+            <label>
+              <span>Nombre comercial</span>
+              <input
+                value={form.name}
+                onChange={(event) => handleChange("name", event.target.value)}
+                required
+                maxLength={120}
+              />
+            </label>
+            <label>
+              <span>Modelo</span>
+              <input
+                value={form.modelo}
+                onChange={(event) => handleChange("modelo", event.target.value)}
+                maxLength={120}
+              />
+            </label>
+            <label>
+              <span>Categoría</span>
+              <input
+                value={form.categoria}
+                onChange={(event) => handleChange("categoria", event.target.value)}
+                maxLength={80}
+              />
+            </label>
+            <label>
+              <span>Marca</span>
+              <input
+                value={form.marca}
+                onChange={(event) => handleChange("marca", event.target.value)}
+                maxLength={80}
+              />
+            </label>
+            <label>
+              <span>Color</span>
+              <input
+                value={form.color}
+                onChange={(event) => handleChange("color", event.target.value)}
+                maxLength={60}
+              />
+            </label>
+            <label>
+              <span>Condición</span>
+              <input
+                value={form.condicion}
+                onChange={(event) => handleChange("condicion", event.target.value)}
+                maxLength={60}
+              />
+            </label>
+            <label>
+              <span>Proveedor</span>
+              <input
+                value={form.proveedor}
+                onChange={(event) => handleChange("proveedor", event.target.value)}
+                maxLength={120}
+              />
+            </label>
+            <label>
+              <span>Estado comercial</span>
+              <select
+                value={form.estado}
+                onChange={(event) =>
+                  handleChange("estado", event.target.value as FormState["estado"])
+                }
+              >
+                {estadoOptions.map((option) => (
+                  <option key={option.value || "none"} value={option.value ?? ""}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Estado inventario</span>
+              <input
+                value={form.estadoInventario}
+                onChange={(event) => handleChange("estadoInventario", event.target.value)}
+                maxLength={40}
+              />
+            </label>
+            <label>
+              <span>Existencias disponibles</span>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={form.quantity}
+                onChange={(event) => handleChange("quantity", event.target.value)}
+                placeholder={`Actual: ${device.quantity}`}
+              />
+              <small className="device-edit-dialog__hint muted-text">
+                Deja el campo vacío para conservar el total actual o ingresa el valor corregido.
+              </small>
+            </label>
+            <label>
+              <span>Capacidad (GB)</span>
+              <input
+                type="number"
+                min={0}
+                value={form.capacidadGb}
+                onChange={(event) => handleChange("capacidadGb", event.target.value)}
+              />
+            </label>
+            <label>
+              <span>Capacidad (texto)</span>
+              <input
+                value={form.capacidadTexto}
+                onChange={(event) => handleChange("capacidadTexto", event.target.value)}
+                maxLength={80}
+              />
+            </label>
+            <label>
+              <span>Precio de venta (MXN)</span>
+              <input
+                type="number"
+                min={0}
+                step={0.01}
+                value={form.unitPrice}
+                onChange={(event) => handleChange("unitPrice", event.target.value)}
+              />
+            </label>
+            <label>
+              <span>Costo unitario (MXN)</span>
+              <input
+                type="number"
+                min={0}
+                step={0.01}
+                value={form.costoUnitario}
+                onChange={(event) => handleChange("costoUnitario", event.target.value)}
+              />
+            </label>
+            <label>
+              <span>Margen (%)</span>
+              <input
+                type="number"
+                min={0}
+                step={0.01}
+                value={form.margen}
+                onChange={(event) => handleChange("margen", event.target.value)}
+              />
+            </label>
+            <label>
+              <span>Garantía (meses)</span>
+              <input
+                type="number"
+                min={0}
+                value={form.garantia}
+                onChange={(event) => handleChange("garantia", event.target.value)}
+              />
+            </label>
+            <label>
+              <span>IMEI</span>
+              <input
+                value={form.imei}
+                onChange={(event) => handleChange("imei", event.target.value)}
+                maxLength={18}
+              />
+            </label>
+            <label>
+              <span>IMEIs adicionales</span>
+              <textarea
+                value={form.imeisAdicionales}
+                onChange={(event) => handleChange("imeisAdicionales", event.target.value)}
+                placeholder="Ingresa un IMEI por línea"
+                rows={3}
+              />
+              <small className="device-edit-dialog__hint muted-text">
+                Limpia espacios extra y usa una línea por IMEI para evitar duplicados o registros
+                sucios.
+              </small>
+            </label>
+            <label>
+              <span>Serie</span>
+              <input
+                value={form.serial}
+                onChange={(event) => handleChange("serial", event.target.value)}
+                maxLength={120}
+              />
+            </label>
+            <label>
+              <span>Lote</span>
+              <input
+                value={form.lote}
+                onChange={(event) => handleChange("lote", event.target.value)}
+                maxLength={80}
+              />
+            </label>
+            <label>
+              <span>Ubicación</span>
+              <input
+                value={form.ubicacion}
+                onChange={(event) => handleChange("ubicacion", event.target.value)}
+                maxLength={120}
+              />
+            </label>
+            <label>
+              <span>Fecha de compra</span>
+              <input
+                type="date"
+                value={form.fechaCompra}
+                onChange={(event) => handleChange("fechaCompra", event.target.value)}
+              />
+            </label>
+            <label>
+              <span>Fecha de ingreso</span>
+              <input
+                type="date"
+                value={form.fechaIngreso}
+                onChange={(event) => handleChange("fechaIngreso", event.target.value)}
+              />
+            </label>
+            <label>
+              <span>Descripción</span>
+              <textarea
+                value={form.descripcion}
+                onChange={(event) => handleChange("descripcion", event.target.value)}
+                maxLength={1024}
+                rows={2}
+              />
+            </label>
+            <label>
+              <span>URL de imagen</span>
+              <input
+                type="url"
+                value={form.imagenUrl}
+                onChange={(event) => handleChange("imagenUrl", event.target.value)}
+                maxLength={255}
+              />
+            </label>
+            <label>
+              <span>Imágenes adicionales</span>
+              <textarea
+                value={form.imagenes}
+                onChange={(event) => handleChange("imagenes", event.target.value)}
+                placeholder="https://cdn.softmobile.test/foto.png"
+                rows={3}
+              />
+              <small className="device-edit-dialog__hint muted-text">
+                Escribe una URL por línea; agregamos https:// automáticamente si falta y omitimos
+                enlaces vacíos.
+              </small>
+            </label>
+            <label>
+              <span>Enlaces relacionados</span>
+              <textarea
+                value={form.enlaces}
+                onChange={(event) => handleChange("enlaces", event.target.value)}
+                placeholder="Manual|https://softmobile.test/manual.pdf"
+                rows={3}
+              />
+              <small className="device-edit-dialog__hint muted-text">
+                Usa «Título|URL» por línea o solo la URL; el título se normaliza y los espacios se
+                eliminan.
+              </small>
+            </label>
+          </div>
+          <label className="device-edit-dialog__reason">
+            <span>Motivo corporativo</span>
+            <textarea
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              minLength={5}
+              maxLength={255}
+              required
+              placeholder="Describe brevemente la razón de la actualización"
+              rows={3}
+            />
+          </label>
+          {error ? <p className="device-edit-dialog__error">{error}</p> : null}
+        </form>
       ) : null}
     </Modal>
   );

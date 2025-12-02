@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Search } from "lucide-react";
 
-import Button, { type ButtonVariant } from "../../shared/components/ui/Button";
+import Button, { type ButtonVariant } from "@components/ui/Button";
 
 export type PageHeaderAction = {
   id?: string;

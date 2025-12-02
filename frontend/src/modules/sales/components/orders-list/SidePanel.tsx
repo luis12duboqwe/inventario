@@ -28,45 +28,22 @@ function SidePanel({ row, onClose }: OrdersSidePanelProps) {
   ];
 
   return (
-    <aside
-      style={{
-        position: "fixed",
-        right: 0,
-        top: 0,
-        bottom: 0,
-        width: 420,
-        background: "#0b1220",
-        borderLeft: "1px solid rgba(255, 255, 255, 0.08)",
-        padding: 16,
-        overflow: "auto",
-        zIndex: 58,
-        display: "grid",
-        gap: 12,
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h3 style={{ margin: 0 }}>Resumen pedido</h3>
-        <button onClick={onClose} style={{ padding: "6px 10px", borderRadius: 8 }}>
+    <aside className="orders-list-side-panel">
+      <div className="orders-list-side-panel-header">
+        <h3 className="orders-list-side-panel-title">Resumen pedido</h3>
+        <button onClick={onClose} className="orders-list-side-panel-close-btn">
           Cerrar
         </button>
       </div>
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <div className="orders-list-side-panel-badges">
         <PaymentStatusBadge value={row.paymentStatus} />
         <StatusBadge value={row.status} />
         <ChannelBadge value={row.channel} />
       </div>
-      <div style={{ display: "grid", gap: 8 }}>
+      <div className="orders-list-side-panel-fields">
         {fields.map(([label, value]) => (
-          <div
-            key={label}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              borderBottom: "1px dashed rgba(255, 255, 255, 0.08)",
-              padding: "6px 0",
-            }}
-          >
-            <span style={{ color: "#94a3b8" }}>{label}</span>
+          <div key={label} className="orders-list-side-panel-field-row">
+            <span className="orders-list-side-panel-field-label">{label}</span>
             <span>{value}</span>
           </div>
         ))}
