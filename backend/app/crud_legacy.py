@@ -130,6 +130,12 @@ from .utils.normalization_helpers import (
     normalize_store_code,
     normalize_reservation_reason,
 )
+from .utils.comment_builders import (
+    build_transfer_movement_comment,
+    build_purchase_movement_comment,
+    build_sale_movement_comment,
+    build_sale_return_comment,
+)
 
 logger = core_logger.bind(component=__name__)
 
@@ -13531,7 +13537,7 @@ def _apply_transfer_dispatch(
             device_id=device.id,
             movement_type=models.MovementType.OUT,
             quantity=item.quantity,
-            comment=_build_transfer_movement_comment(
+            comment=build_transfer_movement_comment(
                 order, device, "OUT", order.reason),
             performed_by_id=performed_by_id,
             source_store_id=order.origin_store_id,
@@ -13657,28 +13663,6 @@ def dispatch_transfer_order(
     return order
 
 
-def _build_transfer_movement_comment(
-    order: models.TransferOrder,
-    device: models.Device,
-    direction: Literal["OUT", "IN"],
-    reason: str | None,
-) -> str:
-    segments = [f"Transferencia #{order.id}"]
-    if direction == "OUT":
-        segments.append("Salida")
-        target = order.destination_store.name if order.destination_store else None
-        if target:
-            segments.append(f"Destino: {target}")
-    else:
-        segments.append("Entrada")
-        origin = order.origin_store.name if order.origin_store else None
-        if origin:
-            segments.append(f"Origen: {origin}")
-    if device.sku:
-        segments.append(f"SKU {device.sku}")
-    if reason:
-        segments.append(reason)
-    return " — ".join(segments)[:255]
 
 
 def _apply_transfer_reception(
@@ -13769,7 +13753,7 @@ def _apply_transfer_reception(
                 device_id=device.id,
                 movement_type=models.MovementType.OUT,
                 quantity=item.quantity,
-                comment=_build_transfer_movement_comment(
+                comment=build_transfer_movement_comment(
                     order, device, "OUT", order.reason
                 ),
                 performed_by_id=performed_by_id,
@@ -13843,7 +13827,7 @@ def _apply_transfer_reception(
                     device_id=destination_device.id,
                     movement_type=models.MovementType.IN,
                     quantity=accepted_quantity,
-                    comment=_build_transfer_movement_comment(
+                    comment=build_transfer_movement_comment(
                         order, destination_device, "IN", order.reason
                     ),
                     performed_by_id=performed_by_id,
@@ -13863,7 +13847,7 @@ def _apply_transfer_reception(
                 device_id=device.id,
                 movement_type=models.MovementType.IN,
                 quantity=pending_return,
-                comment=_build_transfer_movement_comment(
+                comment=build_transfer_movement_comment(
                     order, device, "IN", "Reverso por faltante/rechazo"
                 ),
                 performed_by_id=performed_by_id,
@@ -14834,26 +14818,6 @@ def create_purchase_order_from_suggestion(
     return order
 
 
-def _build_purchase_movement_comment(
-    action: str,
-    order: models.PurchaseOrder,
-    device: models.Device,
-    reason: str | None,
-) -> str:
-    """Genera una descripción legible para los movimientos de compras."""
-
-    parts: list[str] = [
-        action, f"OC #{order.id}", f"Proveedor: {order.supplier}"]
-    if device.imei:
-        parts.append(f"IMEI: {device.imei}")
-    if device.serial:
-        parts.append(f"Serie: {device.serial}")
-    if reason:
-        normalized_reason = reason.strip()
-        if normalized_reason:
-            parts.append(normalized_reason)
-    comment = " | ".join(part for part in parts if part)
-    return comment[:255]
 
 
 def receive_purchase_order(
@@ -14896,7 +14860,7 @@ def receive_purchase_order(
             device_id=device.id,
             movement_type=models.MovementType.IN,
             quantity=receive_item.quantity,
-            comment=_build_purchase_movement_comment(
+            comment=build_purchase_movement_comment(
                 "Recepción OC",
                 order,
                 device,
@@ -15005,7 +14969,7 @@ def _revert_purchase_inventory(
             device_id=device.id,
             movement_type=models.MovementType.OUT,
             quantity=received_qty,
-            comment=_build_purchase_movement_comment(
+            comment=build_purchase_movement_comment(
                 "Reversión OC",
                 order,
                 device,
@@ -15211,7 +15175,7 @@ def register_purchase_return(
             device_id=device.id,
             movement_type=models.MovementType.OUT,
             quantity=payload.quantity,
-            comment=_build_purchase_movement_comment(
+            comment=build_purchase_movement_comment(
                 "Devolución proveedor",
                 order,
                 device,
@@ -17244,35 +17208,8 @@ def _preview_sale_totals(
     return gross_total, total_discount
 
 
-def _build_sale_movement_comment(
-    sale: models.Sale, device: models.Device, reason: str | None
-) -> str:
-    segments = [f"Venta #{sale.id}"]
-    if device.sku:
-        segments.append(f"SKU {device.sku}")
-    if reason:
-        segments.append(reason)
-    return " — ".join(segments)[:255]
 
 
-def _build_sale_return_comment(
-    sale: models.Sale,
-    device: models.Device,
-    reason: str | None,
-    *,
-    disposition: schemas.ReturnDisposition | None = None,
-    warehouse_name: str | None = None,
-) -> str:
-    segments = [f"Devolución venta #{sale.id}"]
-    if device.sku:
-        segments.append(f"SKU {device.sku}")
-    if reason:
-        segments.append(reason)
-    if disposition is not None:
-        segments.append(f"estado={disposition.value}")
-    if warehouse_name:
-        segments.append(f"almacen={warehouse_name}")
-    return " — ".join(segments)[:255]
 
 
 def _apply_sale_items(
@@ -17355,7 +17292,7 @@ def _apply_sale_items(
         sale.items.append(sale_item)
 
         batch_code = getattr(item, "batch_code", None)
-        movement_comment = _build_sale_movement_comment(sale, device, reason)
+        movement_comment = build_sale_movement_comment(sale, device, reason)
         if batch_code:
             batch_comment = batch_code.strip()
             if batch_comment:
@@ -18230,7 +18167,7 @@ def register_sale_return(
                 device_id=item.device_id,
                 movement_type=models.MovementType.IN,
                 quantity=item.quantity,
-                comment=_build_sale_return_comment(
+                comment=build_sale_return_comment(
                     sale,
                     device,
                     item.reason or reason,
