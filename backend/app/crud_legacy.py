@@ -136,11 +136,20 @@ from .utils.comment_builders import (
     build_sale_movement_comment,
     build_sale_return_comment,
 )
+from .utils.misc_helpers import (
+    get_supplier_by_name,
+    recalculate_sale_price,
+    severity_weight,
+)
 
 logger = core_logger.bind(component=__name__)
 
 _INVENTORY_MOVEMENTS_CACHE: TTLCache[schemas.InventoryMovementsReport] = TTLCache(
     ttl_seconds=60.0
+)
+
+_PERSISTENT_ALERTS_CACHE: TTLCache[list[dict[str, object]]] = TTLCache(
+    ttl_seconds=300.0
 )
 
 
@@ -155,24 +164,6 @@ def token_filter(column: Any, candidate: str) -> ColumnElement[bool]:
     return or_(column == candidate, column == protected)
 
 
-def _get_supplier_by_name(
-    db: Session, supplier_name: str | None
-) -> models.Supplier | None:
-    if not supplier_name:
-        return None
-    normalized = supplier_name.strip().lower()
-    if not normalized:
-        return None
-    statement = (
-        select(models.Supplier)
-        .where(func.lower(models.Supplier.name) == normalized)
-        .limit(1)
-    )
-    return db.scalars(statement).first()
-
-
-_PERSISTENT_ALERTS_CACHE: TTLCache[list[dict[str, object]]] = TTLCache(
-    ttl_seconds=60.0)
 
 
 
@@ -220,14 +211,6 @@ def _create_system_log(
     return entry
 
 
-def _recalculate_sale_price(device: models.Device) -> None:
-    base_cost = to_decimal(device.costo_unitario)
-    margin = to_decimal(device.margen_porcentaje)
-    sale_factor = Decimal("1") + (margin / Decimal("100"))
-    recalculated = (
-        base_cost * sale_factor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    device.unit_price = recalculated
-    device.precio_venta = recalculated
 
 
 def _inventory_movements_report_cache_key(
@@ -463,14 +446,6 @@ def purge_system_logs(
     return int(deleted or 0)
 
 
-def _severity_weight(level: models.SystemLogLevel) -> int:
-    if level == models.SystemLogLevel.CRITICAL:
-        return 3
-    if level == models.SystemLogLevel.ERROR:
-        return 2
-    if level == models.SystemLogLevel.WARNING:
-        return 1
-    return 0
 
 
 def build_global_report_overview(
@@ -657,7 +632,7 @@ def build_global_report_overview(
         existing = alerts_map.get(key)
         if existing:
             existing.count += 1
-            if _severity_weight(log.nivel) > _severity_weight(existing.level):
+            if severity_weight(log.nivel) > severity_weight(existing.level):
                 existing.level = log.nivel
             if existing.occurred_at is None or (log.fecha and log.fecha > existing.occurred_at):
                 existing.occurred_at = log.fecha
@@ -732,7 +707,7 @@ def build_global_report_overview(
 
     alerts = sorted(
         alerts_map.values(),
-        key=lambda alert: (_severity_weight(alert.level),
+        key=lambda alert: (severity_weight(alert.level),
                            alert.occurred_at or datetime.min),
         reverse=True,
     )
@@ -6951,7 +6926,7 @@ def create_device(
     with transactional_session(db):
         device = models.Device(store_id=store_id, **payload_data)
         if unit_price is None:
-            _recalculate_sale_price(device)
+            recalculate_sale_price(device)
         else:
             device.unit_price = unit_price
             device.precio_venta = unit_price
@@ -8004,7 +7979,7 @@ def update_device(
             device.unit_price = manual_price
             device.precio_venta = manual_price
         elif {"costo_unitario", "margen_porcentaje"}.intersection(updated_fields):
-            _recalculate_sale_price(device)
+            recalculate_sale_price(device)
         flush_session(db)
         db.refresh(device)
 
@@ -8920,7 +8895,7 @@ def create_inventory_movement(
             )
             device.costo_unitario = quantize_currency(average_cost)
             movement_unit_cost = quantize_currency(incoming_cost)
-            _recalculate_sale_price(device)
+            recalculate_sale_price(device)
             if (
                 payload.unit_cost is None
                 and previous_sale_price is not None
@@ -8997,12 +8972,12 @@ def create_inventory_movement(
                 )
                 device.costo_unitario = quantize_currency(average_cost)
                 movement_unit_cost = quantize_currency(incoming_cost)
-                _recalculate_sale_price(device)
+                recalculate_sale_price(device)
             elif payload.unit_cost is not None and payload.cantidad > 0:
                 updated_cost = to_decimal(payload.unit_cost)
                 device.costo_unitario = quantize_currency(updated_cost)
                 movement_unit_cost = quantize_currency(updated_cost)
-                _recalculate_sale_price(device)
+                recalculate_sale_price(device)
             else:
                 movement_unit_cost = (
                     quantize_currency(previous_cost)
@@ -15062,7 +15037,7 @@ def _register_supplier_credit_note(
     corporate_reason: str | None,
     processed_by_id: int | None,
 ) -> models.SupplierLedgerEntry | None:
-    supplier = _get_supplier_by_name(db, supplier_name)
+    supplier = get_supplier_by_name(db, supplier_name)
     if supplier is None:
         return None
 
