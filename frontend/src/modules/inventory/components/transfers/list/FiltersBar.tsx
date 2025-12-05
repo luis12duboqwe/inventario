@@ -1,8 +1,9 @@
+import { FILTER_ALL_VALUE } from "@/config/constants";
 import type { ChangeEvent } from "react";
 
 type Filters = {
   query?: string;
-  status?: string | "ALL";
+  status?: string | typeof FILTER_ALL_VALUE;
   from?: string;
   to?: string;
   dateFrom?: string;
@@ -16,7 +17,7 @@ type Props = {
 };
 
 const statusOptions: Array<{ value: Filters["status"]; label: string }> = [
-  { value: "ALL", label: "Estado" },
+  { value: FILTER_ALL_VALUE, label: "Estado" },
   { value: "SOLICITADA", label: "Solicitada" },
   { value: "EN_TRANSITO", label: "En tránsito" },
   { value: "RECIBIDA", label: "Recibida" },
@@ -24,17 +25,22 @@ const statusOptions: Array<{ value: Filters["status"]; label: string }> = [
 ];
 
 function FiltersBar({ value, onChange, onNew }: Props) {
-  const handleChange = (field: keyof Filters) => (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    onChange({
-      ...value,
-      [field]: event.target.value,
-    });
-  };
+  const handleChange =
+    (field: keyof Filters) => (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+      onChange({
+        ...value,
+        [field]: event.target.value,
+      });
+    };
 
   return (
     <div className="inventory-filters-grid">
-      <input placeholder="#TRF o producto" value={value.query ?? ""} onChange={handleChange("query")} />
-      <select value={value.status ?? "ALL"} onChange={handleChange("status")}>
+      <input
+        placeholder="#TRF o producto"
+        value={value.query ?? ""}
+        onChange={handleChange("query")}
+      />
+      <select value={value.status ?? FILTER_ALL_VALUE} onChange={handleChange("status")}>
         {statusOptions.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}

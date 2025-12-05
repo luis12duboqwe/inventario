@@ -1,0 +1,40 @@
+.movement-form {
+  display: grid;
+  gap: 0.75rem;
+  border: 1px solid rgba(0, 191, 255, 0.18);
+  border-radius: 10px;
+  padding: 1rem;
+  background: rgba(13, 17, 23, 0.5);
+}
+
+.movement-form label {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.movement-form input,
+.movement-form select,
+.movement-form textarea {
+  width: 100%;
+  padding: 0.6rem;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-family: inherit;
+}
+
+.movement-form input:focus,
+.movement-form select:focus,
+.movement-form textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+}
+
+.movement-form button[type="submit"] {
+  margin-top: 0.5rem;
+  width: 100%;
+}

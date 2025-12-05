@@ -1,4 +1,5 @@
 import React from "react";
+import { TextField } from "../../../../../components/ui/TextField";
 
 export type ProductFilters = {
   query?: string;
@@ -18,32 +19,28 @@ type Props = {
 export default function FiltersPanel({ value, onChange }: Props) {
   const v = value || {};
   return (
-    <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(6, minmax(140px,1fr))" }}>
-      <input
+    <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+      <TextField
         placeholder="Buscar por nombre, SKU o IMEI…"
         value={v.query || ""}
         onChange={(e) => onChange({ ...v, query: e.target.value })}
-        style={{ padding: 8, borderRadius: 8 }}
       />
-      <input
+      <TextField
         placeholder="Categoría"
         value={v.category || ""}
         onChange={(e) => onChange({ ...v, category: e.target.value })}
-        style={{ padding: 8, borderRadius: 8 }}
       />
-      <input
+      <TextField
         placeholder="Marca"
         value={v.brand || ""}
         onChange={(e) => onChange({ ...v, brand: e.target.value })}
-        style={{ padding: 8, borderRadius: 8 }}
       />
-      <input
+      <TextField
         placeholder="Sucursal ID"
         value={v.storeId || ""}
         onChange={(e) => onChange({ ...v, storeId: e.target.value })}
-        style={{ padding: 8, borderRadius: 8 }}
       />
-      <input
+      <TextField
         type="number"
         placeholder="Stock ≥"
         value={v.stockFrom ?? ""}
@@ -57,9 +54,8 @@ export default function FiltersPanel({ value, onChange }: Props) {
           }
           onChange(next);
         }}
-        style={{ padding: 8, borderRadius: 8 }}
       />
-      <input
+      <TextField
         type="number"
         placeholder="Stock ≤"
         value={v.stockTo ?? ""}
@@ -73,7 +69,6 @@ export default function FiltersPanel({ value, onChange }: Props) {
           }
           onChange(next);
         }}
-        style={{ padding: 8, borderRadius: 8 }}
       />
       {/* estado si aplica */}
     </div>

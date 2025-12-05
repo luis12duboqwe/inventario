@@ -1,7 +1,7 @@
 """Servicios especializados para reportes y visualizaciones de auditoría."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 from typing import Iterable, Mapping
 
@@ -37,7 +37,7 @@ def render_audit_pdf(
         Paragraph("Softmobile 2025 — Bitácora de auditoría", styles["Title"]),
         Spacer(1, 10),
         Paragraph(
-            f"Generado el {datetime.utcnow().strftime('%d/%m/%Y %H:%M UTC')}",
+            f"Generado el {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M UTC')}",
             dark_body,
         ),
         Spacer(1, 16),

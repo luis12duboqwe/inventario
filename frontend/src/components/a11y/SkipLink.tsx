@@ -4,23 +4,7 @@ export default function SkipLink() {
   return (
     <a
       href="#main-content"
-      style={{
-        position: "absolute",
-        left: 8,
-        top: 8,
-        padding: "8px 12px",
-        borderRadius: 10,
-        transform: "translateY(-150%)",
-        background: "#111827",
-        color: "#e5e7eb",
-        textDecoration: "none",
-      }}
-      onFocus={(e) => {
-        e.currentTarget.style.transform = "translateY(0)";
-      }}
-      onBlur={(e) => {
-        e.currentTarget.style.transform = "translateY(-150%)";
-      }}
+      className="absolute left-2 top-2 px-3 py-2 rounded-lg bg-gray-900 text-gray-200 no-underline -translate-y-[150%] focus:translate-y-0 transition-transform z-50"
     >
       Ir al contenido principal
     </a>

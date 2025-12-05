@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 
 from openpyxl import Workbook
@@ -46,7 +46,7 @@ def _build_paragraphs(title: str):
         parent=styles["BodyText"],
         textColor=colors.HexColor("#e2e8f0"),
     )
-    now_label = datetime.utcnow().strftime("%d/%m/%Y %H:%M UTC")
+    now_label = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
     elements: list = [  # type: ignore[var-annotated]
         Paragraph("Softmobile 2025 — Reporte consolidado", styles["Title"]),
         Spacer(1, 12),

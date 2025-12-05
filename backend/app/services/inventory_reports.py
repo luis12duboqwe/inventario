@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import csv
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from io import BytesIO, StringIO
 
@@ -68,7 +68,7 @@ def _build_document(title: str) -> tuple[list, SimpleDocTemplate, BytesIO]:  # t
     buffer = BytesIO()
     document = SimpleDocTemplate(buffer, pagesize=A4, title=title)
     styles = getSampleStyleSheet()
-    now_label = datetime.utcnow().strftime("%d/%m/%Y %H:%M UTC")
+    now_label = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
 
     heading_style = ParagraphStyle(
         "Heading1Softmobile",

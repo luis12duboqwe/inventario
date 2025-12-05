@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useLocation } from "react-router-dom";
 import type { Device } from "@api/inventory";
 import { useDashboard } from "../../../dashboard/context/DashboardContext";
+import { FILTER_ALL_VALUE } from "../../../../constants/filters";
 
 export function useInventoryFiltering(
   devices: Device[],
@@ -12,7 +13,7 @@ export function useInventoryFiltering(
   const { globalSearchTerm, setGlobalSearchTerm } = useDashboard();
 
   const [inventoryQuery, setInventoryQuery] = useState("");
-  const [estadoFilter, setEstadoFilter] = useState<Device["estado_comercial"] | "TODOS">("TODOS");
+  const [estadoFilter, setEstadoFilter] = useState<Device["estado_comercial"] | typeof FILTER_ALL_VALUE>(FILTER_ALL_VALUE);
 
   // Track previous values to reset state on change during render
   const [prevPath, setPrevPath] = useState(location.pathname);
@@ -23,7 +24,7 @@ export function useInventoryFiltering(
     setPrevPath(location.pathname);
     setPrevStore(selectedStoreId);
     setInventoryQuery("");
-    setEstadoFilter("TODOS");
+    setEstadoFilter(FILTER_ALL_VALUE);
     if (location.pathname.startsWith("/dashboard/inventory")) {
       setGlobalSearchTerm("");
     }
@@ -39,7 +40,7 @@ export function useInventoryFiltering(
   const filteredDevices = useMemo(() => {
     const normalizedQuery = inventoryQuery.trim().toLowerCase();
     return devices.filter((device) => {
-      if (estadoFilter !== "TODOS" && device.estado_comercial !== estadoFilter) {
+      if (estadoFilter !== FILTER_ALL_VALUE && device.estado_comercial !== estadoFilter) {
         return false;
       }
       if (!normalizedQuery) {

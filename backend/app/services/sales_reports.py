@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from io import BytesIO
 from typing import Mapping
@@ -46,7 +46,7 @@ def _build_pdf_document(title: str) -> tuple[list, SimpleDocTemplate, BytesIO]: 
     buffer = BytesIO()
     document = SimpleDocTemplate(buffer, pagesize=A4, title=title)
     styles = getSampleStyleSheet()
-    now_label = datetime.utcnow().strftime("%d/%m/%Y %H:%M UTC")
+    now_label = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
 
     heading_style = ParagraphStyle(
         "Heading1Softmobile",
@@ -260,7 +260,7 @@ def build_sales_report(
     ]
 
     return schemas.SalesReport(
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         filters=filters,
         totals=totals,
         daily_stats=daily_stats,

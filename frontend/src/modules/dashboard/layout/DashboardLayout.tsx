@@ -30,12 +30,12 @@ import TechMonitor from "../components/TechMonitor";
 import Sidebar, { type SidebarNavItem } from "../components/Sidebar";
 import { useDashboard } from "../context/DashboardContext";
 import type { ToastMessage } from "../context/DashboardContext";
-import { getRiskAlerts, type RiskAlert } from "../../../api";
 import Button from "@components/ui/Button";
 import PageHeader from "@components/ui/PageHeader";
 import AdminControlPanel, { type AdminControlPanelModule } from "../components/AdminControlPanel";
 import ActionIndicatorBar from "../components/ActionIndicatorBar";
 import type { NotificationCenterItem } from "../components/NotificationCenter";
+import { useRiskAlerts } from "../hooks/useRiskAlerts";
 
 function formatRelativeTime(date: Date) {
   return new Intl.RelativeTimeFormat("es", { numeric: "auto" }).format(
@@ -124,7 +124,7 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
   const location = useLocation();
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [riskAlerts, setRiskAlerts] = useState<RiskAlert[]>([]);
+  const { data: riskAlerts = [] } = useRiskAlerts(token);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -152,15 +152,6 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isSidebarOpen]);
-
-  useEffect(() => {
-    if (!token) {
-      return;
-    }
-    getRiskAlerts(token)
-      .then((response) => setRiskAlerts(response.alerts))
-      .catch(() => setRiskAlerts([]));
-  }, [token]);
 
   const toggleSidebar = () => {
     setIsSidebarOpen((current) => !current);

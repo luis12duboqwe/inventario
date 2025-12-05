@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Iterable, Mapping
 
 import httpx
@@ -37,7 +37,7 @@ def _register_audit_alert(
 ) -> bool:
     """Registra el evento en auditoría evitando duplicados en la ventana dada."""
 
-    window_start = datetime.utcnow() - timedelta(minutes=lookback_minutes)
+    window_start = datetime.now(timezone.utc) - timedelta(minutes=lookback_minutes)
     existing = (
         db.execute(
             select(func.count(models.AuditLog.id)).where(
@@ -66,7 +66,7 @@ def _register_audit_alert(
 def _collect_login_alerts(db: Session, window_minutes: int) -> NotificationBundle:
     """Detecta intentos de inicio de sesión repetidos en la ventana activa."""
 
-    start = datetime.utcnow() - timedelta(minutes=window_minutes)
+    start = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
     attempts_stmt = (
         select(models.AuditLog.entity_id, func.count(models.AuditLog.id))
         .where(
@@ -166,7 +166,7 @@ def _collect_stockout_alerts(db: Session, window_minutes: int) -> NotificationBu
             {
                 "total_zero": total_zero,
                 "stores": list(store_names),
-                "observed_since": (datetime.utcnow() - timedelta(minutes=window_minutes)).isoformat(),
+                "observed_since": (datetime.now(timezone.utc) - timedelta(minutes=window_minutes)).isoformat(),
             },
             ensure_ascii=False,
         ),
@@ -180,7 +180,7 @@ def _collect_stockout_alerts(db: Session, window_minutes: int) -> NotificationBu
 def _collect_task_failure_alerts(db: Session, window_minutes: int) -> NotificationBundle:
     """Construye alertas a partir de fallos recientes de tareas programadas."""
 
-    start = datetime.utcnow() - timedelta(minutes=window_minutes)
+    start = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
     sessions_stmt = (
         select(models.SyncSession)
         .where(
@@ -272,7 +272,7 @@ def dispatch_external_notifications(
 
     payload = {
         "source": "softmobile-observability",
-        "generated_at": datetime.utcnow().isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "alerts": [alert.model_dump() for alert in critical_alerts],
     }
 

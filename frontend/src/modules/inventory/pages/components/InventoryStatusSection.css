@@ -1,0 +1,80 @@
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.2rem;
+}
+
+.status-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1rem;
+  padding: 1.1rem;
+  border-radius: 12px;
+  background: rgba(13, 17, 23, 0.85);
+  border: 1px solid rgba(0, 191, 255, 0.12);
+  overflow: hidden;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.status-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: radial-gradient(circle at top right, rgba(0, 154, 205, 0.18), transparent 55%);
+  transition: opacity 0.3s ease;
+}
+
+.status-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+}
+
+.status-card:hover::after {
+  opacity: 1;
+}
+
+.status-card-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 191, 255, 0.08);
+  color: var(--accent);
+}
+
+.status-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  position: relative;
+  z-index: 1;
+}
+
+.status-card-body h3 {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.status-value {
+  font-size: 1.35rem;
+  font-weight: 600;
+}
+
+.status-caption {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.status-card .badge {
+  justify-self: flex-start;
+  margin-top: 0.35rem;
+  grid-column: 1 / -1;
+}
+
+:global(.compact-mode) .status-card {
+  min-height: 140px;
+}

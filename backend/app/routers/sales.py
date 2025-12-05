@@ -1,7 +1,7 @@
 """Endpoints para ventas y devoluciones."""
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from io import BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -52,12 +52,11 @@ def _prepare_sales_report(
         store_id=store_id,
         limit=None,
         offset=0,
-        date_from=date_from,
-        date_to=date_to,
+        start_date=date_from,
+        end_date=date_to,
         customer_id=customer_id,
         performed_by_id=performed_by_id,
-        product_id=product_id,
-        query=query,
+        search=query,
     )
     audit_trails = audit_logger.get_last_audit_trails(
         db,
@@ -96,12 +95,11 @@ def list_sales_endpoint(
         store_id=store_id,
         limit=limit,
         offset=offset,
-        date_from=date_from,
-        date_to=date_to,
+        start_date=date_from,
+        end_date=date_to,
         customer_id=customer_id,
         performed_by_id=performed_by_id,
-        product_id=product_id,
-        query=search,
+        search=search,
     )
 
 
@@ -163,7 +161,7 @@ def export_sales_pdf(
     )
     pdf_bytes = sales_reports.render_sales_report_pdf(report)
     metadata = schemas.BinaryFileResponse(
-        filename=f"ventas_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf",
+        filename=f"ventas_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.pdf",
         media_type="application/pdf",
     )
     return StreamingResponse(
@@ -204,7 +202,7 @@ def export_sales_excel(
     )
     excel_bytes = sales_reports.render_sales_report_excel(report)
     metadata = schemas.BinaryFileResponse(
-        filename=f"ventas_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx",
+        filename=f"ventas_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.xlsx",
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
     return StreamingResponse(

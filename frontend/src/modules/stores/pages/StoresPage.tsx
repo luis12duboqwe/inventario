@@ -248,7 +248,7 @@ function StoresPage() {
                         <tr
                           key={s.id}
                           onClick={() => startEdit(s)}
-                          style={{ cursor: "pointer" }}
+                          className="cursor-pointer"
                           aria-label={`Editar ${s.name}`}
                         >
                           <td>{s.id}</td>

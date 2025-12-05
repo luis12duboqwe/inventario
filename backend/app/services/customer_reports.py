@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 
 from openpyxl import Workbook
@@ -54,7 +54,7 @@ def _build_pdf_document(title: str) -> tuple[list, SimpleDocTemplate, BytesIO]: 
         fontSize=18,
     )
 
-    now_label = datetime.utcnow().strftime("%d/%m/%Y %H:%M UTC")
+    now_label = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
     elements: list = [  # type: ignore[var-annotated]
         Paragraph("Softmobile 2025 — Reporte de clientes", heading_style),
         Spacer(1, 12),
@@ -222,7 +222,7 @@ def render_customer_portfolio_xlsx(report: schemas.CustomerPortfolioReport) -> B
         else "Portafolio: clientes frecuentes"
     )
     worksheet.merge_cells(start_row=2, start_column=1, end_row=2, end_column=9)
-    worksheet["A3"] = f"Generado: {datetime.utcnow().strftime('%d/%m/%Y %H:%M UTC')}"
+    worksheet["A3"] = f"Generado: {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M UTC')}"
     worksheet.merge_cells(start_row=3, start_column=1, end_row=3, end_column=9)
 
     summary_headers = ["Indicador", "Valor"]

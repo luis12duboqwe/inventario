@@ -11,6 +11,7 @@ import {
 import type { TransferFilters, TransferRow } from "../components/transfers/list";
 import { listTransfers, type TransferOrder } from "@api/transfers";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
+import { FILTER_ALL_VALUE } from "@/config/constants";
 
 function TransfersListPage() {
   const navigate = useNavigate();
@@ -108,7 +109,7 @@ function TransfersListPage() {
         return false;
       }
       const rowStatus = row.rawStatus ?? row.status;
-      if (filters.status && filters.status !== "ALL" && rowStatus !== filters.status) {
+      if (filters.status && filters.status !== FILTER_ALL_VALUE && rowStatus !== filters.status) {
         return false;
       }
       if (filters.from && !row.from?.toLowerCase().includes(filters.from.toLowerCase())) {

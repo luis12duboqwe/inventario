@@ -376,7 +376,7 @@ export function exportCustomersCsv(
   const queryString = params.toString();
   return request<Blob>(
     `/customers?${queryString}`,
-    { method: "GET", headers: { "X-Reason": reason } },
+    { method: "GET", headers: { "X-Reason": reason }, responseType: "blob" },
     token
   );
 }
@@ -391,7 +391,7 @@ export function exportCustomerSegment(
   const queryString = params.toString();
   return request<Blob>(
     `/customers/segments/export?${queryString}`,
-    { method: "GET", headers: { "X-Reason": reason } },
+    { method: "GET", headers: { "X-Reason": reason }, responseType: "blob" },
     token
   );
 }
@@ -447,7 +447,7 @@ export function exportCustomerPortfolioPdf(
   }
   return request<Blob>(
     `/reports/customers/portfolio?${searchParams.toString()}`,
-    { method: "GET", headers: { "X-Reason": reason } },
+    { method: "GET", headers: { "X-Reason": reason }, responseType: "blob" },
     token
   );
 }
@@ -475,7 +475,7 @@ export function exportCustomerPortfolioExcel(
   }
   return request<Blob>(
     `/reports/customers/portfolio?${searchParams.toString()}`,
-    { method: "GET", headers: { "X-Reason": reason } },
+    { method: "GET", headers: { "X-Reason": reason }, responseType: "blob" },
     token
   );
 }
@@ -606,7 +606,7 @@ export function downloadCustomerStatement(
 ): Promise<Blob> {
   return request<Blob>(
     `/customers/${customerId}/accounts-receivable/statement.pdf`,
-    { method: "GET", headers: { "X-Reason": reason } },
+    { method: "GET", headers: { "X-Reason": reason }, responseType: "blob" },
     token,
   );
 }

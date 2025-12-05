@@ -120,8 +120,8 @@ function ReparacionesLayout() {
           <RepairsLayoutContext.Provider value={contextValue}>
             <Suspense
               fallback={
-                <div style={{ padding: 24 }}>
-                  <div style={{ marginBottom: 16 }}>
+                <div className="p-6">
+                  <div className="mb-4">
                     <Skeleton lines={3} />
                   </div>
                   <Skeleton lines={10} />

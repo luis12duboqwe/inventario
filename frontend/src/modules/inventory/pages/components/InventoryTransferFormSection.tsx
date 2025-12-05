@@ -6,6 +6,7 @@ import Button from "@components/ui/Button";
 import { getDevices, type Device } from "@api/inventory";
 import { createTransferOrder } from "@api/transfers";
 import { useInventoryLayout } from "../context/InventoryLayoutContext";
+import "./InventoryTransferFormSection.css";
 
 const MIN_REASON_LENGTH = 5; // [PACK30-31-FRONTEND]
 

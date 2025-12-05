@@ -13,7 +13,7 @@ export default function ReportsRoutes() {
     <AppErrorBoundary variant="inline" title="Error en Reportes">
       <SuspenseGate
         fallback={
-          <div style={{ padding: 16 }}>
+          <div className="p-4">
             <h3>Cargando reportes de ventas…</h3>
           </div>
         }

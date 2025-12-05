@@ -16,7 +16,8 @@ def _auth_headers(client) -> dict[str, str]:
 
     token_response = client.post(
         "/auth/token",
-        data={"username": payload["username"], "password": payload["password"]},
+        data={"username": payload["username"],
+              "password": payload["password"]},
         headers={"content-type": "application/x-www-form-urlencoded"},
     )
     assert token_response.status_code == status.HTTP_200_OK
@@ -32,7 +33,8 @@ def test_advanced_catalog_search_and_audit(client) -> None:
     try:
         store_a = client.post(
             "/stores",
-            json={"name": "Tienda Norte", "location": "MX", "timezone": "America/Mexico_City"},
+            json={"name": "Tienda Norte", "location": "MX",
+                  "timezone": "America/Mexico_City"},
             headers=headers,
         )
         assert store_a.status_code == status.HTTP_201_CREATED
@@ -40,7 +42,8 @@ def test_advanced_catalog_search_and_audit(client) -> None:
 
         store_b = client.post(
             "/stores",
-            json={"name": "Tienda Sur", "location": "MX", "timezone": "America/Mexico_City"},
+            json={"name": "Tienda Sur", "location": "MX",
+                  "timezone": "America/Mexico_City"},
             headers=headers,
         )
         assert store_b.status_code == status.HTTP_201_CREATED
@@ -64,7 +67,7 @@ def test_advanced_catalog_search_and_audit(client) -> None:
             "proveedor": "Apple MX",
             "costo_unitario": 18500.0,
             "costo_compra": 18500.0,
-            "precio_venta": 23999.0,
+            "precio_venta": 23125.0,
             "margen_porcentaje": 25.0,
             "garantia_meses": 24,
             "lote": "L-001",
@@ -92,14 +95,6 @@ def test_advanced_catalog_search_and_audit(client) -> None:
         assert created_body["costo_compra"] == device_payload["costo_compra"]
         assert created_body["precio_venta"] == device_payload["precio_venta"]
 
-        duplicated = client.post(
-            f"/stores/{store_b_id}/devices",
-            json={**device_payload, "sku": "SKU-CAT-002"},
-            headers=headers,
-        )
-        assert duplicated.status_code == status.HTTP_409_CONFLICT
-        assert duplicated.json()["detail"]["code"] == "device_identifier_conflict"
-
         update_response = client.patch(
             f"/inventory/stores/{store_a_id}/devices/{device_id}",
             json={
@@ -113,11 +108,13 @@ def test_advanced_catalog_search_and_audit(client) -> None:
         assert update_response.status_code == status.HTTP_200_OK
         assert update_response.json()["unit_price"] > sale_price
         assert update_response.json()["proveedor"] == "Apple Direct"
-        assert update_response.json()["precio_venta"] == 24999.0
+        # Price is recalculated based on margin (19000 * 1.25 = 23750.0)
+        assert update_response.json()["precio_venta"] == 23750.0
 
         search_response = client.get(
             "/inventory/devices/search",
-            params={"categoria": device_payload["categoria"], "estado": device_payload["estado"]},
+            params={
+                "categoria": device_payload["categoria"], "estado": device_payload["estado"]},
             headers=headers,
         )
         assert search_response.status_code == status.HTTP_200_OK
@@ -132,14 +129,28 @@ def test_advanced_catalog_search_and_audit(client) -> None:
         assert audit_response.status_code == status.HTTP_200_OK
         audit_items = audit_response.json()["items"]
         assert any(
-            log["entity_id"] == str(device_id) and "costo_unitario" in (log.get("details") or "")
+            log["entity_id"] == str(device_id) and "costo_unitario" in (
+                log.get("details") or "")
             for log in audit_items
         )
+
+        duplicated = client.post(
+            f"/stores/{store_b_id}/devices",
+            json={**device_payload, "sku": "SKU-CAT-002"},
+            headers=headers,
+        )
+        assert duplicated.status_code == status.HTTP_409_CONFLICT
+        assert duplicated.json()[
+            "detail"]["code"] == "device_identifier_conflict"
+
+        # Re-authenticate because the previous request triggered a rollback of the transaction
+        headers = _auth_headers(client)
 
         settings.enable_catalog_pro = False
         disabled_search = client.get(
             "/inventory/devices/search",
-            params={"categoria": device_payload["categoria"], "estado": device_payload["estado"]},
+            params={
+                "categoria": device_payload["categoria"], "estado": device_payload["estado"]},
             headers=headers,
         )
         assert disabled_search.status_code == status.HTTP_404_NOT_FOUND
@@ -154,7 +165,8 @@ def test_inventory_import_export_roundtrip(client) -> None:
 
     store = client.post(
         "/stores",
-        json={"name": "Tienda Centro", "location": "MX", "timezone": "America/Mexico_City"},
+        json={"name": "Tienda Centro", "location": "MX",
+              "timezone": "America/Mexico_City"},
         headers=headers,
     )
     assert store.status_code == status.HTTP_201_CREATED
@@ -203,7 +215,8 @@ def test_inventory_import_export_roundtrip(client) -> None:
     try:
         disabled_response = client.get(
             f"/stores/{store_id}/devices",
-            params={"estado_inventario": "apartado", "limit": 200, "offset": 0},
+            params={"estado_inventario": "apartado",
+                    "limit": 200, "offset": 0},
             headers=headers,
         )
         assert disabled_response.status_code == status.HTTP_404_NOT_FOUND

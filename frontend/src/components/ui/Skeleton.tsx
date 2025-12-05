@@ -23,10 +23,7 @@ export function Skeleton({
 
   if (lines > 1) {
     return (
-      <div
-        className={`ui-skeleton-group ${className}`}
-        style={{ display: "flex", flexDirection: "column", gap: "8px", ...customStyle }}
-      >
+      <div className={`ui-skeleton-group flex flex-col gap-2 ${className}`} style={customStyle}>
         {Array.from({ length: lines }).map((_, i) => (
           <div
             key={i}

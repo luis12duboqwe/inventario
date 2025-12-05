@@ -2,11 +2,15 @@ import React from "react";
 
 export default function RepairsParts() {
   return (
-    <div style={{ display: "grid", gap: 12 }}>
-      <h2 style={{ margin: 0 }}>Repuestos</h2>
-      <p style={{ margin: 0, color: "#9ca3af" }}>
-        Control de piezas utilizadas y existencias enlazadas con inventario.
-      </p>
+    <div className="panel m-4">
+      <div className="panel__header">
+        <h2 className="text-xl font-bold">Repuestos</h2>
+      </div>
+      <div className="panel__body">
+        <p className="text-secondary">
+          Control de piezas utilizadas y existencias enlazadas con inventario.
+        </p>
+      </div>
     </div>
   );
 }

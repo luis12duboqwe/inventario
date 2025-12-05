@@ -278,5 +278,15 @@
     "error": null,
     "created_at": "2025-12-01T21:05:36.556957+00:00",
     "finished_at": "2025-12-01T21:05:36.564614+00:00"
+  },
+  "6f5e5312-ddf8-4c20-b34d-c699b35b05ac": {
+    "id": "6f5e5312-ddf8-4c20-b34d-c699b35b05ac",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-0/test_async_cash_report_job_run0/cash_reports/cierre_1_6f5e5312-ddf8-4c20-b34d-c699b35b05ac.pdf",
+    "error": null,
+    "created_at": "2025-12-02T18:28:34.675221+00:00",
+    "finished_at": "2025-12-02T18:28:34.682359+00:00"
   }
 }

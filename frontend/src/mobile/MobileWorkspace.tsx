@@ -11,11 +11,14 @@ import {
   type InventoryReceivingLineInput,
   type InventoryReceivingRequest,
 } from "@api/inventory";
+import { createSale, type SaleCreateInput } from "../../api/sales";
+import { type PaymentMethod } from "../../api/types";
 import PageHeader from "@components/ui/PageHeader";
 import POSQuickScan from "../modules/sales/components/pos/POSQuickScan";
 import { useDashboard } from "../modules/dashboard/context/DashboardContext";
 
 type ScanLine = { id: string; identifier: string; quantity: number };
+type CartLine = { id: string; device: CatalogDevice; quantity: number };
 
 const CAMERA_SCAN_INTERVAL = 600;
 
@@ -50,6 +53,11 @@ function MobileWorkspace({ title = "Softmobile móvil" }: MobileWorkspaceProps) 
   const [countLines, setCountLines] = useState<ScanLine[]>([]);
   const [receivingLines, setReceivingLines] = useState<ScanLine[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // POS State
+  const [mode, setMode] = useState<"inventory" | "pos">("inventory");
+  const [cartLines, setCartLines] = useState<CartLine[]>([]);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("CASH");
 
   const [lookupQuery, setLookupQuery] = useState("");
   const [lookupResults, setLookupResults] = useState<CatalogDevice[]>([]);
@@ -134,11 +142,28 @@ function MobileWorkspace({ title = "Softmobile móvil" }: MobileWorkspaceProps) 
 
   const handleCameraDetection = useCallback(
     async (value: string) => {
-      addCountLine(value);
-      addReceivingLine(value);
-      pushToast({ message: `Capturado ${value} desde la cámara.`, variant: "success" });
+      if (mode === "pos") {
+        try {
+          let results = await searchCatalogDevices(token, { imei: value });
+          if (results.length === 0) {
+            results = await searchCatalogDevices(token, { serial: value });
+          }
+          if (results.length > 0) {
+            addToCart(results[0]);
+            pushToast({ message: `Agregado: ${results[0].name}`, variant: "success" });
+          } else {
+            pushToast({ message: `No encontrado: ${value}`, variant: "error" });
+          }
+        } catch (e) {
+          pushToast({ message: "Error al buscar producto", variant: "error" });
+        }
+      } else {
+        addCountLine(value);
+        addReceivingLine(value);
+        pushToast({ message: `Capturado ${value} desde la cámara.`, variant: "success" });
+      }
     },
-    [addCountLine, addReceivingLine, pushToast],
+    [addCountLine, addReceivingLine, pushToast, mode, addToCart, token],
   );
 
   useEffect(() => {
@@ -210,12 +235,82 @@ function MobileWorkspace({ title = "Softmobile móvil" }: MobileWorkspaceProps) 
     };
   }, [cameraEnabled, handleCameraDetection, stopCamera, stopTracks]);
 
+  const addToCart = useCallback((device: CatalogDevice) => {
+    setCartLines((current) => {
+      const existing = current.find((line) => line.device.id === device.id);
+      if (existing) {
+        return current.map((line) =>
+          line.device.id === device.id ? { ...line, quantity: line.quantity + 1 } : line,
+        );
+      }
+      return [{ id: crypto.randomUUID(), device, quantity: 1 }, ...current];
+    });
+  }, []);
+
+  const handleCheckout = async () => {
+    if (!selectedStoreId) {
+      pushToast({ message: "Selecciona una sucursal.", variant: "error" });
+      return;
+    }
+    if (cartLines.length === 0) {
+      pushToast({ message: "El carrito está vacío.", variant: "warning" });
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const payload: SaleCreateInput = {
+        store_id: selectedStoreId,
+        payment_method: paymentMethod,
+        items: cartLines.map((line) => ({
+          device_id: line.device.id,
+          quantity: line.quantity,
+        })),
+        notes: "Venta móvil",
+      };
+
+      await createSale(token, payload, "Venta móvil POS");
+      pushToast({ message: "Venta registrada exitosamente.", variant: "success" });
+      setCartLines([]);
+      await refreshInventoryAfterTransfer();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Error al procesar venta";
+      pushToast({ message, variant: "error" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleScan = async (raw: string) => {
     const value = raw.trim();
     if (!value) return "Lectura vacía";
-    addCountLine(value);
-    addReceivingLine(value);
-    return { label: value };
+
+    if (mode === "pos") {
+      try {
+        // Intentar búsqueda exacta por IMEI/Serie
+        let results = await searchCatalogDevices(token, { imei: value });
+        if (results.length === 0) {
+          results = await searchCatalogDevices(token, { serial: value });
+        }
+
+        if (results.length > 0) {
+          const device = results[0];
+          addToCart(device);
+          pushToast({ message: `Agregado: ${device.name}`, variant: "success" });
+          return { label: device.name };
+        } else {
+          pushToast({ message: "Producto no encontrado", variant: "error" });
+          return "No encontrado";
+        }
+      } catch (e) {
+        console.error(e);
+        return "Error búsqueda";
+      }
+    } else {
+      addCountLine(value);
+      addReceivingLine(value);
+      return { label: value };
+    }
   };
 
   const handleUpdateLine = (
@@ -316,8 +411,27 @@ function MobileWorkspace({ title = "Softmobile móvil" }: MobileWorkspaceProps) 
     <div className="mobile-workspace">
       <PageHeader
         title={title}
-        description="Conteos rápidos, recepciones y consulta express optimizados para lector Bluetooth o cámara."
+        description={
+          mode === "pos"
+            ? "Punto de venta móvil express."
+            : "Conteos rápidos, recepciones y consulta express."
+        }
       />
+
+      <div className="flex gap-2 mb-4 px-4">
+        <button
+          className={`btn ${mode === "inventory" ? "btn--primary" : "btn--ghost"} flex-1`}
+          onClick={() => setMode("inventory")}
+        >
+          Inventario
+        </button>
+        <button
+          className={`btn ${mode === "pos" ? "btn--primary" : "btn--ghost"} flex-1`}
+          onClick={() => setMode("pos")}
+        >
+          Venta POS
+        </button>
+      </div>
 
       <div className="mobile-grid">
         <section className="mobile-card">
@@ -365,152 +479,238 @@ function MobileWorkspace({ title = "Softmobile móvil" }: MobileWorkspaceProps) 
           </div>
         </section>
 
-        <section className="mobile-card">
-          <header className="mobile-card__header">
-            <div>
-              <p className="eyebrow">Inventario en campo</p>
-              <h2>Conteo y recepción</h2>
-              <p className="muted-text">
-                Ajusta cantidades y envía los movimientos con motivo corporativo obligatorio.
-              </p>
-            </div>
-            <BatteryCharging size={18} aria-hidden />
-          </header>
+        {mode === "inventory" ? (
+          <section className="mobile-card">
+            <header className="mobile-card__header">
+              <div>
+                <p className="eyebrow">Inventario en campo</p>
+                <h2>Conteo y recepción</h2>
+                <p className="muted-text">
+                  Ajusta cantidades y envía los movimientos con motivo corporativo obligatorio.
+                </p>
+              </div>
+              <BatteryCharging size={18} aria-hidden />
+            </header>
 
-          <form className="mobile-form" onSubmit={handleSubmit}>
-            <label className="mobile-field">
-              <span>Sucursal destino</span>
-              <select
-                value={selectedStoreId ?? ""}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setSelectedStoreId(value ? Number(value) : null);
-                }}
+            <form className="mobile-form" onSubmit={handleSubmit}>
+              <label className="mobile-field">
+                <span>Sucursal destino</span>
+                <select
+                  value={selectedStoreId ?? ""}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setSelectedStoreId(value ? Number(value) : null);
+                  }}
+                >
+                  <option value="">Selecciona una sucursal</option>
+                  {stores.map((store) => (
+                    <option key={store.id} value={store.id}>
+                      {store.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="mobile-field">
+                <span>Motivo corporativo</span>
+                <textarea
+                  required
+                  minLength={5}
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
+                  placeholder="Ej. Conteo sorpresa en pasillo A"
+                />
+              </label>
+
+              <div className="mobile-field-grid">
+                <label className="mobile-field">
+                  <span>Responsable</span>
+                  <input
+                    value={responsible}
+                    onChange={(event) => setResponsible(event.target.value)}
+                    placeholder="Auditor o receptor"
+                  />
+                </label>
+                <label className="mobile-field">
+                  <span>Referencia</span>
+                  <input
+                    value={reference}
+                    onChange={(event) => setReference(event.target.value)}
+                    placeholder="Folio o ticket"
+                  />
+                </label>
+              </div>
+
+              <div className="mobile-list">
+                <div className="mobile-list__title">
+                  <strong>Conteo ({totalCount})</strong>
+                  <small className="muted-text">Edita cantidades antes de conciliar</small>
+                </div>
+                {countLines.length === 0 ? (
+                  <p className="muted-text">Escanea para comenzar el conteo.</p>
+                ) : (
+                  <ul>
+                    {countLines.map((line) => (
+                      <li key={line.id} className="mobile-line">
+                        <span className="mobile-line__id">{line.identifier}</span>
+                        <input
+                          type="number"
+                          min={0}
+                          value={line.quantity}
+                          onChange={(event) =>
+                            handleUpdateLine(
+                              countLines,
+                              line.id,
+                              Number(event.target.value),
+                              setCountLines,
+                            )
+                          }
+                        />
+                        <button
+                          type="button"
+                          className="btn btn--ghost"
+                          onClick={() => handleRemoveLine(countLines, line.id, setCountLines)}
+                          aria-label={`Eliminar ${line.identifier} del conteo`}
+                        >
+                          ×
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="mobile-list">
+                <div className="mobile-list__title">
+                  <strong>Recepción ({totalReceiving})</strong>
+                  <small className="muted-text">Confirma piezas recibidas</small>
+                </div>
+                {receivingLines.length === 0 ? (
+                  <p className="muted-text">Escanea para agregar recepciones.</p>
+                ) : (
+                  <ul>
+                    {receivingLines.map((line) => (
+                      <li key={line.id} className="mobile-line">
+                        <span className="mobile-line__id">{line.identifier}</span>
+                        <input
+                          type="number"
+                          min={0}
+                          value={line.quantity}
+                          onChange={(event) =>
+                            handleUpdateLine(
+                              receivingLines,
+                              line.id,
+                              Number(event.target.value),
+                              setReceivingLines,
+                            )
+                          }
+                        />
+                        <button
+                          type="button"
+                          className="btn btn--ghost"
+                          onClick={() =>
+                            handleRemoveLine(receivingLines, line.id, setReceivingLines)
+                          }
+                          aria-label={`Eliminar ${line.identifier} de la recepción`}
+                        >
+                          ×
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="mobile-actions">
+                <button type="submit" className="btn btn--primary" disabled={loading}>
+                  {loading ? "Enviando" : "Registrar movimientos"}
+                </button>
+              </div>
+            </form>
+          </section>
+        ) : (
+          <section className="mobile-card">
+            <header className="mobile-card__header">
+              <div>
+                <p className="eyebrow">Venta en piso</p>
+                <h2>Carrito de compra</h2>
+                <p className="muted-text">Escanea productos para agregar al ticket.</p>
+              </div>
+            </header>
+
+            <div className="mobile-list">
+              {cartLines.length === 0 ? (
+                <p className="muted-text">Carrito vacío. Escanea un producto.</p>
+              ) : (
+                <ul>
+                  {cartLines.map((line) => (
+                    <li key={line.id} className="mobile-line">
+                      <div>
+                        <span className="mobile-line__id">{line.device.name}</span>
+                        <div className="text-xs text-slate-400">
+                          ${line.device.unit_price?.toLocaleString() ?? "0"}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          value={line.quantity}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            setCartLines((prev) =>
+                              prev.map((p) => (p.id === line.id ? { ...p, quantity: val } : p)),
+                            );
+                          }}
+                          className="w-16 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-white"
+                        />
+                        <button
+                          className="btn btn--ghost"
+                          onClick={() =>
+                            setCartLines((prev) => prev.filter((p) => p.id !== line.id))
+                          }
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-slate-700">
+              <div className="flex justify-between mb-4 text-lg font-bold text-white">
+                <span>Total</span>
+                <span>
+                  $
+                  {cartLines
+                    .reduce((sum, line) => sum + line.quantity * (line.device.unit_price || 0), 0)
+                    .toLocaleString()}
+                </span>
+              </div>
+
+              <label className="mobile-field mb-4">
+                <span>Método de Pago</span>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
+                >
+                  <option value="CASH">Efectivo</option>
+                  <option value="CARD">Tarjeta</option>
+                  <option value="TRANSFER">Transferencia</option>
+                </select>
+              </label>
+
+              <button
+                className="btn btn--primary w-full"
+                onClick={handleCheckout}
+                disabled={loading || cartLines.length === 0}
               >
-                <option value="">Selecciona una sucursal</option>
-                {stores.map((store) => (
-                  <option key={store.id} value={store.id}>
-                    {store.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="mobile-field">
-              <span>Motivo corporativo</span>
-              <textarea
-                required
-                minLength={5}
-                value={note}
-                onChange={(event) => setNote(event.target.value)}
-                placeholder="Ej. Conteo sorpresa en pasillo A"
-              />
-            </label>
-
-            <div className="mobile-field-grid">
-              <label className="mobile-field">
-                <span>Responsable</span>
-                <input
-                  value={responsible}
-                  onChange={(event) => setResponsible(event.target.value)}
-                  placeholder="Auditor o receptor"
-                />
-              </label>
-              <label className="mobile-field">
-                <span>Referencia</span>
-                <input
-                  value={reference}
-                  onChange={(event) => setReference(event.target.value)}
-                  placeholder="Folio o ticket"
-                />
-              </label>
-            </div>
-
-            <div className="mobile-list">
-              <div className="mobile-list__title">
-                <strong>Conteo ({totalCount})</strong>
-                <small className="muted-text">Edita cantidades antes de conciliar</small>
-              </div>
-              {countLines.length === 0 ? (
-                <p className="muted-text">Escanea para comenzar el conteo.</p>
-              ) : (
-                <ul>
-                  {countLines.map((line) => (
-                    <li key={line.id} className="mobile-line">
-                      <span className="mobile-line__id">{line.identifier}</span>
-                      <input
-                        type="number"
-                        min={0}
-                        value={line.quantity}
-                        onChange={(event) =>
-                          handleUpdateLine(
-                            countLines,
-                            line.id,
-                            Number(event.target.value),
-                            setCountLines,
-                          )
-                        }
-                      />
-                      <button
-                        type="button"
-                        className="btn btn--ghost"
-                        onClick={() => handleRemoveLine(countLines, line.id, setCountLines)}
-                        aria-label={`Eliminar ${line.identifier} del conteo`}
-                      >
-                        ×
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-
-            <div className="mobile-list">
-              <div className="mobile-list__title">
-                <strong>Recepción ({totalReceiving})</strong>
-                <small className="muted-text">Confirma piezas recibidas</small>
-              </div>
-              {receivingLines.length === 0 ? (
-                <p className="muted-text">Escanea para agregar recepciones.</p>
-              ) : (
-                <ul>
-                  {receivingLines.map((line) => (
-                    <li key={line.id} className="mobile-line">
-                      <span className="mobile-line__id">{line.identifier}</span>
-                      <input
-                        type="number"
-                        min={0}
-                        value={line.quantity}
-                        onChange={(event) =>
-                          handleUpdateLine(
-                            receivingLines,
-                            line.id,
-                            Number(event.target.value),
-                            setReceivingLines,
-                          )
-                        }
-                      />
-                      <button
-                        type="button"
-                        className="btn btn--ghost"
-                        onClick={() => handleRemoveLine(receivingLines, line.id, setReceivingLines)}
-                        aria-label={`Eliminar ${line.identifier} de la recepción`}
-                      >
-                        ×
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-
-            <div className="mobile-actions">
-              <button type="submit" className="btn btn--primary" disabled={loading}>
-                {loading ? "Enviando" : "Registrar movimientos"}
+                {loading ? "Procesando..." : "Cobrar"}
               </button>
             </div>
-          </form>
-        </section>
+          </section>
+        )}
 
         <section className="mobile-card">
           <header className="mobile-card__header">

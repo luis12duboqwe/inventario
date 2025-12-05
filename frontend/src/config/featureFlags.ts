@@ -25,6 +25,8 @@ export const featureFlags = {
   variants: coerceFlag(import.meta.env.VITE_SOFTMOBILE_ENABLE_VARIANTS, false),
   bundles: coerceFlag(import.meta.env.VITE_SOFTMOBILE_ENABLE_BUNDLES, false),
   dte: coerceFlag(import.meta.env.VITE_SOFTMOBILE_ENABLE_DTE, false),
+  loyalty: coerceFlag(import.meta.env.VITE_SOFTMOBILE_ENABLE_LOYALTY, false),
+  wms: coerceFlag(import.meta.env.VITE_SOFTMOBILE_ENABLE_WMS, false),
   privacyCenter: coerceFlag(import.meta.env.VITE_SOFTMOBILE_ENABLE_PRIVACY_CENTER, false),
 } as const;
 

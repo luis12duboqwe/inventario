@@ -1,7 +1,7 @@
 """Rutas para gestionar transferencias entre sucursales."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 from typing import Sequence
 
@@ -26,7 +26,8 @@ _transfer_permissions = Depends(
 
 def _ensure_feature_enabled() -> None:
     if not settings.enable_transfers:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Funcionalidad no disponible")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Funcionalidad no disponible")
 
 
 def _serialize_transfer(
@@ -57,7 +58,8 @@ def _transfers_with_audit(
             entity_ids=identifiers,
         )
     return [
-        _serialize_transfer(transfer, audit_map.get(str(getattr(transfer, "id", ""))))
+        _serialize_transfer(transfer, audit_map.get(
+            str(getattr(transfer, "id", ""))))
         for transfer in transfers
     ]
 
@@ -194,7 +196,7 @@ def export_transfer_report_pdf(
     )
     pdf_bytes = transfer_reports.render_transfer_report_pdf(report)
     metadata = schemas.BinaryFileResponse(
-        filename=f"transferencias_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf",
+        filename=f"transferencias_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.pdf",
         media_type="application/pdf",
     )
     return StreamingResponse(
@@ -232,7 +234,7 @@ def export_transfer_report_excel(
     )
     excel_bytes = transfer_reports.render_transfer_report_excel(report)
     metadata = schemas.BinaryFileResponse(
-        filename=f"transferencias_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx",
+        filename=f"transferencias_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.xlsx",
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
     return StreamingResponse(
@@ -240,6 +242,25 @@ def export_transfer_report_excel(
         media_type=metadata.media_type,
         headers=metadata.content_disposition(),
     )
+
+
+@router.get(
+    "/{transfer_id}",
+    response_model=schemas.TransferOrderResponse,
+    dependencies=[_transfer_permissions],
+)
+def get_transfer(
+    transfer_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    current_user=_transfer_permissions,
+):
+    _ensure_feature_enabled()
+    try:
+        order = crud.get_transfer_order(db, transfer_id)
+        return _transfers_with_audit(db, [order])[0]
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Transferencia no encontrada") from exc
 
 
 @router.post(
@@ -261,17 +282,22 @@ def create_transfer(
             )
         return _transfers_with_audit(db, [order])[0]
     except PermissionError as exc:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para transferir desde esta sucursal.") from exc
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="No tienes permisos para transferir desde esta sucursal.") from exc
     except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recurso no encontrado") from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Recurso no encontrado") from exc
     except ValueError as exc:
         detail = str(exc)
         if detail == "transfer_same_store":
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="La sucursal de origen y destino deben ser distintas.") from exc
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                                detail="La sucursal de origen y destino deben ser distintas.") from exc
         if detail == "transfer_items_required":
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Debes agregar al menos un dispositivo a la transferencia.") from exc
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                                detail="Debes agregar al menos un dispositivo a la transferencia.") from exc
         if detail == "transfer_invalid_quantity":
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="La cantidad debe ser mayor a cero.") from exc
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                                detail="La cantidad debe ser mayor a cero.") from exc
         raise
 
 
@@ -297,13 +323,16 @@ def dispatch_transfer(
             )
         return _transfers_with_audit(db, [order])[0]
     except PermissionError as exc:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para despachar esta transferencia.") from exc
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="No tienes permisos para despachar esta transferencia.") from exc
     except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transferencia no encontrada") from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Transferencia no encontrada") from exc
     except ValueError as exc:
         detail = str(exc)
         if detail == "transfer_invalid_transition":
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="No es posible despachar la transferencia en su estado actual.") from exc
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                                detail="No es posible despachar la transferencia en su estado actual.") from exc
         if detail in {"transfer_insufficient_stock", "transfer_requires_full_unit"}:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -347,17 +376,22 @@ def receive_transfer(
             )
         return _transfers_with_audit(db, [order])[0]
     except PermissionError as exc:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para recibir en esta sucursal.") from exc
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="No tienes permisos para recibir en esta sucursal.") from exc
     except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transferencia no encontrada") from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Transferencia no encontrada") from exc
     except ValueError as exc:
         detail = str(exc)
         if detail == "transfer_invalid_transition":
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La transferencia no puede recibirse en su estado actual.") from exc
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                                detail="La transferencia no puede recibirse en su estado actual.") from exc
         if detail == "transfer_insufficient_stock":
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La sucursal de origen no cuenta con stock suficiente.") from exc
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                                detail="La sucursal de origen no cuenta con stock suficiente.") from exc
         if detail == "transfer_requires_full_unit":
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Los dispositivos con IMEI o serie deben transferirse completos.") from exc
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                                detail="Los dispositivos con IMEI o serie deben transferirse completos.") from exc
         if detail == "transfer_device_already_sold":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -398,11 +432,13 @@ def reject_transfer(
             detail="No tienes permisos para rechazar en esta sucursal.",
         ) from exc
     except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transferencia no encontrada") from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Transferencia no encontrada") from exc
     except ValueError as exc:
         detail = str(exc)
         if detail == "transfer_invalid_transition":
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La transferencia no puede rechazarse en su estado actual.") from exc
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                                detail="La transferencia no puede rechazarse en su estado actual.") from exc
         if detail in {"transfer_invalid_received_quantity", "transfer_item_mismatch", "transfer_missing_dispatch"}:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -438,10 +474,13 @@ def cancel_transfer(
             )
         return _transfers_with_audit(db, [order])[0]
     except PermissionError as exc:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para cancelar esta transferencia.") from exc
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="No tienes permisos para cancelar esta transferencia.") from exc
     except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transferencia no encontrada") from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Transferencia no encontrada") from exc
     except ValueError as exc:
         if str(exc) == "transfer_invalid_transition":
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La transferencia ya fue cerrada.") from exc
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                                detail="La transferencia ya fue cerrada.") from exc
         raise

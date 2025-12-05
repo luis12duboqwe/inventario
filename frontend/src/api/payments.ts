@@ -9,7 +9,7 @@ export type PaymentCenter = {
   status: "ACTIVE" | "INACTIVE";
   balance: number;
   currency: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 };
 
 export type PaymentCenterInput = {
@@ -17,7 +17,7 @@ export type PaymentCenterInput = {
   type: PaymentCenter["type"];
   status?: PaymentCenter["status"];
   currency?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 };
 
 export type PaymentCenterTransaction = {

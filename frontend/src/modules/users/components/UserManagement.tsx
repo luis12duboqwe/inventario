@@ -13,6 +13,7 @@ import type {
 import type { Store } from "@api/stores";
 import { listRoles } from "@api/users";
 import { getStores } from "@api/stores";
+import { FILTER_ALL_VALUE } from "../../../constants/filters";
 import FiltersPanel from "./management/FiltersPanel";
 import RoleModal from "./management/RoleModal";
 import SidePanel from "./management/SidePanel";
@@ -27,7 +28,7 @@ type Props = {
   token: string;
 };
 
-type UserStatusFilter = "all" | "active" | "inactive" | "locked";
+type UserStatusFilter = typeof FILTER_ALL_VALUE | "active" | "inactive" | "locked";
 
 const DEFAULT_FORM_STATE: UserFormState = {
   username: "",
@@ -60,9 +61,11 @@ function UserManagement({ token }: Props) {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [formState, setFormState] = useState<UserFormState>(DEFAULT_FORM_STATE);
   const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState<string>("TODOS");
-  const [statusFilter, setStatusFilter] = useState<UserStatusFilter>("all");
-  const [storeFilter, setStoreFilter] = useState<number | "ALL">("ALL");
+  const [roleFilter, setRoleFilter] = useState<string>(FILTER_ALL_VALUE);
+  const [statusFilter, setStatusFilter] = useState<UserStatusFilter>(FILTER_ALL_VALUE);
+  const [storeFilter, setStoreFilter] = useState<number | typeof FILTER_ALL_VALUE>(
+    FILTER_ALL_VALUE,
+  );
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [loadingDashboard, setLoadingDashboard] = useState(false);
   const [loadingPermissions, setLoadingPermissions] = useState(false);
@@ -79,10 +82,10 @@ function UserManagement({ token }: Props) {
     if (debouncedSearch) {
       filters.search = debouncedSearch;
     }
-    if (roleFilter !== "TODOS") {
+    if (roleFilter !== FILTER_ALL_VALUE) {
       filters.role = roleFilter;
     }
-    if (storeFilter !== "ALL") {
+    if (storeFilter !== FILTER_ALL_VALUE) {
       filters.storeId = storeFilter;
     }
     return filters;
@@ -537,7 +540,7 @@ function UserManagement({ token }: Props) {
             roleFilter={roleFilter}
             onRoleFilterChange={setRoleFilter}
             statusFilter={statusFilter}
-            onStatusFilterChange={(value) => setStatusFilter(value ?? "all")}
+            onStatusFilterChange={(value) => setStatusFilter(value ?? FILTER_ALL_VALUE)}
             storeFilter={storeFilter}
             onStoreFilterChange={(value) => setStoreFilter(value)}
             roleOptions={roleNames}

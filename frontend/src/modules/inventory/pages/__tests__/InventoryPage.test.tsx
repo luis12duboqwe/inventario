@@ -97,9 +97,24 @@ vi.mock("../components/InventoryAlertsSection", () => ({
   default: () => <div data-testid="inventory-alerts-section" />,
 }));
 
-import InventoryLayoutContext, {
-  type InventoryLayoutContextValue,
-} from "../context/InventoryLayoutContext";
+vi.mock("../components/InventoryVariantsSection", () => ({
+  __esModule: true,
+  default: () => <div data-testid="inventory-variants-section" />,
+}));
+
+vi.mock("../components/InventoryBundlesSection", () => ({
+  __esModule: true,
+  default: () => <div data-testid="inventory-bundles-section" />,
+}));
+
+vi.mock("../context/InventoryLayoutContext", () => ({
+  useInventoryLayout: vi.fn(),
+  default: {
+    Provider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  },
+}));
+
+import { useInventoryLayout } from "../context/InventoryLayoutContext";
 import InventoryPage from "../InventoryPage";
 import InventoryProductsPage from "../InventoryProductsPage";
 import InventoryPriceListsPage from "../InventoryPriceListsPage";
@@ -112,6 +127,7 @@ import * as corporateReasonModule from "../../../../utils/corporateReason";
 import type { InventoryReservation } from "../../../../api";
 
 const useInventoryLayoutStateMock = vi.mocked(useInventoryLayoutState);
+const useInventoryLayoutMock = vi.mocked(useInventoryLayout);
 
 type Mutable<T> = { -readonly [P in keyof T]: T[P] };
 
@@ -345,8 +361,9 @@ describe("InventoryPage", () => {
     handleTabChange.mockReset();
     closeEditDialog.mockReset();
     handleSubmitDeviceUpdates.mockReset();
+    const contextValue = createContextValue();
     useInventoryLayoutStateMock.mockReturnValue({
-      contextValue: createContextValue(),
+      contextValue,
       tabOptions: [
         { id: "productos", label: "Productos", icon: null },
         { id: "listas", label: "Listas de precios", icon: null },
@@ -363,6 +380,7 @@ describe("InventoryPage", () => {
       closeEditDialog,
       handleSubmitDeviceUpdates,
     });
+    useInventoryLayoutMock.mockReturnValue(contextValue);
   });
 
   it("renderiza encabezado y pestañas", () => {
@@ -394,8 +412,9 @@ describe("InventoryPage", () => {
   });
 
   it("muestra indicador de carga y diálogo de edición", async () => {
+    const contextValue = createContextValue();
     useInventoryLayoutStateMock.mockReturnValue({
-      contextValue: createContextValue(),
+      contextValue,
       tabOptions: [{ id: "productos", label: "Productos", icon: null }],
       activeTab: "productos",
       handleTabChange,
@@ -407,6 +426,7 @@ describe("InventoryPage", () => {
       closeEditDialog,
       handleSubmitDeviceUpdates,
     });
+    useInventoryLayoutMock.mockReturnValue(contextValue);
 
     render(
       <MemoryRouter>
@@ -436,6 +456,7 @@ describe("InventoryPage", () => {
       closeEditDialog,
       handleSubmitDeviceUpdates,
     });
+    useInventoryLayoutMock.mockReturnValue(contextValue);
 
     render(
       <MemoryRouter initialEntries={[{ pathname: "/inventario/listas" }]}>
@@ -455,11 +476,8 @@ describe("InventoryProductsPage", () => {
   it("ejecuta acciones de descarga y refresco", async () => {
     const user = userEvent.setup();
     const contextValue = createContextValue();
-    render(
-      <InventoryLayoutContext.Provider value={contextValue}>
-        <InventoryProductsPage />
-      </InventoryLayoutContext.Provider>,
-    );
+    useInventoryLayoutMock.mockReturnValue(contextValue);
+    render(<InventoryProductsPage />);
 
     await user.click(screen.getByRole("button", { name: /Descargar PDF/i }));
     await user.click(screen.getByRole("button", { name: /Descargar CSV/i }));
@@ -477,11 +495,8 @@ describe("InventoryProductsPage", () => {
 describe("InventoryPriceListsPage", () => {
   it("incluye el componente de listas de precios", () => {
     const contextValue = createContextValue();
-    render(
-      <InventoryLayoutContext.Provider value={contextValue}>
-        <InventoryPriceListsPage />
-      </InventoryLayoutContext.Provider>,
-    );
+    useInventoryLayoutMock.mockReturnValue(contextValue);
+    render(<InventoryPriceListsPage />);
 
     expect(screen.getByRole("heading", { name: /Listas de precios/i })).toBeInTheDocument();
     expect(screen.getByTestId("catalog-price-lists")).toBeInTheDocument();
@@ -490,11 +505,8 @@ describe("InventoryPriceListsPage", () => {
 
 describe("InventoryMovementsPage", () => {
   it("muestra formulario y línea de tiempo", () => {
-    render(
-      <InventoryLayoutContext.Provider value={createContextValue()}>
-        <InventoryMovementsPage />
-      </InventoryLayoutContext.Provider>,
-    );
+    useInventoryLayoutMock.mockReturnValue(createContextValue());
+    render(<InventoryMovementsPage />);
 
     expect(screen.getByRole("heading", { name: /Movimientos de inventario/i })).toBeInTheDocument();
     expect(screen.getByTestId("inventory-movement-form")).toBeInTheDocument();
@@ -506,12 +518,9 @@ describe("InventorySuppliersPage", () => {
   it("personaliza el subtítulo con la sucursal seleccionada", () => {
     const contextValue = createContextValue();
     contextValue.module.selectedStore = { id: 7, name: "Sucursal Norte" } as never;
+    useInventoryLayoutMock.mockReturnValue(contextValue);
 
-    render(
-      <InventoryLayoutContext.Provider value={contextValue}>
-        <InventorySuppliersPage />
-      </InventoryLayoutContext.Provider>,
-    );
+    render(<InventorySuppliersPage />);
 
     expect(screen.getByText(/Compras recientes para Sucursal Norte/i)).toBeInTheDocument();
     expect(screen.getByTestId("inventory-suppliers-section")).toBeInTheDocument();
@@ -522,12 +531,9 @@ describe("InventoryAlertsPage", () => {
   it("adapta el subtítulo según la tienda", () => {
     const contextValue = createContextValue();
     contextValue.module.selectedStore = null;
+    useInventoryLayoutMock.mockReturnValue(contextValue);
 
-    render(
-      <InventoryLayoutContext.Provider value={contextValue}>
-        <InventoryAlertsPage />
-      </InventoryLayoutContext.Provider>,
-    );
+    render(<InventoryAlertsPage />);
 
     expect(
       screen.getByText(/Selecciona una sucursal para ajustar el umbral de alertas/i),
@@ -589,19 +595,18 @@ describe("InventoryReservationsPage", () => {
       cancel: cancelMock,
       expiringSoon: [reservation],
     };
+    useInventoryLayoutMock.mockReturnValue(contextValue);
 
     const reasonSpy = vi
       .spyOn(corporateReasonModule, "promptCorporateReason")
       .mockReturnValue("Motivo válido");
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
-    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {
+      /* no-op */
+    });
     const promptSpy = vi.spyOn(window, "prompt").mockReturnValue("2031-01-01T10:15");
 
-    render(
-      <InventoryLayoutContext.Provider value={contextValue}>
-        <InventoryReservationsPage />
-      </InventoryLayoutContext.Provider>,
-    );
+    render(<InventoryReservationsPage />);
 
     expect(screen.getByRole("heading", { name: /Reservas de inventario/i })).toBeInTheDocument();
     expect(screen.getByText(/reservas vencerán en los próximos 30 minutos/i)).toBeInTheDocument();

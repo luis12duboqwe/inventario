@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from io import BytesIO
 from typing import Iterable, Sequence
@@ -137,7 +137,7 @@ def _build_entries(records: Sequence[_CanonicalRecord], filters: schemas.FiscalB
     )
 
     return schemas.FiscalBookReport(
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         filters=filters,
         totals=totals,
         entries=entries,
@@ -207,7 +207,7 @@ def render_fiscal_book_pdf(report: schemas.FiscalBookReport) -> bytes:
         parent=styles["Heading1"],
         textColor=colors.HexColor("#38bdf8"),
     )
-    now_label = datetime.utcnow().strftime("%d/%m/%Y %H:%M UTC")
+    now_label = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
 
     elements: list = [  # type: ignore[var-annotated]
         Paragraph("Softmobile 2025 — Libro fiscal", heading_style),

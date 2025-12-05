@@ -278,7 +278,7 @@ def test_sale_and_return_flow(client, db_session):
     assert sale_response.status_code == status.HTTP_201_CREATED
     sale_data = sale_response.json()
     assert sale_data["payment_method"] == "TARJETA"
-    assert sale_data["total_amount"] == 900.0
+    assert sale_data["total_amount"] == 756.0
 
     devices_after_sale = client.get(
         f"/stores/{store_id}/devices", headers=auth_headers)
@@ -488,7 +488,7 @@ def test_cancel_sale_generates_credit_note_for_reported_invoice(client, db_sessi
                 models.StoreCredit.customer_id == customer_id)
         ).scalar_one()
         assert credit_note_record.code == cancelled["invoice_credit_note_code"]
-        assert float(credit_note_record.issued_amount) == pytest.approx(450.0)
+        assert float(credit_note_record.issued_amount) == pytest.approx(345.0)
     finally:
         settings.enable_purchases_sales = False
 

@@ -1,3 +1,4 @@
+import type { RefObject } from "react";
 import type { Device } from "../../../../api";
 
 type Props = {
@@ -8,6 +9,7 @@ type Props = {
   onAddDevice: (device: Device) => void;
   disabled: boolean;
   formatCurrency: (value: number) => string;
+  inputRef?: RefObject<HTMLInputElement>;
 };
 
 export function DeviceSearch({
@@ -18,6 +20,7 @@ export function DeviceSearch({
   onAddDevice,
   disabled,
   formatCurrency,
+  inputRef,
 }: Props) {
   return (
     <>
@@ -25,6 +28,7 @@ export function DeviceSearch({
         <label className="span-2">
           Buscar dispositivo por IMEI, SKU o modelo
           <input
+            ref={inputRef}
             value={deviceQuery}
             onChange={(event) => onDeviceQueryChange(event.target.value)}
             placeholder="Ej. 990000862471854 o FILTRO-1001"

@@ -91,7 +91,7 @@ export const usePurchasesController = ({
     askReason,
     setError,
     setMessage,
-    onInventoryRefresh: onInventoryRefresh ?? (() => {}),
+    onInventoryRefresh: onInventoryRefresh ?? (() => { /* no-op */ }),
   });
 
   const templatesLogic = usePurchaseTemplates({
@@ -102,7 +102,7 @@ export const usePurchasesController = ({
     askReason,
     setError,
     setMessage,
-    onInventoryRefresh: onInventoryRefresh ?? (() => {}),
+    onInventoryRefresh: onInventoryRefresh ?? (() => { /* no-op */ }),
   });
 
   const csvLogic = usePurchaseCsv({
@@ -113,7 +113,7 @@ export const usePurchasesController = ({
     askReason,
     setError,
     setMessage,
-    onInventoryRefresh: onInventoryRefresh ?? (() => {}),
+    onInventoryRefresh: onInventoryRefresh ?? (() => { /* no-op */ }),
   });
 
   const loadUsers = useCallback(async () => {

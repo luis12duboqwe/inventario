@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 
 from openpyxl import Workbook
@@ -26,7 +26,7 @@ def _build_pdf_document(title: str) -> tuple[list, SimpleDocTemplate, BytesIO]: 
         fontSize=18,
     )
 
-    timestamp = datetime.utcnow().strftime("%d/%m/%Y %H:%M UTC")
+    timestamp = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
     elements: list = [  # type: ignore[var-annotated]
         Paragraph("Softmobile 2025 — Directorio de usuarios", heading_style),
         Spacer(1, 12),
@@ -170,7 +170,7 @@ def render_user_directory_xlsx(report: schemas.UserDirectoryReport) -> BytesIO:
 
     worksheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=total_columns)
 
-    worksheet["A2"] = f"Generado: {datetime.utcnow().strftime('%d/%m/%Y %H:%M UTC')}"
+    worksheet["A2"] = f"Generado: {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M UTC')}"
     worksheet.merge_cells(start_row=2, start_column=1, end_row=2, end_column=total_columns)
 
     summary_headers = ["Indicador", "Valor"]

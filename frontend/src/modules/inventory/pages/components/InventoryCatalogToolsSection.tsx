@@ -3,12 +3,21 @@ import { Suspense, lazy } from "react";
 import Button from "@components/ui/Button";
 import { useInventoryLayout } from "../context/InventoryLayoutContext";
 
+import "./InventoryCatalogToolsSection.css";
+
 const AdvancedSearch = lazy(() => import("../../components/AdvancedSearch"));
 
 function InventoryCatalogToolsSection() {
   const {
     module: { enableCatalogPro, token },
-    catalog: { catalogFile, setCatalogFile, importingCatalog, exportingCatalog, lastImportSummary, fileInputRef },
+    catalog: {
+      catalogFile,
+      setCatalogFile,
+      importingCatalog,
+      exportingCatalog,
+      lastImportSummary,
+      fileInputRef,
+    },
     downloads: { triggerExportCatalog, triggerImportCatalog },
   } = useInventoryLayout();
 
@@ -63,7 +72,8 @@ function InventoryCatalogToolsSection() {
         {lastImportSummary ? (
           <div className="catalog-summary">
             <p className="muted-text">
-              Creados: {lastImportSummary.created} · Actualizados: {lastImportSummary.updated} · Omitidos: {lastImportSummary.skipped}
+              Creados: {lastImportSummary.created} · Actualizados: {lastImportSummary.updated} ·
+              Omitidos: {lastImportSummary.skipped}
             </p>
             {lastImportSummary.errors.length > 0 ? (
               <ul className="error-list">
@@ -73,7 +83,9 @@ function InventoryCatalogToolsSection() {
                   </li>
                 ))}
                 {lastImportSummary.errors.length > 5 ? (
-                  <li className="muted-text">Se omitieron {lastImportSummary.errors.length - 5} errores adicionales.</li>
+                  <li className="muted-text">
+                    Se omitieron {lastImportSummary.errors.length - 5} errores adicionales.
+                  </li>
                 ) : null}
               </ul>
             ) : (
@@ -82,14 +94,20 @@ function InventoryCatalogToolsSection() {
           </div>
         ) : (
           <p className="muted-text">
-            Descarga la plantilla actual para conservar todos los campos: SKU, categoría, condición, estado, costo_compra, precio_venta,
-            ubicación, fechas y descripción.
+            Descarga la plantilla actual para conservar todos los campos: SKU, categoría, condición,
+            estado, costo_compra, precio_venta, ubicación, fechas y descripción.
           </p>
         )}
       </div>
       {enableCatalogPro ? (
         <div className="section-grid">
-          <Suspense fallback={<div className="card catalog-card"><p className="muted-text">Cargando búsqueda avanzada…</p></div>}>
+          <Suspense
+            fallback={
+              <div className="card catalog-card">
+                <p className="muted-text">Cargando búsqueda avanzada…</p>
+              </div>
+            }
+          >
             <AdvancedSearch token={token} />
           </Suspense>
         </div>

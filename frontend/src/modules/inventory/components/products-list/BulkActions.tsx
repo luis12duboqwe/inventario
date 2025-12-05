@@ -1,4 +1,5 @@
 import React from "react";
+import Button from "@components/ui/Button";
 
 type Props = {
   selectedCount: number;
@@ -28,34 +29,21 @@ export default function BulkActions({
   }
 
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-      <div style={{ color: "#94a3b8", fontSize: 13 }}>{selectedCount} seleccionados</div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button
-          onClick={onActivate}
-          style={{ padding: "8px 12px", borderRadius: 8, background: "#22c55e", color: "#0b1220", border: 0 }}
-        >
+    <div className="flex items-center justify-between flex-wrap gap-4">
+      <div className="text-muted-foreground text-sm">{selectedCount} seleccionados</div>
+      <div className="flex gap-2 flex-wrap">
+        <Button onClick={onActivate} variant="success" size="sm">
           Activar
-        </button>
-        <button
-          onClick={onDeactivate}
-          style={{ padding: "8px 12px", borderRadius: 8, background: "#6b7280", color: "#fff", border: 0 }}
-        >
+        </Button>
+        <Button onClick={onDeactivate} variant="secondary" size="sm">
           Desactivar
-        </button>
+        </Button>
         {onLabel ? (
-          <button
+          <Button
             onClick={onLabel}
             disabled={!canGenerateLabel}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 8,
-              background: canGenerateLabel ? "#38bdf8" : "rgba(148, 163, 184, 0.25)",
-              color: canGenerateLabel ? "#0f172a" : "#cbd5f5",
-              border: 0,
-              cursor: canGenerateLabel ? "pointer" : "not-allowed",
-              opacity: canGenerateLabel ? 1 : 0.7,
-            }}
+            variant="primary"
+            size="sm"
             title={
               canGenerateLabel
                 ? "Generar etiqueta PDF"
@@ -63,23 +51,20 @@ export default function BulkActions({
             }
           >
             Etiqueta PDF
-          </button>
+          </Button>
         ) : null}
-        <button onClick={onTag} style={{ padding: "8px 12px", borderRadius: 8 }}>
+        <Button onClick={onTag} variant="secondary" size="sm">
           Etiquetar
-        </button>
-        <button onClick={onMoveCategory} style={{ padding: "8px 12px", borderRadius: 8 }}>
+        </Button>
+        <Button onClick={onMoveCategory} variant="secondary" size="sm">
           Mover categoría
-        </button>
-        <button onClick={onImport} style={{ padding: "8px 12px", borderRadius: 8 }}>
+        </Button>
+        <Button onClick={onImport} variant="secondary" size="sm">
           Importar
-        </button>
-        <button
-          onClick={onExport}
-          style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(255,255,255,0.08)", color: "#e5e7eb", border: 0 }}
-        >
+        </Button>
+        <Button onClick={onExport} variant="ghost" size="sm">
           Exportar
-        </button>
+        </Button>
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { SummaryCards } from "../components/common";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
+import { emitClientError } from "../../../utils/clientLog";
 import {
   getAnalyticsRealtime,
   getSalesProjectionAnalytics,
@@ -59,12 +60,9 @@ export default function SalesDashboardPage() {
         topProduct,
         returnsToday,
       });
-    } catch (error) {
-      console.error("Error fetching sales dashboard data:", error);
-      pushToast({
-        message: "Error al cargar métricas de ventas",
-        variant: "error",
-      });
+    } catch (err) {
+      emitClientError("SalesDashboardPage", "Error loading sales dashboard", err);
+      pushToast("Error al cargar métricas de ventas", "error");
     } finally {
       setLoading(false);
     }

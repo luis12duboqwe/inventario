@@ -503,7 +503,7 @@ export async function exportPurchaseVendorsCsv(
   const suffix = query ? `?${query}` : "";
   return request<Blob>(
     `/purchases/vendors/export/csv${suffix}`,
-    { method: "GET", headers: { "X-Reason": reason } },
+    { method: "GET", headers: { "X-Reason": reason }, responseType: "blob" },
     token,
   );
 }
@@ -626,7 +626,7 @@ export function exportPurchaseRecordsPdf(
   const suffix = query ? `?${query}` : "";
   return request<Blob>(
     `/purchases/records/export/pdf${suffix}`,
-    { method: "GET", headers: { "X-Reason": reason } },
+    { method: "GET", headers: { "X-Reason": reason }, responseType: "blob" },
     token,
   );
 }
@@ -666,7 +666,7 @@ export function exportPurchaseRecordsExcel(
   const suffix = query ? `?${query}` : "";
   return request<Blob>(
     `/purchases/records/export/xlsx${suffix}`,
-    { method: "GET", headers: { "X-Reason": reason } },
+    { method: "GET", headers: { "X-Reason": reason }, responseType: "blob" },
     token,
   );
 }

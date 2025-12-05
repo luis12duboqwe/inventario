@@ -153,9 +153,7 @@ describe("DeviceEditDialog", () => {
     const submitButton = screen.getByRole("button", { name: /Guardar cambios/i });
     await user.click(submitButton);
 
-    expect(
-      await screen.findByText("Ingresa un motivo corporativo de al menos 5 caracteres."),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Ingresa al menos 5 caracteres.")).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
   });

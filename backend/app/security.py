@@ -60,7 +60,8 @@ class _MemoryLimiterRedis:
 if not hasattr(bcrypt, "__about__"):
     bcrypt.__about__ = types.SimpleNamespace(__version__=bcrypt.__version__)
 
-pwd_context = CryptContext(schemes=["pbkdf2_sha256", "bcrypt_sha256", "bcrypt"], deprecated="auto")
+pwd_context = CryptContext(
+    schemes=["pbkdf2_sha256", "bcrypt_sha256", "bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)
 ALGORITHM = "HS256"
 
@@ -132,7 +133,8 @@ def rate_limit(*, times: int, minutes: int) -> Any:
 
 
 def _default_rate_limit_identifier(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for", "").split(",", 1)[0].strip()
+    forwarded = request.headers.get(
+        "x-forwarded-for", "").split(",", 1)[0].strip()
     if forwarded:
         return forwarded
     client = request.client
@@ -206,7 +208,6 @@ def verify_password(password: str, password_hash: str) -> bool:
     return pwd_context.verify(password, password_hash)
 
 
-
 _PASSWORD_POLICY = re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,128}$")
 
 
@@ -248,7 +249,8 @@ def _build_token_payload(
     if token_type == "access":  # // [PACK28-tokens]
         payload["nonce"] = uuid.uuid4().hex
     if extra_claims:
-        payload.update({key: value for key, value in extra_claims.items() if value is not None})
+        payload.update(
+            {key: value for key, value in extra_claims.items() if value is not None})
     return payload
 
 
@@ -296,13 +298,15 @@ def create_refresh_token(
         token_type="refresh",
         extra_claims={"sid": session_token, **(claims or {})},
     )
-    token = jwt.encode(refresh_payload, settings.secret_key, algorithm=ALGORITHM)
+    token = jwt.encode(refresh_payload, settings.secret_key,
+                       algorithm=ALGORITHM)
     return token, expires_at
 
 
 def decode_token(token: str) -> schemas.TokenPayload:
     try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, settings.secret_key,
+                             algorithms=[ALGORITHM])
         if "jti" not in payload:
             raise jwt.PyJWTError("missing jti")
         if "exp" not in payload:
@@ -328,7 +332,8 @@ async def get_current_user(
     db: Session = Depends(get_db),
 ):
     normalized_path = request.url.path.rstrip("/") or "/"
-    has_session_cookie = bool(request.cookies.get(settings.session_cookie_name))
+    has_session_cookie = bool(
+        request.cookies.get(settings.session_cookie_name))
     if token is None and not has_session_cookie and normalized_path in _ANONYMOUS_PATHS:
         return None
 
@@ -378,9 +383,11 @@ async def get_current_user(
             )
         user = session.user
     if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario no encontrado.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario no encontrado.")
     if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuario inactivo.")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Usuario inactivo.")
     if session_token:
         crud.mark_session_used(db, session_token)
     return user
@@ -393,7 +400,8 @@ def verify_totp(secret: str, code: str) -> bool:
 
 async def require_active_user(current_user=Depends(get_current_user)):
     if not current_user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuario inactivo.")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Usuario inactivo.")
     return current_user
 
 
@@ -478,8 +486,10 @@ def _aggregate_permissions(records: Iterable[Any]) -> dict[str, dict[str, bool]]
             module_key,
             {"can_view": False, "can_edit": False, "can_delete": False},
         )
-        bucket["can_view"] = bucket["can_view"] or bool(getattr(record, "can_view", False))
-        bucket["can_edit"] = bucket["can_edit"] or bool(getattr(record, "can_edit", False))
+        bucket["can_view"] = bucket["can_view"] or bool(
+            getattr(record, "can_view", False))
+        bucket["can_edit"] = bucket["can_edit"] or bool(
+            getattr(record, "can_edit", False))
         bucket["can_delete"] = bucket["can_delete"] or bool(
             getattr(record, "can_delete", False)
         )
@@ -493,13 +503,15 @@ def _collect_role_permissions(
     assignment_permissions: list[Any] = []
     for assignment in assignments:
         role_obj = getattr(assignment, "role", None)
-        assignment_permissions.extend(getattr(role_obj, "permissions", []) or [])
+        assignment_permissions.extend(
+            getattr(role_obj, "permissions", []) or [])
 
     aggregated = _aggregate_permissions(assignment_permissions)
     if aggregated or db is None:
         return aggregated
 
-    statement = select(models.Permission).where(models.Permission.role_name.in_(role_names))
+    statement = select(models.Permission).where(
+        models.Permission.role_name.in_(role_names))
     records = db.scalars(statement).all()
     return _aggregate_permissions(records)
 
@@ -565,7 +577,8 @@ def require_roles(
         if ADMIN in user_roles:
             return current_user
 
-        required_roles = {role.upper() for role in roles if isinstance(role, str)}
+        required_roles = {role.upper()
+                          for role in roles if isinstance(role, str)}
         if required_roles:
             if not user_roles:
                 raise HTTPException(
@@ -588,15 +601,18 @@ def require_roles(
                         detail="No cuenta con permisos en esta sucursal.",
                     )
 
-        module_key = module or (request.headers.get("x-permission-module") if request else None)
-        normalized_action = _normalize_action(action, request.method if request else None)
+        module_key = module or (request.headers.get(
+            "x-permission-module") if request else None)
+        normalized_action = _normalize_action(
+            action, request.method if request else None)
         if module_key:
             if not user_roles:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="El usuario autenticado no tiene roles asignados.",
                 )
-            permissions = _collect_role_permissions(current_user, db, user_roles)
+            permissions = _collect_role_permissions(
+                current_user, db, user_roles)
             if not _has_sensitive_permission(permissions, module_key, normalized_action):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,

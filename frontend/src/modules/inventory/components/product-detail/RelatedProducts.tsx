@@ -14,22 +14,16 @@ export default function RelatedProducts({ items, onOpen }: Props) {
   const data = Array.isArray(items) ? items : [];
 
   if (data.length === 0) {
-    return <div style={{ color: "#9ca3af" }}>Sin relacionados</div>;
+    return <div className="text-muted-foreground">Sin relacionados</div>;
   }
 
   return (
-    <div style={{ display: "grid", gap: 6 }}>
+    <div className="grid gap-2">
       {data.map((product) => (
         <button
           key={product.id}
           onClick={() => onOpen?.(product.id)}
-          style={{
-            textAlign: "left",
-            padding: "6px 8px",
-            borderRadius: 8,
-            border: "1px solid rgba(255,255,255,0.08)",
-            background: "rgba(255,255,255,0.03)",
-          }}
+          className="text-left p-2 rounded-lg border border-border bg-surface-highlight hover:bg-surface-highlight/80"
         >
           {product.name}
         </button>

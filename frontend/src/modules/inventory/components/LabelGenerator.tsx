@@ -9,6 +9,9 @@ import {
   triggerDeviceLabelPrint,
 } from "@api/inventory";
 import { useAuth } from "../../../auth/useAuth";
+import Modal from "@components/ui/Modal";
+import Button from "@components/ui/Button";
+import "./LabelGenerator.css";
 
 type Props = {
   open?: boolean;
@@ -41,7 +44,7 @@ export default function LabelGenerator({
   const [error, setError] = React.useState<string | null>(null);
   const [filename, setFilename] = React.useState<string>("");
   const [success, setSuccess] = React.useState(false);
-  const [previewUrlState, setPreviewUrlState] = React.useState<string | null>(null);
+  const [previewUrl, setPreviewUrlState] = React.useState<string | null>(null);
   const [commandsPayload, setCommandsPayload] = React.useState<DeviceLabelCommands | null>(null);
   const [directMessage, setDirectMessage] = React.useState<string | null>(null);
   const previewRef = React.useRef<string | null>(null);
@@ -110,7 +113,6 @@ export default function LabelGenerator({
   const hasStore = parsedStoreId !== null;
   const hasDevice = parsedDeviceId !== null;
   const canGenerate = hasStore && hasDevice && Boolean(effectiveToken);
-  // console.debug("LabelGenerator", { storeId, parsedDeviceId, accessToken, canGenerate });
 
   const validateReason = React.useCallback((): string | null => {
     const trimmed = reason.trim();
@@ -186,84 +188,91 @@ export default function LabelGenerator({
     onClose?.();
   }, [onClose, resetState]);
 
-  if (!open) {
-    return null;
-  }
+  const handleTestPrint = async () => {
+    if (!commandsPayload) return;
 
-  const previewUrl = previewUrlState;
+    const trimmedReason = validateReason();
+    if (!trimmedReason) {
+      return;
+    }
+    if (!canGenerate) {
+      setError("Selecciona sucursal, producto y motivo corporativo válido.");
+      return;
+    }
+    try {
+      setLoading(true);
+      const token = effectiveToken;
+      if (!token) {
+        throw new Error("Tu sesión no está disponible. Inicia sesión nuevamente.");
+      }
+      const response = await triggerDeviceLabelPrint(
+        token,
+        parsedStoreId as number,
+        parsedDeviceId as number,
+        trimmedReason,
+        {
+          format,
+          template,
+          ...(commandsPayload.connector !== undefined
+            ? { connector: commandsPayload.connector }
+            : {}),
+        },
+      );
+      setDirectMessage(response.message);
+    } catch (printError) {
+      const message =
+        printError instanceof Error
+          ? printError.message
+          : "No fue posible enviar la prueba de impresión.";
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const storeLabel = storeName?.trim() || "Sucursal sin nombre";
   const productLabel = deviceName?.trim() || sku?.trim() || "Producto seleccionado";
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="label-generator-title"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15, 23, 42, 0.65)",
-        display: "grid",
-        placeItems: "center",
-        zIndex: 60,
-        padding: 16,
-      }}
+    <Modal
+      open={!!open}
+      title="Generar etiqueta PDF"
+      description={`${productLabel} · ${storeLabel}`}
+      onClose={handleClose}
+      size="lg"
+      footer={
+        <div className="label-generator__footer-actions">
+          <Button variant="ghost" onClick={handleClose} disabled={loading}>
+            Cancelar
+          </Button>
+          {commandsPayload && format !== "pdf" ? (
+            <Button variant="secondary" onClick={handleTestPrint} disabled={loading}>
+              {loading ? "Enviando…" : "Probar en impresora local"}
+            </Button>
+          ) : null}
+          <Button variant="primary" onClick={handleGenerate} disabled={loading}>
+            {loading ? "Generando…" : success ? "Generar de nuevo" : "Generar etiqueta"}
+          </Button>
+        </div>
+      }
     >
-      <div
-        style={{
-          width: "min(720px, 100%)",
-          background: "#0b1220",
-          borderRadius: 16,
-          border: "1px solid rgba(56, 189, 248, 0.25)",
-          padding: 20,
-          display: "grid",
-          gap: 16,
-          maxHeight: "90vh",
-          overflow: "auto",
-        }}
-      >
-        <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            <h3 id="label-generator-title" style={{ margin: 0 }}>
-              Generar etiqueta PDF
-            </h3>
-            <p style={{ margin: "4px 0 0", color: "#94a3b8", fontSize: 14 }}>
-              {productLabel} · {storeLabel}
-            </p>
-          </div>
-          <button onClick={handleClose} style={{ padding: "6px 10px", borderRadius: 8 }}>
-            Cerrar
-          </button>
-        </header>
-
-        <section style={{ display: "grid", gap: 8 }}>
-          <label style={{ display: "grid", gap: 4, fontSize: 14 }}>
-            <span style={{ color: "#cbd5f5" }}>Motivo corporativo (X-Reason)</span>
+      <div className="label-generator__grid">
+        <section className="label-generator__section">
+          <label className="label-generator__field">
+            <span className="label-generator__label">Motivo corporativo (X-Reason)</span>
             <input
               value={reason}
               onChange={(event) => setReason(event.target.value)}
               placeholder="Describe el motivo de la impresión"
-              style={{
-                padding: "10px 12px",
-                borderRadius: 8,
-                border: "1px solid rgba(148, 163, 184, 0.35)",
-                background: "#0f172a",
-                color: "#e2e8f0",
-              }}
+              className="label-generator__input"
             />
-            <span style={{ fontSize: 12, color: "#64748b" }}>
+            <span className="label-generator__hint">
               Se enviará como encabezado <code>X-Reason</code> (mínimo 5 caracteres).
             </span>
           </label>
-          <div
-            style={{
-              display: "grid",
-              gap: 8,
-              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-            }}
-          >
-            <label style={{ display: "grid", gap: 4, fontSize: 14 }}>
-              <span style={{ color: "#cbd5f5" }}>Formato de etiqueta</span>
+          <div className="label-generator__options">
+            <label className="label-generator__field">
+              <span className="label-generator__label">Formato de etiqueta</span>
               <select
                 value={format}
                 onChange={(event) => {
@@ -272,31 +281,19 @@ export default function LabelGenerator({
                   updatePreviewUrl(null);
                   setSuccess(false);
                 }}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 8,
-                  border: "1px solid rgba(148, 163, 184, 0.35)",
-                  background: "#0f172a",
-                  color: "#e2e8f0",
-                }}
+                className="label-generator__select"
               >
                 <option value="pdf">PDF (descarga)</option>
                 <option value="zpl">ZPL · Zebra (directo)</option>
                 <option value="escpos">ESC/POS · Epson (directo)</option>
               </select>
             </label>
-            <label style={{ display: "grid", gap: 4, fontSize: 14 }}>
-              <span style={{ color: "#cbd5f5" }}>Plantilla / tamaño</span>
+            <label className="label-generator__field">
+              <span className="label-generator__label">Plantilla / tamaño</span>
               <select
                 value={template}
                 onChange={(event) => setTemplate(event.target.value as DeviceLabelTemplate)}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 8,
-                  border: "1px solid rgba(148, 163, 184, 0.35)",
-                  background: "#0f172a",
-                  color: "#e2e8f0",
-                }}
+                className="label-generator__select"
               >
                 <option value="38x25">38x25 mm — compacto</option>
                 <option value="50x30">50x30 mm — estándar</option>
@@ -306,199 +303,79 @@ export default function LabelGenerator({
             </label>
           </div>
           {error ? (
-            <div
-              role="alert"
-              style={{
-                padding: "10px 12px",
-                borderRadius: 8,
-                background: "rgba(248, 113, 113, 0.12)",
-                color: "#fca5a5",
-              }}
-            >
+            <div role="alert" className="label-generator__error">
               {error}
             </div>
           ) : null}
         </section>
 
-        <section
-          style={{
-            border: "1px solid rgba(148, 163, 184, 0.2)",
-            borderRadius: 12,
-            padding: 16,
-            background: "rgba(15, 23, 42, 0.65)",
-            display: "grid",
-            gap: 12,
-          }}
-        >
-          <h4 style={{ margin: 0 }}>Vista previa</h4>
+        <section className="label-generator__preview-container">
+          <h4 className="label-generator__preview-title">Vista previa</h4>
           {format === "pdf" ? (
             previewUrl ? (
-              <div style={{ display: "grid", gap: 12 }}>
+              <div className="label-generator__grid">
                 <iframe
                   title="Vista previa de etiqueta"
                   src={previewUrl}
-                  style={{
-                    width: "100%",
-                    height: 360,
-                    border: "1px solid rgba(56, 189, 248, 0.3)",
-                    borderRadius: 8,
-                  }}
+                  className="label-generator__iframe"
                 />
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <div className="label-generator__actions">
                   <a
                     href={previewUrl}
                     download={filename || "etiqueta.pdf"}
                     aria-label={filename || "etiqueta.pdf"}
-                    style={{
-                      padding: "8px 12px",
-                      borderRadius: 8,
-                      background: "#38bdf8",
-                      color: "#0f172a",
-                      fontWeight: 600,
-                      textDecoration: "none",
-                    }}
+                    className="label-generator__download-link"
                   >
                     Descargar {filename || "etiqueta.pdf"}
                   </a>
-                  <button
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     onClick={() => window.open(previewUrl, "_blank", "noopener,noreferrer")}
-                    style={{ padding: "8px 12px", borderRadius: 8 }}
                   >
                     Abrir en nueva pestaña
-                  </button>
+                  </Button>
                 </div>
               </div>
             ) : (
-              <p style={{ margin: 0, color: "#94a3b8" }}>
+              <p className="label-generator__empty-state">
                 Genera la etiqueta para obtener la vista previa y descarga inmediata.
               </p>
             )
           ) : commandsPayload ? (
-            <div style={{ display: "grid", gap: 10 }}>
-              <div
-                style={{
-                  padding: 10,
-                  borderRadius: 8,
-                  background: "rgba(56, 189, 248, 0.08)",
-                  color: "#e2e8f0",
-                }}
-              >
+            <div className="label-generator__commands-box">
+              <div className="label-generator__commands-message">
                 Comandos listos para impresión directa.
                 {directMessage ? ` ${directMessage}` : ""}
               </div>
               <textarea
                 value={commandsPayload.commands}
                 readOnly
-                style={{
-                  width: "100%",
-                  minHeight: 200,
-                  background: "#0f172a",
-                  color: "#e2e8f0",
-                  borderRadius: 8,
-                  border: "1px solid rgba(56, 189, 248, 0.35)",
-                  padding: 12,
-                  fontFamily: "monospace",
-                }}
+                className="label-generator__textarea"
               />
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                <button
+              <div className="label-generator__actions">
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={async () => {
                     await navigator.clipboard.writeText(commandsPayload.commands);
                     setDirectMessage("Comandos copiados al portapapeles.");
                   }}
-                  style={{ padding: "8px 12px", borderRadius: 8 }}
                 >
                   Copiar comandos
-                </button>
-                <span style={{ color: "#94a3b8", fontSize: 13 }}>
+                </Button>
+                <span className="label-generator__hint">
                   Conecta tu app local o impresora de red y pega el bloque anterior.
                 </span>
               </div>
             </div>
           ) : (
-            <p style={{ margin: 0, color: "#94a3b8" }}>
+            <p className="label-generator__empty-state">
               Genera la etiqueta para obtener los comandos directos de la impresora.
             </p>
           )}
         </section>
-
-        <footer style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
-          <button onClick={handleClose} style={{ padding: "8px 12px", borderRadius: 8 }}>
-            Cancelar
-          </button>
-          {commandsPayload && format !== "pdf" ? (
-            <button
-              onClick={async () => {
-                const trimmedReason = validateReason();
-                if (!trimmedReason) {
-                  return;
-                }
-                if (!canGenerate) {
-                  setError("Selecciona sucursal, producto y motivo corporativo válido.");
-                  return;
-                }
-                try {
-                  setLoading(true);
-                  const token = effectiveToken;
-                  if (!token) {
-                    throw new Error("Tu sesión no está disponible. Inicia sesión nuevamente.");
-                  }
-                  const response = await triggerDeviceLabelPrint(
-                    token,
-                    parsedStoreId as number,
-                    parsedDeviceId as number,
-                    trimmedReason,
-                    {
-                      format,
-                      template,
-                      ...(commandsPayload.connector !== undefined
-                        ? { connector: commandsPayload.connector }
-                        : {}),
-                    },
-                  );
-                  setDirectMessage(response.message);
-                } catch (printError) {
-                  const message =
-                    printError instanceof Error
-                      ? printError.message
-                      : "No fue posible enviar la prueba de impresión.";
-                  setError(message);
-                } finally {
-                  setLoading(false);
-                }
-              }}
-              disabled={loading}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 8,
-                background: "#0ea5e9",
-                color: "#0f172a",
-                fontWeight: 600,
-                border: 0,
-                opacity: loading ? 0.7 : 1,
-              }}
-            >
-              {loading ? "Enviando…" : "Probar en impresora local"}
-            </button>
-          ) : null}
-          <button
-            onClick={handleGenerate}
-            disabled={loading}
-            style={{
-              padding: "8px 16px",
-              borderRadius: 8,
-              background: loading ? "#64748b" : "#38bdf8",
-              color: "#0f172a",
-              fontWeight: 600,
-              border: 0,
-              opacity: loading ? 0.7 : 1,
-              cursor: loading ? "not-allowed" : "pointer",
-            }}
-          >
-            {loading ? "Generando…" : success ? "Generar de nuevo" : "Generar etiqueta"}
-          </button>
-        </footer>
       </div>
-    </div>
+    </Modal>
   );
 }

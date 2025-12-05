@@ -6,7 +6,7 @@ endpoints nuevos para PDF y XLSX.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 from typing import Iterable
 
@@ -96,7 +96,7 @@ def render_devices_catalog_pdf(
     c.drawString(margin_x, y, f"Catálogo dispositivos — Sucursal {store_id}")
     y -= 18
     c.setFont("Helvetica", 9)
-    generated = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+    generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     c.drawString(margin_x, y, f"Generado: {generated}")
     y -= 22
     # Cabecera de tabla

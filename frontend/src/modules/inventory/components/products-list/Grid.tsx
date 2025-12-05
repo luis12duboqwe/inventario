@@ -1,7 +1,7 @@
 import React from "react";
-
 import StatusBadge from "./StatusBadge";
 import StockBadge from "./StockBadge";
+import "../../InventoryTable.css"; // Ensure styles are loaded
 
 export type ProductCardData = {
   id: string;
@@ -22,22 +22,17 @@ export default function Grid({ items, onClick }: Props) {
   const data = Array.isArray(items) ? items : [];
 
   if (data.length === 0) {
-    return <div style={{ padding: 12, color: "#9ca3af" }}>Sin productos</div>;
+    return <div className="product-grid__empty">Sin productos</div>;
   }
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(220px,1fr))",
-        gap: 12,
-      }}
-    >
+    <div className="product-grid">
       {data.map((product) => (
         <div
           key={product.id}
           role="button"
           tabIndex={0}
+          className={`product-card ${onClick ? "cursor-pointer" : "cursor-default"}`}
           onClick={() => onClick?.(product.id)}
           onKeyDown={(e) => {
             if (onClick && (e.key === "Enter" || e.key === " ")) {
@@ -45,50 +40,28 @@ export default function Grid({ items, onClick }: Props) {
               onClick(product.id);
             }
           }}
-          style={{
-            cursor: onClick ? "pointer" : "default",
-            borderRadius: 12,
-            border: "1px solid rgba(255,255,255,0.08)",
-            overflow: "hidden",
-            background: "rgba(255,255,255,0.03)",
-          }}
         >
-          <div
-            style={{
-              width: "100%",
-              aspectRatio: "4 / 3",
-              background: "#0f172a",
-              display: "grid",
-              placeItems: "center",
-            }}
-          >
+          <div className="product-card__image-container">
             {product.imageUrl ? (
-              <img
-                src={product.imageUrl}
-                alt={product.name}
-                style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "cover" }}
-              />
+              <img src={product.imageUrl} alt={product.name} className="product-card__image" />
             ) : (
-              <span style={{ color: "#64748b" }}>Sin imagen</span>
+              <span className="product-card__no-image">Sin imagen</span>
             )}
           </div>
-          <div style={{ padding: 12, display: "grid", gap: 6 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div
-                style={{
-                  fontWeight: 700,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
+          <div className="product-card__content">
+            <div className="product-card__header">
+              <div className="product-card__title" title={product.name}>
                 {product.name}
               </div>
               <StatusBadge value={product.status} />
             </div>
-            <div style={{ fontSize: 12, color: "#94a3b8" }}>{product.sku || "—"}</div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>{Intl.NumberFormat().format(product.price)}</div>
+            <div className="product-card__sku">{product.sku || "—"}</div>
+            <div className="product-card__footer">
+              <div className="product-card__price">
+                {Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(
+                  product.price,
+                )}
+              </div>
               <StockBadge qty={product.stock} />
             </div>
           </div>

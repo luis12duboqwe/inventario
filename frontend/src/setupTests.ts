@@ -40,9 +40,9 @@ class ResizeObserverMock implements ResizeObserver {
   constructor(_callback: ResizeObserverCallback) {
     void _callback; // evitar warning por parámetro no usado
   }
-  observe(): void {}
-  unobserve(): void {}
-  disconnect(): void {}
+  observe(): void { /* mock */ }
+  unobserve(): void { /* mock */ }
+  disconnect(): void { /* mock */ }
   takeRecords(): ResizeObserverEntry[] {
     return [];
   }

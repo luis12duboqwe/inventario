@@ -3,6 +3,9 @@ import { Search } from "lucide-react";
 import TextField from "@components/ui/TextField";
 import { useInventoryLayout } from "../context/InventoryLayoutContext";
 import type { Device } from "@api/inventory";
+import { FILTER_ALL_VALUE } from "../../../../constants/filters";
+
+import "./InventoryProductsFilters.css";
 
 function InventoryProductsFilters() {
   const {
@@ -50,10 +53,12 @@ function InventoryProductsFilters() {
         <select
           value={estadoFilter}
           onChange={(event) =>
-            setEstadoFilter(event.target.value as Device["estado_comercial"] | "TODOS")
+            setEstadoFilter(
+              event.target.value as Device["estado_comercial"] | typeof FILTER_ALL_VALUE,
+            )
           }
         >
-          <option value="TODOS">Todos</option>
+          <option value={FILTER_ALL_VALUE}>Todos</option>
           <option value="nuevo">Nuevo</option>
           <option value="A">Grado A</option>
           <option value="B">Grado B</option>

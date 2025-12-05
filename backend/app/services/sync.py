@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
 from sqlalchemy import select
@@ -28,7 +28,7 @@ def requeue_failed_outbox_entries(db: Session) -> list[models.SyncOutbox]:
         return []
 
     retry_after = timedelta(seconds=settings.sync_retry_interval_seconds)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     candidates = crud.list_sync_outbox(
         db,
         statuses=(models.SyncOutboxStatus.FAILED, models.SyncOutboxStatus.PENDING),

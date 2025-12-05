@@ -1,11 +1,12 @@
 import { createContext, useContext } from "react";
 import type { Device } from "@api/inventory";
+import { FILTER_ALL_VALUE } from "../../../../constants/filters";
 
 export type InventorySearchContextValue = {
   inventoryQuery: string;
   setInventoryQuery: (value: string) => void;
-  estadoFilter: Device["estado_comercial"] | "TODOS";
-  setEstadoFilter: (value: Device["estado_comercial"] | "TODOS") => void;
+  estadoFilter: Device["estado_comercial"] | typeof FILTER_ALL_VALUE;
+  setEstadoFilter: (value: Device["estado_comercial"] | typeof FILTER_ALL_VALUE) => void;
   filteredDevices: Device[];
   highlightedDeviceIds: Set<number>;
 };

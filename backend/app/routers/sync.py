@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import csv
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO, StringIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -333,7 +333,7 @@ def export_conflicts_pdf(
     )
     pdf_bytes = sync_conflict_reports.render_conflict_report_pdf(report)
     metadata = schemas.BinaryFileResponse(
-        filename=f"conflictos_sync_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf",
+        filename=f"conflictos_sync_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.pdf",
         media_type="application/pdf",
     )
     return StreamingResponse(
@@ -362,7 +362,7 @@ def export_conflicts_excel(
     )
     excel_bytes = sync_conflict_reports.render_conflict_report_excel(report)
     metadata = schemas.BinaryFileResponse(
-        filename=f"conflictos_sync_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx",
+        filename=f"conflictos_sync_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.xlsx",
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
     return StreamingResponse(
@@ -557,7 +557,7 @@ def export_sync_history_csv(
             "latencia_segundos",
         ]
     )
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     for item in history:
         store_id = item.get("store_id")
         store_name = item.get("store_name")
@@ -583,7 +583,7 @@ def export_sync_history_csv(
             )
 
     csv_bytes = buffer.getvalue().encode("utf-8")
-    filename = f"historial_sync_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
+    filename = f"historial_sync_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
     return StreamingResponse(
         BytesIO(csv_bytes),
         media_type="text/csv",

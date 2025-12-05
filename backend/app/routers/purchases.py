@@ -1,7 +1,7 @@
 """Endpoints para la gestión de órdenes de compra."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from io import BytesIO
 
@@ -69,16 +69,19 @@ def _restore_reason_accents(reason: str | None) -> str | None:
 def _enrich_purchase_order(order) -> None:
     documents = getattr(order, "documents", []) or []
     for document in documents:
-        setattr(document, "download_url", _build_document_download_url(order.id, document.id))
+        setattr(document, "download_url",
+                _build_document_download_url(order.id, document.id))
     events = getattr(order, "status_events", []) or []
     for event in events:
         creator = getattr(event, "created_by", None)
         if creator is not None:
-            name = getattr(creator, "full_name", None) or getattr(creator, "username", None)
+            name = getattr(creator, "full_name", None) or getattr(
+                creator, "username", None)
             setattr(event, "created_by_name", name)
     approver = getattr(order, "approved_by", None)
     if approver is not None:
-        approver_name = getattr(approver, "full_name", None) or getattr(approver, "username", None)
+        approver_name = getattr(approver, "full_name", None) or getattr(
+            approver, "username", None)
         setattr(order, "approved_by_name", approver_name)
 
 
@@ -149,7 +152,8 @@ def list_purchase_vendors_endpoint(
     _ensure_feature_enabled()
     query = q.strip() if q else None
     estado_value = estado.strip() if estado else None
-    page_offset = pagination.offset if (pagination.page > 1 and offset == 0) else offset
+    page_offset = pagination.offset if (
+        pagination.page > 1 and offset == 0) else offset
     page_size = min(pagination.size, limit)
     total = crud.count_purchase_vendors(
         db,
@@ -188,7 +192,8 @@ def create_order_from_suggestion_endpoint(
             reason=reason,
         )
     except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recurso no encontrado") from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Recurso no encontrado") from exc
     except ValueError as exc:
         detail = str(exc)
         if detail == "purchase_items_required":
@@ -226,9 +231,6 @@ def create_purchase_vendor_endpoint(
             ) from exc
         raise
 
-    summary = crud.list_purchase_vendors(db, vendor_id=vendor.id_proveedor, limit=1)
-    if summary:
-        return summary[0]
     return schemas.PurchaseVendorResponse(
         id_proveedor=vendor.id_proveedor,
         nombre=vendor.nombre,
@@ -238,10 +240,6 @@ def create_purchase_vendor_endpoint(
         tipo=vendor.tipo,
         notas=vendor.notas,
         estado=vendor.estado,
-        total_compras=Decimal("0"),
-        total_impuesto=Decimal("0"),
-        compras_registradas=0,
-        ultima_compra=None,
     )
 
 
@@ -262,11 +260,13 @@ def update_purchase_vendor_endpoint(
             performed_by_id=current_user.id if current_user else None,
         )
     except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado") from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Proveedor no encontrado") from exc
 
     summary = crud.list_purchase_vendors(db, vendor_id=vendor_id, limit=1)
     if not summary:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Proveedor no encontrado")
     return summary[0]
 
 
@@ -287,11 +287,13 @@ def update_purchase_vendor_status_endpoint(
             performed_by_id=current_user.id if current_user else None,
         )
     except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado") from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Proveedor no encontrado") from exc
 
     summary = crud.list_purchase_vendors(db, vendor_id=vendor_id, limit=1)
     if not summary:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Proveedor no encontrado")
     return summary[0]
 
 
@@ -312,7 +314,7 @@ def export_purchase_vendors_csv_endpoint(
         estado=estado_value,
     )
     metadata = schemas.BinaryFileResponse(
-        filename=f"proveedores_compras_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv",
+        filename=f"proveedores_compras_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv",
         media_type="text/csv",
     )
     response = Response(
@@ -345,7 +347,8 @@ def purchase_vendor_history_endpoint(
             date_to=date_to,
         )
     except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado") from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Proveedor no encontrado") from exc
 
 
 @router.get("/records", response_model=Page[schemas.PurchaseRecordResponse], dependencies=[Depends(require_roles(*GESTION_ROLES))])
@@ -365,7 +368,8 @@ def list_purchase_records_endpoint(
     _ensure_feature_enabled()
     query = q.strip() if q else None
     estado_value = estado.strip() if estado else None
-    page_offset = pagination.offset if (pagination.page > 1 and offset == 0) else offset
+    page_offset = pagination.offset if (
+        pagination.page > 1 and offset == 0) else offset
     page_limit = min(pagination.size, limit)
     total = crud.count_purchase_records(
         db,
@@ -408,9 +412,11 @@ def create_purchase_record_endpoint(
     except LookupError as exc:
         detail = str(exc)
         if detail == "purchase_vendor_not_found":
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado") from exc
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail="Proveedor no encontrado") from exc
         if detail == "device_not_found":
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Producto no encontrado") from exc
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail="Producto no encontrado") from exc
         raise
     except ValueError as exc:
         detail = str(exc)
@@ -458,7 +464,7 @@ def export_purchase_records_pdf_endpoint(
     )
     pdf_bytes = purchase_reports.render_purchase_report_pdf(report)
     metadata = schemas.BinaryFileResponse(
-        filename=f"compras_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf",
+        filename=f"compras_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.pdf",
         media_type="application/pdf",
     )
     return StreamingResponse(
@@ -494,7 +500,7 @@ def export_purchase_records_excel_endpoint(
     )
     excel_bytes = purchase_reports.render_purchase_report_excel(report)
     metadata = schemas.BinaryFileResponse(
-        filename=f"compras_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx",
+        filename=f"compras_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.xlsx",
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
     return StreamingResponse(
@@ -531,7 +537,8 @@ def list_purchase_orders_endpoint(
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ) -> Page[schemas.PurchaseOrderResponse]:
     _ensure_feature_enabled()
-    page_offset = pagination.offset if (pagination.page > 1 and offset == 0) else offset
+    page_offset = pagination.offset if (
+        pagination.page > 1 and offset == 0) else offset
     page_limit = min(pagination.size, limit)
     total = crud.count_purchase_orders(db, store_id=store_id)
     orders = crud.list_purchase_orders(
@@ -573,9 +580,11 @@ def create_purchase_order_endpoint(
 ):
     _ensure_feature_enabled()
     try:
-        order = crud.create_purchase_order(db, payload, created_by_id=current_user.id)
+        order = crud.create_purchase_order(
+            db, payload, created_by_id=current_user.id)
     except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recurso no encontrado") from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Recurso no encontrado") from exc
     except ValueError as exc:
         detail = str(exc)
         if detail == "purchase_items_required":
@@ -657,9 +666,11 @@ def download_purchase_order_document_endpoint(
 ):
     _ensure_feature_enabled()
     try:
-        document, content = crud.load_purchase_order_document(db, order_id, document_id)
+        document, content = crud.load_purchase_order_document(
+            db, order_id, document_id)
     except LookupError as exc:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Documento no encontrado") from exc
+        raise HTTPException(status.HTTP_404_NOT_FOUND,
+                            detail="Documento no encontrado") from exc
     except purchase_documents.PurchaseDocumentStorageError as exc:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -687,7 +698,8 @@ def transition_purchase_order_status_endpoint(
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     _ensure_feature_enabled()
-    header_reason = _extract_reason_header(request) or request.headers.get("X-Reason")
+    header_reason = _extract_reason_header(
+        request) or request.headers.get("X-Reason")
     note = _restore_reason_accents(payload.note or header_reason or reason)
     try:
         order = crud.transition_purchase_order_status(
@@ -796,7 +808,8 @@ async def import_purchase_orders_endpoint(
         ) from exc
 
     response_orders = [
-        schemas.PurchaseOrderResponse.model_validate(order, from_attributes=True)
+        schemas.PurchaseOrderResponse.model_validate(
+            order, from_attributes=True)
         for order in orders
     ]
     return schemas.PurchaseImportResponse(
