@@ -165,6 +165,13 @@ Si se desea reducir crud_legacy.py:
 
 **Total estimado**: ~3 horas distribuidas en 4 PRs
 
+**Metodología de estimación**:
+- Análisis de líneas de código por función (~50-100 LOC promedio)
+- Complejidad de dependencias (imports, llamadas internas)
+- Tiempo de testing (15-20 min por módulo)
+- Factor de aliases y compatibilidad (+20% buffer)
+- Basado en experiencia de __all__ exports (completado en 2h para 12 módulos)
+
 ### Largo Plazo (3-6 meses)
 - Implementar mypy para type checking
 - Mejorar cobertura de tests
@@ -180,10 +187,27 @@ Si se desea reducir crud_legacy.py:
 - Arquitectura preparada
 
 ### 2. Validar en Staging
-Antes de producción:
-- Ejecutar suite completa de tests
-- Validar imports en todos los routers
-- Verificar logging funciona correctamente
+Antes de producción, ejecutar los siguientes comandos:
+
+```bash
+# 1. Suite completa de tests
+pytest backend/tests/ -v --tb=short
+
+# 2. Validar imports en todos los routers
+python -c "from backend.app import crud; print('✅ CRUD imports OK')"
+python -c "from backend.app.routers import *; print('✅ Router imports OK')"
+
+# 3. Verificar logging funciona correctamente
+pytest backend/tests/test_audit.py -v -s | grep "WARNING"
+
+# 4. Verificar módulos nuevos
+python -c "from backend.app.crud import pos, analytics, transfers, invoicing; print('✅ Nuevos módulos OK')"
+
+# 5. Smoke test completo
+python -m pytest backend/tests/test_api_versioning.py backend/tests/test_audit.py -v
+```
+
+**Criterio de aceptación**: Todos los comandos deben completar sin errores
 
 ### 3. Monitorear en Producción
 Después del deploy:
@@ -235,8 +259,40 @@ El backend está **listo para producción** y la arquitectura preparada para evo
 
 ---
 
-**Ver documentos relacionados**:
-- BACKEND_REVIEW.md - Análisis completo de problemas
-- REFACTORING_SUMMARY.md - Resumen de trabajo realizado
-- PHASE2_MIGRATION_PLAN.md - Plan de migración futura
-- PHASE2_STATUS.md - Estado actual de Fase 2
+## 📖 Guía de Documentación
+
+**Orden de lectura recomendado**:
+
+1. **FINAL_SUMMARY.md** (este archivo) - Empezar aquí
+   - Vista general de todo el trabajo
+   - Métricas y logros
+   - Próximos pasos
+
+2. **BACKEND_REVIEW.md** - Análisis detallado
+   - Problemas identificados originalmente
+   - Soluciones implementadas
+   - Recomendaciones de mejoras futuras
+
+3. **REFACTORING_SUMMARY.md** - Trabajo realizado
+   - Tabla de errores corregidos
+   - Módulos modificados
+   - Commits y archivos
+
+4. **PHASE2_MIGRATION_PLAN.md** - Planificación futura
+   - Top 50 funciones identificadas
+   - 3 opciones de migración
+   - Estimaciones y riesgos
+
+5. **PHASE2_STATUS.md** - Estado actual
+   - Estructura preparada
+   - Opciones para continuar
+   - Recomendaciones específicas
+
+**Para implementadores**:
+- Leer 1, 2, 3 para entender el contexto completo
+- Leer 4, 5 antes de trabajar en Fase 2
+
+**Para revisores de código**:
+- Leer 1 para contexto general
+- Leer 2 para entender los problemas resueltos
+- Revisar commits individuales según necesidad
