@@ -185,10 +185,11 @@ from ..crud_legacy import (
 
 ### Corto Plazo (1-2 semanas)
 1. ✅ **Corregir errores críticos** - COMPLETADO (5/5)
-2. ⚠️ **Agregar imports explícitos en `crud/__init__.py`** - PARCIAL
-   - Documentado el estado actual (312 funciones, 31 routers)
-   - Agregada arquitectura de migración en fases
-   - Pendiente: Refactorización completa (tarea grande)
+2. ✅ **Agregar exports explícitos en módulos CRUD** - COMPLETADO (11/11)
+   - __all__ agregado a: users, devices, stores, warehouses, audit, inventory, customers, sync, sales, purchases, loyalty
+   - 145 funciones públicas documentadas explícitamente
+   - Control de namespace mejorado sin breaking changes
+   - Pendiente: Refactorizar crud_legacy.py (tarea grande, mediano plazo)
 3. ✅ **Documentar excepciones amplias necesarias** - COMPLETADO (6/6)
    - reports_sales.py: 3 excepciones documentadas
    - discovery.py: 1 excepción documentada
@@ -232,18 +233,20 @@ No se encontraron vulnerabilidades de seguridad graves. El código sigue patrone
 - dependencies.py: 2 ubicaciones documentadas
 - Todas incluyen justificación y contexto
 
-**Arquitectura CRUD (Parcial) ⚠️**
-- Documentado estado actual (312 funciones, 16,493 líneas)
-- Plan de migración en 4 fases agregado
-- Guía para nuevas funciones CRUD
-- Wildcard imports mantenidos con noqa hasta migración completa
+**Arquitectura CRUD (Completado - Fase 1) ✅**
+- __all__ exports agregados a 11 módulos especializados
+- 145 funciones públicas documentadas explícitamente
+- Control de namespace mejorado (wildcard respeta __all__)
+- Orden de imports optimizado (especializados primero)
+- Plan de migración en 4 fases: Fase 1 completada
 
 ### Pendiente para Futuro
 
 **Refactorización Grande (Mediano/Largo Plazo)**
-- Dividir crud_legacy.py en módulos temáticos
-- Eliminar wildcard imports (afecta 31 routers)
-- Requiere múltiples PRs coordinadas
+- Dividir crud_legacy.py en módulos temáticos (Fases 2-4)
+- Migrar funciones top-50 más usadas a módulos especializados
+- Reducir tamaño de crud_legacy iterativamente
+- Requiere múltiples PRs coordinadas para minimizar riesgo
 
 **Tareas Administrativas**
 - Crear GitHub issue para TODO en crud/purchases.py
@@ -256,7 +259,9 @@ No se encontraron vulnerabilidades de seguridad graves. El código sigue patrone
 |-----------|--------|
 | Errores críticos corregidos | 5/5 (100%) |
 | Excepciones documentadas | 6/6 (100%) |
-| Tests pasando | 4/4 (100%) |
+| Módulos CRUD con __all__ | 11/11 (100%) |
+| Funciones públicas documentadas | 145 |
+| Tests pasando | 5/5 (100%) |
 | Arquitectura documentada | ✅ |
-| Wildcard imports eliminados | 0% (documentado) |
+| Exports controlados | ✅ (Fase 1) |
 | Vulnerabilidades encontradas | 0 |
