@@ -107,6 +107,20 @@ from .utils.customer_helpers import (
     ALLOWED_CUSTOMER_TYPES,
     RTN_CANONICAL_TEMPLATE,
 )
+from .utils.analytics_helpers import (
+    linear_regression,
+    project_linear_sum,
+    user_display_name,
+)
+from .utils.json_helpers import (
+    merge_defaults,
+    normalize_hardware_settings,
+    history_to_json,
+    contacts_to_json,
+    products_to_json,
+    last_history_timestamp,
+    append_customer_history,
+)
 
 logger = core_logger.bind(component=__name__)
 
@@ -161,63 +175,6 @@ def invalidate_persistent_audit_alerts_cache() -> None:
     """Limpia la cache en memoria de recordatorios críticos."""
 
     _PERSISTENT_ALERTS_CACHE.clear()
-
-
-def _user_display_name(user: models.User | None) -> str | None:
-    if user is None:
-        return None
-    if user.full_name and user.full_name.strip():
-        return user.full_name.strip()
-    if user.username and user.username.strip():
-        return user.username.strip()
-    return None
-
-
-def _linear_regression(
-    points: Sequence[tuple[float, float]]
-) -> tuple[float, float, float]:
-    if not points:
-        return 0.0, 0.0, 0.0
-    if len(points) == 1:
-        return 0.0, points[0][1], 0.0
-
-    n = float(len(points))
-    sum_x = sum(point[0] for point in points)
-    sum_y = sum(point[1] for point in points)
-    sum_xy = sum(point[0] * point[1] for point in points)
-    sum_xx = sum(point[0] ** 2 for point in points)
-    sum_yy = sum(point[1] ** 2 for point in points)
-
-    denominator = (n * sum_xx) - (sum_x**2)
-    if math.isclose(denominator, 0.0):
-        slope = 0.0
-        intercept = sum_y / n if n else 0.0
-    else:
-        slope = ((n * sum_xy) - (sum_x * sum_y)) / denominator
-        intercept = (sum_y - (slope * sum_x)) / n
-
-    denominator_r = ((n * sum_xx) - (sum_x**2)) * ((n * sum_yy) - (sum_y**2))
-    if denominator_r <= 0 or math.isclose(denominator_r, 0.0):
-        r_squared = 0.0
-    else:
-        numerator = ((n * sum_xy) - (sum_x * sum_y)) ** 2
-        r_squared = numerator / denominator_r
-
-    return slope, intercept, r_squared
-
-
-def _project_linear_sum(
-    slope: float,
-    intercept: float,
-    start_index: int,
-    horizon: int,
-) -> float:
-    total = 0.0
-    for offset in range(horizon):
-        x_value = float(start_index + offset)
-        estimate = slope * x_value + intercept
-        total += max(0.0, estimate)
-    return total
 
 
 def _create_system_log(
@@ -1343,7 +1300,7 @@ def _inventory_movement_payload(movement: models.InventoryMovement) -> dict[str,
         movement.source_warehouse.name if movement.source_warehouse else None
     )
     device = movement.device
-    performed_by = _user_display_name(movement.performed_by)
+    performed_by = user_display_name(movement.performed_by)
     created_at = movement.created_at.isoformat() if movement.created_at else None
     reference_type = getattr(movement, "reference_type", None)
     reference_id = getattr(movement, "reference_id", None)
@@ -1484,13 +1441,13 @@ def _transfer_order_payload(order: models.TransferOrder) -> dict[str, object]:
         "status": status_value,
         "reason": order.reason,
         "requested_by_id": order.requested_by_id,
-        "requested_by_name": _user_display_name(requested_by),
+        "requested_by_name": user_display_name(requested_by),
         "dispatched_by_id": order.dispatched_by_id,
-        "dispatched_by_name": _user_display_name(dispatched_by),
+        "dispatched_by_name": user_display_name(dispatched_by),
         "received_by_id": order.received_by_id,
-        "received_by_name": _user_display_name(received_by),
+        "received_by_name": user_display_name(received_by),
         "cancelled_by_id": order.cancelled_by_id,
-        "cancelled_by_name": _user_display_name(cancelled_by),
+        "cancelled_by_name": user_display_name(cancelled_by),
         "created_at": order.created_at.isoformat() if order.created_at else None,
         "updated_at": order.updated_at.isoformat() if order.updated_at else None,
         "dispatched_at": order.dispatched_at.isoformat() if order.dispatched_at else None,
@@ -1569,32 +1526,6 @@ def _repair_payload(order: models.RepairOrder) -> dict[str, object]:
     }
 
 
-def _merge_defaults(default: object, provided: object) -> object:
-    if isinstance(default, dict) and isinstance(provided, dict):
-        merged: dict[str, object] = {key: _merge_defaults(
-            value, provided.get(key)) for key, value in default.items()}
-        for key, value in provided.items():
-            if key not in merged:
-                merged[key] = value
-            elif isinstance(value, (dict, list)):
-                merged[key] = _merge_defaults(merged[key], value)
-            elif value is not None:
-                merged[key] = value
-        return merged
-    if isinstance(default, list) and isinstance(provided, list):
-        return provided or default
-    return provided if provided is not None else default
-
-
-def _normalize_hardware_settings(
-    raw: dict[str, object] | None,
-) -> dict[str, object]:
-    default_settings = schemas.POSHardwareSettings().model_dump()
-    if not raw:
-        return default_settings
-    return _merge_defaults(default_settings, raw)
-
-
 def _pos_config_payload(config: models.POSConfig) -> dict[str, object]:
     return {
         "store_id": config.store_id,
@@ -1630,95 +1561,6 @@ def _pos_draft_payload(draft: models.POSDraftSale) -> dict[str, object]:
         "payload": draft.payload,
         "updated_at": draft.updated_at.isoformat(),
     }
-
-
-def _history_to_json(
-    entries: list[schemas.ContactHistoryEntry] | list[dict[str, object]] | None,
-) -> list[dict[str, object]]:
-    normalized: list[dict[str, object]] = []
-    if not entries:
-        return normalized
-    for entry in entries:
-        if isinstance(entry, schemas.ContactHistoryEntry):
-            timestamp = entry.timestamp
-            note = entry.note
-        else:
-            timestamp = entry.get("timestamp")  # type: ignore[assignment]
-            note = entry.get("note") if isinstance(entry, dict) else None
-        if isinstance(timestamp, str):
-            parsed_timestamp = timestamp
-        elif isinstance(timestamp, datetime):
-            parsed_timestamp = timestamp.isoformat()
-        else:
-            parsed_timestamp = datetime.now(timezone.utc).isoformat()
-        normalized.append({"timestamp": parsed_timestamp,
-                          "note": (note or "").strip()})
-    return normalized
-
-
-def _contacts_to_json(
-    contacts: list[schemas.SupplierContact] | list[dict[str, object]] | None,
-) -> list[dict[str, object]]:
-    normalized: list[dict[str, object]] = []
-    if not contacts:
-        return normalized
-    for contact in contacts:
-        if isinstance(contact, schemas.SupplierContact):
-            payload = contact.model_dump(exclude_none=True)
-        elif isinstance(contact, Mapping):
-            payload = {
-                key: value
-                for key, value in contact.items()
-                if isinstance(key, str)
-            }
-        else:
-            continue
-        record: dict[str, object] = {}
-        for key in ("name", "position", "email", "phone", "notes"):
-            value = payload.get(key)
-            if isinstance(value, str):
-                value = value.strip()
-            if value:
-                record[key] = value
-        if record:
-            normalized.append(record)
-    return normalized
-
-
-def _products_to_json(products: Sequence[str] | None) -> list[str]:
-    if not products:
-        return []
-    normalized: list[str] = []
-    for product in products:
-        text = (product or "").strip()
-        if not text:
-            continue
-        if text not in normalized:
-            normalized.append(text)
-    return normalized
-
-
-def _last_history_timestamp(history: list[dict[str, object]]) -> datetime | None:
-    timestamps = []
-    for entry in history:
-        raw_timestamp = entry.get("timestamp")
-        if isinstance(raw_timestamp, datetime):
-            timestamps.append(raw_timestamp)
-        elif isinstance(raw_timestamp, str):
-            try:
-                timestamps.append(datetime.fromisoformat(raw_timestamp))
-            except ValueError:
-                continue
-    if not timestamps:
-        return None
-    return max(timestamps)
-
-
-def _append_customer_history(customer: models.Customer, note: str) -> None:
-    history = list(customer.history or [])
-    history.append({"timestamp": datetime.now(timezone.utc).isoformat(), "note": note})
-    customer.history = history
-    customer.last_interaction_at = datetime.now(timezone.utc)
 
 
 def _ensure_debt_respects_limit(credit_limit: Decimal, outstanding: Decimal) -> None:
@@ -1768,7 +1610,7 @@ def _customer_ledger_payload(entry: models.CustomerLedgerEntry) -> dict[str, obj
     }
 
 
-def _user_display_name(user: models.User | None) -> str | None:
+def user_display_name(user: models.User | None) -> str | None:
     if user is None:
         return None
     candidates = [
@@ -2001,7 +1843,7 @@ def _apply_store_credit_redemption(
     message = (
         f"Aplicación de nota de crédito {credit.code} por ${format_currency(amount_value)}"
     )
-    _append_customer_history(customer, message)
+    append_customer_history(customer, message)
     details = {
         "amount_applied": float(amount_value),
         "balance_after": float(new_balance),
@@ -2061,7 +1903,7 @@ def issue_store_credit(
         history_message = (
             f"Nota de crédito {credit.code} emitida por ${format_currency(amount)}"
         )
-        _append_customer_history(customer, history_message)
+        append_customer_history(customer, history_message)
         db.add(customer)
 
         details = {
@@ -3101,7 +2943,7 @@ def export_audit_logs_csv(
         acknowledgement_text = ""
         acknowledgement_note = ""
         if acknowledgement and acknowledgement.acknowledged_at >= log.created_at:
-            display_name = _user_display_name(acknowledgement.acknowledged_by)
+            display_name = user_display_name(acknowledgement.acknowledged_by)
             status = "Atendida"
             acknowledgement_text = acknowledgement.acknowledged_at.strftime(
                 "%Y-%m-%dT%H:%M:%S")
@@ -4085,7 +3927,7 @@ def get_user_dashboard_metrics(
             target_user_id = int(log.entity_id)
             target = user_lookup.get(target_user_id)
             if target is not None:
-                target_username = _user_display_name(target)
+                target_username = user_display_name(target)
 
         recent_activity.append(
             schemas.UserDashboardActivity(
@@ -4095,7 +3937,7 @@ def get_user_dashboard_metrics(
                 severity=audit_utils.classify_severity(
                     log.action or "", log.details),
                 performed_by_id=log.performed_by_id,
-                performed_by_name=_user_display_name(log.performed_by),
+                performed_by_name=user_display_name(log.performed_by),
                 target_user_id=target_user_id,
                 target_username=target_username,
                 details=details,
@@ -4114,7 +3956,7 @@ def get_user_dashboard_metrics(
             schemas.UserSessionSummary(
                 session_id=session.id,
                 user_id=session.user_id,
-                username=_user_display_name(
+                username=user_display_name(
                     session.user) or f"Usuario {session.user_id}",
                 created_at=session.created_at,
                 last_used_at=session.last_used_at,
@@ -4861,7 +4703,7 @@ def create_customer(
     performed_by_id: int | None = None,
 ) -> models.Customer:
     with transactional_session(db):
-        history = _history_to_json(payload.history)
+        history = history_to_json(payload.history)
         customer_type = normalize_customer_type(payload.customer_type)
         status = normalize_customer_status(payload.status)
         segment_category = normalize_customer_segment_category(
@@ -4891,7 +4733,7 @@ def create_customer(
             notes=payload.notes,
             history=history,
             outstanding_debt=outstanding_debt,
-            last_interaction_at=_last_history_timestamp(history),
+            last_interaction_at=last_history_timestamp(history),
         )
         db.add(customer)
         try:
@@ -5024,14 +4866,14 @@ def update_customer(
                 }
             previous_outstanding = new_outstanding
         if payload.history is not None:
-            history = _history_to_json(payload.history)
+            history = history_to_json(payload.history)
             customer.history = history
-            customer.last_interaction_at = _last_history_timestamp(history)
+            customer.last_interaction_at = last_history_timestamp(history)
             updated_fields["history"] = history
         _ensure_debt_respects_limit(
             customer.credit_limit, customer.outstanding_debt)
         if pending_history_note:
-            _append_customer_history(customer, pending_history_note)
+            append_customer_history(customer, pending_history_note)
             updated_fields.setdefault("history_note", pending_history_note)
         if pending_ledger_entry_kwargs is not None:
             ledger_entry = _create_customer_ledger_entry(
@@ -5209,7 +5051,7 @@ def append_customer_note(
 ) -> models.Customer:
     customer = get_customer(db, customer_id)
     with transactional_session(db):
-        _append_customer_history(customer, payload.note)
+        append_customer_history(customer, payload.note)
         db.add(customer)
 
         ledger_entry = _create_customer_ledger_entry(
@@ -5289,7 +5131,7 @@ def register_customer_payment(
     customer.outstanding_debt = (current_debt - applied_amount).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
-    _append_customer_history(
+    append_customer_history(
         customer,
         f"Pago registrado por ${format_currency(applied_amount)}",
     )
@@ -5586,7 +5428,7 @@ def register_payment_center_refund(
         if new_debt < Decimal("0"):
             new_debt = Decimal("0")
         customer.outstanding_debt = new_debt
-        _append_customer_history(
+        append_customer_history(
             customer,
             f"Reembolso registrado por ${format_currency(amount)}",
         )
@@ -5682,7 +5524,7 @@ def register_payment_center_credit_note(
         if new_debt < Decimal("0"):
             new_debt = Decimal("0")
         customer.outstanding_debt = new_debt
-        _append_customer_history(
+        append_customer_history(
             customer,
             f"Nota de crédito registrada por ${format_currency(amount)}",
         )
@@ -5905,7 +5747,7 @@ def create_customer_privacy_request(
                 if summary
                 else "Consentimientos actualizados."
             )
-            _append_customer_history(customer, history_note)
+            append_customer_history(customer, history_note)
         else:
             masked_fields = apply_customer_anonymization(
                 customer, payload.mask_fields
@@ -5913,7 +5755,7 @@ def create_customer_privacy_request(
             consent_snapshot = dict(customer.privacy_consents or {})
             summary = ", ".join(
                 masked_fields) if masked_fields else "sin cambios"
-            _append_customer_history(
+            append_customer_history(
                 customer, f"Anonimización parcial aplicada ({summary})."
             )
 
@@ -6246,7 +6088,7 @@ def get_customer_accounts_receivable(
                 "note": entry.note,
                 "details": entry.details,
                 "created_at": entry.created_at,
-                "created_by": _user_display_name(entry.created_by),
+                "created_by": user_display_name(entry.created_by),
             }
         )
         for entry in recent_entries
@@ -10687,7 +10529,7 @@ def calculate_stockout_forecast(
         )
         points = [(float(index), value)
                   for index, (_, value) in enumerate(daily_points_raw)]
-        slope, intercept, r_squared = _linear_regression(points)
+        slope, intercept, r_squared = linear_regression(points)
         historical_avg = (
             sum(value for _, value in daily_points_raw) / len(daily_points_raw)
             if daily_points_raw
@@ -11250,9 +11092,9 @@ def calculate_sales_projection(
             (float(index), item["revenue"])
             for index, item in enumerate(daily_points)
         ]
-        slope_units, intercept_units, r2_units = _linear_regression(
+        slope_units, intercept_units, r2_units = linear_regression(
             unit_points)
-        slope_revenue, intercept_revenue, r2_revenue = _linear_regression(
+        slope_revenue, intercept_revenue, r2_revenue = linear_regression(
             revenue_points
         )
         historical_avg_units = (
@@ -11264,10 +11106,10 @@ def calculate_sales_projection(
             else 0.0
         )
         average_daily_units = max(historical_avg_units, predicted_next_units)
-        projected_units = _project_linear_sum(
+        projected_units = project_linear_sum(
             slope_units, intercept_units, len(unit_points), horizon_days
         )
-        projected_revenue = _project_linear_sum(
+        projected_revenue = project_linear_sum(
             slope_revenue, intercept_revenue, len(revenue_points), horizon_days
         )
         average_ticket = (
@@ -11614,7 +11456,7 @@ def detect_return_anomalies(
         anomalies.append(
             {
                 "user_id": int(row.user_id),
-                "user_name": _user_display_name(row) or row.username,
+                "user_name": user_display_name(row) or row.username,
                 "return_count": count_value,
                 "total_units": total_units,
                 "last_return": row.last_return,
@@ -16252,7 +16094,7 @@ def create_repair_order(
         db.add(order)
 
         if customer:
-            _append_customer_history(
+            append_customer_history(
                 customer, f"Orden de reparación #{order.id} creada")
             db.add(customer)
 
@@ -16301,7 +16143,7 @@ def update_repair_order(
             customer = get_customer(db, payload.customer_id)
             order.customer_id = customer.id
             order.customer_name = customer.name
-            _append_customer_history(
+            append_customer_history(
                 customer, f"Orden de reparación #{order.id} actualizada")
             db.add(customer)
             updated_fields["customer_id"] = customer.id
@@ -17816,7 +17658,7 @@ def create_sale(
                     },
                     created_by_id=performed_by_id,
                 )
-            _append_customer_history(
+            append_customer_history(
                 customer,
                 f"Venta #{sale.id} registrada ({sale.payment_method.value})",
             )
@@ -18110,7 +17952,7 @@ def update_sale(
                     },
                     created_by_id=performed_by_id,
                 )
-            _append_customer_history(
+            append_customer_history(
                 target_customer,
                 f"Venta #{sale.id} actualizada ({sale.payment_method.value})",
             )
@@ -18223,7 +18065,7 @@ def cancel_sale(
             if updated_debt < Decimal("0"):
                 updated_debt = Decimal("0")
             sale.customer.outstanding_debt = updated_debt
-            _append_customer_history(
+            append_customer_history(
                 sale.customer,
                 f"Venta #{sale.id} anulada",
             )
@@ -18508,7 +18350,7 @@ def register_sale_return(
             ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             if sale.customer.outstanding_debt < Decimal("0"):
                 sale.customer.outstanding_debt = Decimal("0")
-            _append_customer_history(
+            append_customer_history(
                 sale.customer,
                 f"Devolución aplicada a venta #{sale.id} por ${float(refund_total):.2f}",
             )
@@ -18818,7 +18660,7 @@ def list_operations_history(
     def register_technician(user: models.User | None) -> None:
         if user is None or user.id is None:
             return
-        name = _user_display_name(user) or f"Usuario {user.id}"
+        name = user_display_name(user) or f"Usuario {user.id}"
         technicians.setdefault(user.id, name)
 
     purchase_stmt = (
@@ -18852,7 +18694,7 @@ def list_operations_history(
                 store_id=order.store_id,
                 store_name=order.store.name if order.store else None,
                 technician_id=order.created_by_id,
-                technician_name=_user_display_name(order.created_by),
+                technician_name=user_display_name(order.created_by),
                 reference=f"PO-{order.id}",
                 description=f"Orden de compra para {order.supplier}",
                 amount=total_amount,
@@ -18892,7 +18734,7 @@ def list_operations_history(
                     store_id=transfer.origin_store_id,
                     store_name=transfer.origin_store.name if transfer.origin_store else None,
                     technician_id=transfer.dispatched_by_id,
-                    technician_name=_user_display_name(transfer.dispatched_by),
+                    technician_name=user_display_name(transfer.dispatched_by),
                     reference=f"TR-{transfer.id}",
                     description=(
                         f"Despacho hacia {transfer.destination_store.name if transfer.destination_store else transfer.destination_store_id}"
@@ -18915,7 +18757,7 @@ def list_operations_history(
                     store_id=transfer.destination_store_id,
                     store_name=transfer.destination_store.name if transfer.destination_store else None,
                     technician_id=transfer.received_by_id,
-                    technician_name=_user_display_name(transfer.received_by),
+                    technician_name=user_display_name(transfer.received_by),
                     reference=f"TR-{transfer.id}",
                     description=(
                         f"Recepción desde {transfer.origin_store.name if transfer.origin_store else transfer.origin_store_id}"
@@ -18948,7 +18790,7 @@ def list_operations_history(
                 store_id=sale.store_id,
                 store_name=sale.store.name if sale.store else None,
                 technician_id=sale.performed_by_id,
-                technician_name=_user_display_name(sale.performed_by),
+                technician_name=user_display_name(sale.performed_by),
                 reference=f"VNT-{sale.id}",
                 description="Venta registrada en POS",
                 amount=to_decimal(sale.total_amount),
@@ -19319,7 +19161,7 @@ def get_pos_config(db: Session, store_id: int) -> models.POSConfig:
             db.refresh(config)
     else:
         db.refresh(config)
-    normalized_hardware = _normalize_hardware_settings(
+    normalized_hardware = normalize_hardware_settings(
         config.hardware_settings if isinstance(
             config.hardware_settings, dict) else None
     )
@@ -19355,7 +19197,7 @@ def update_pos_config(
         if payload.hardware_settings is not None:
             config.hardware_settings = payload.hardware_settings.model_dump()
         else:
-            config.hardware_settings = _normalize_hardware_settings(
+            config.hardware_settings = normalize_hardware_settings(
                 config.hardware_settings
             )
         # Persistir el tipo de documento por defecto dentro de hardware_settings (no hay columna dedicada)
