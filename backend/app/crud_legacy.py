@@ -857,54 +857,6 @@ def build_global_report_dashboard(
 
 
 # // [PACK29-*] Filtros comunes para reportes de ventas por rango y sucursal
-def _hydrate_movement_references(
-    db: Session, movements: Sequence[models.InventoryMovement]
-) -> None:
-    """Asocia los metadatos de referencia a los movimientos recuperados."""
-
-    movement_ids = [
-        movement.id for movement in movements if movement.id is not None]
-    if not movement_ids:
-        return
-
-    str_ids = [str(movement_id) for movement_id in movement_ids]
-    statement = (
-        select(models.AuditLog)
-        .where(
-            models.AuditLog.entity_type == "inventory_movement",
-            models.AuditLog.action == "inventory_movement_reference",
-            models.AuditLog.entity_id.in_(str_ids),
-        )
-        .order_by(models.AuditLog.created_at.desc())
-    )
-    logs = list(db.scalars(statement))
-    reference_map: dict[str, tuple[str | None, str | None]] = {}
-    for log in logs:
-        if log.entity_id in reference_map:
-            continue
-        data: dict[str, object]
-        try:
-            data = json.loads(log.details or "{}")
-        except json.JSONDecodeError:
-            data = {}
-        reference_map[log.entity_id] = (
-            str(data.get("reference_type")) if data.get(
-                "reference_type") else None,
-            str(data.get("reference_id")) if data.get(
-                "reference_id") else None,
-        )
-
-    for movement in movements:
-        reference = reference_map.get(str(movement.id))
-        if not reference:
-            continue
-        reference_type, reference_id = reference
-        if reference_type:
-            setattr(movement, "reference_type", reference_type)
-        if reference_id:
-            setattr(movement, "reference_id", reference_id)
-
-
 def user_display_name(user: models.User | None) -> str | None:
     if user is None:
         return None
@@ -1784,80 +1736,6 @@ def get_last_audit_entries(
         if log.entity_id not in latest:
             latest[log.entity_id] = log
     return latest
-
-
-def _attach_last_audit_trails(
-    db: Session,
-    *,
-    entity_type: str,
-    records: Iterable[object],
-) -> None:
-    """Enriquece los registros indicados con la última acción de auditoría."""
-
-    record_list = list(records)
-    if not record_list:
-        return
-
-    record_ids = [
-        getattr(record, "id", None)
-        for record in record_list
-        if getattr(record, "id", None) is not None
-    ]
-
-    audit_trails: dict[str, schemas.AuditTrailInfo] = {}
-    if record_ids:
-        audit_logs = get_last_audit_entries(
-            db,
-            entity_type=entity_type,
-            entity_ids=record_ids,
-        )
-        audit_trails = {
-            key: audit_trail_utils.to_audit_trail(log)
-            for key, log in audit_logs.items()
-        }
-
-    for record in record_list:
-        record_id = getattr(record, "id", None)
-        audit_entry = (
-            audit_trails.get(str(record_id)) if record_id is not None else None
-        )
-        setattr(record, "ultima_accion", audit_entry)
-
-
-def _sync_customer_ledger_entry(db: Session, entry: models.CustomerLedgerEntry) -> None:
-    with transactional_session(db):
-        db.refresh(entry)
-        db.refresh(entry, attribute_names=["created_by"])
-        enqueue_sync_outbox(
-            db,
-            entity_type="customer_ledger_entry",
-            entity_id=str(entry.id),
-            operation="UPSERT",
-            payload=_customer_ledger_payload(entry),
-        )
-
-
-def _sync_supplier_ledger_entry(db: Session, entry: models.SupplierLedgerEntry) -> None:
-    with transactional_session(db):
-        db.refresh(entry)
-        db.refresh(entry, attribute_names=["created_by"])
-        enqueue_sync_outbox(
-            db,
-            entity_type="supplier_ledger_entry",
-            entity_id=str(entry.id),
-            operation="UPSERT",
-            payload=_supplier_ledger_payload(entry),
-        )
-
-
-def _resolve_part_unit_cost(device: models.Device, provided: Decimal | float | int | None) -> Decimal:
-    candidate = to_decimal(provided)
-    if candidate <= Decimal("0"):
-        if device.costo_unitario and device.costo_unitario > 0:
-            candidate = to_decimal(device.costo_unitario)
-        else:
-            candidate = to_decimal(device.unit_price)
-    return candidate.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def list_audit_logs(
