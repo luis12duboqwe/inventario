@@ -30,6 +30,7 @@ import { calcTotalsLocal } from "../utils/totals";
 // [PACK26-POS-PERMS-START]
 import { useAuthz, PERMS } from "../../../auth/useAuthz";
 import { logUI } from "../../../services/audit";
+import { emitClientError } from "../../../utils/clientLog";
 // [PACK26-POS-PERMS-END]
 // [PACK27-PRINT-POS-IMPORT-START]
 import { openPrintable } from "@/lib/print";
@@ -281,7 +282,7 @@ export default function POSPage() {
         const res = await SalesProducts.searchProducts(params);
         setProducts(res.items ?? []);
       } catch (error) {
-        console.error("Error searching products:", error);
+        emitClientError("Error searching products:", error);
         // TODO(wire): manejar error de búsqueda visualmente si es necesario
       } finally {
         setLoadingSearch(false);
@@ -542,18 +543,12 @@ export default function POSPage() {
                 Array.from({ length: 12 }).map((_, i) => (
                   <div
                     key={i}
-                    className="pos-product-card"
-                    style={{
-                      pointerEvents: "none",
-                      border: "none",
-                      boxShadow: "none",
-                      background: "transparent",
-                    }}
+                    className="pos-product-card pointer-events-none border-none shadow-none bg-transparent"
                   >
-                    <Skeleton height={120} style={{ marginBottom: 8, borderRadius: 8 }} />
+                    <Skeleton height={120} className="mb-2 rounded-lg" />
                     <Skeleton height={20} width="90%" variant="text" />
                     <Skeleton height={16} width="60%" variant="text" />
-                    <Skeleton height={24} width="40%" style={{ marginTop: "auto" }} />
+                    <Skeleton height={24} width="40%" className="mt-auto" />
                   </div>
                 ))
               ) : (

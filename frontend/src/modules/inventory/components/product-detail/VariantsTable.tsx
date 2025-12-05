@@ -18,33 +18,41 @@ export default function VariantsTable({ items }: Props) {
   const data = Array.isArray(items) ? items : [];
 
   if (data.length === 0) {
-    return <div style={{ color: "#9ca3af", padding: 12 }}>Sin variantes</div>;
+    return <div className="p-3 text-muted-foreground">Sin variantes</div>;
   }
 
   return (
-    <div style={{ overflow: "auto", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+    <div className="overflow-auto rounded-xl border border-border">
+      <table className="w-full border-collapse text-sm">
         <thead>
-          <tr style={{ background: "rgba(255,255,255,0.03)" }}>
-            <th style={{ textAlign: "left", padding: 10 }}>SKU</th>
-            <th style={{ textAlign: "left", padding: 10 }}>Atributos</th>
-            <th style={{ textAlign: "right", padding: 10 }}>Precio</th>
-            <th style={{ textAlign: "center", padding: 10 }}>Stock</th>
-            <th style={{ textAlign: "center", padding: 10 }}>Mínimo</th>
-            <th style={{ textAlign: "center", padding: 10 }}>Reorden</th>
+          <tr className="bg-surface-highlight">
+            <th className="text-left p-2.5">SKU</th>
+            <th className="text-left p-2.5">Atributos</th>
+            <th className="text-right p-2.5">Precio</th>
+            <th className="text-center p-2.5">Stock</th>
+            <th className="text-center p-2.5">Mínimo</th>
+            <th className="text-center p-2.5">Reorden</th>
           </tr>
         </thead>
         <tbody>
           {data.map((variant) => (
             <tr key={variant.id}>
-              <td style={{ padding: 10 }}>{variant.sku}</td>
-              <td style={{ padding: 10 }}>{variant.attrs}</td>
-              <td style={{ padding: 10, textAlign: "right" }}>{Intl.NumberFormat().format(variant.price)}</td>
-              <td style={{ padding: 10, textAlign: "center" }}>{variant.stock}</td>
-              <td style={{ padding: 10, textAlign: "center", color: variant.stock <= variant.minimumStock ? "#f87171" : "#38bdf8" }}>
+              <td className="p-2.5">{variant.sku}</td>
+              <td className="p-2.5">{variant.attrs}</td>
+              <td className="p-2.5 text-right">{Intl.NumberFormat().format(variant.price)}</td>
+              <td className="p-2.5 text-center">{variant.stock}</td>
+              <td
+                className={`p-2.5 text-center ${
+                  variant.stock <= variant.minimumStock ? "text-red-400" : "text-sky-400"
+                }`}
+              >
                 {variant.minimumStock}
               </td>
-              <td style={{ padding: 10, textAlign: "center", color: variant.stock <= variant.reorderPoint ? "#facc15" : "#38bdf8" }}>
+              <td
+                className={`p-2.5 text-center ${
+                  variant.stock <= variant.reorderPoint ? "text-yellow-400" : "text-sky-400"
+                }`}
+              >
                 {variant.reorderPoint}
               </td>
             </tr>

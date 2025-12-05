@@ -1,6 +1,6 @@
 import { lazy, type ComponentType, type LazyExoticComponent } from "react";
 
-type LazyFactory<T extends ComponentType<any>> = () => Promise<{ default: T }>;
+type LazyFactory<T extends ComponentType<unknown>> = () => Promise<{ default: T }>;
 
 type LazyWithRetryOptions = {
   retries?: number;
@@ -28,7 +28,7 @@ function wait(delayMs: number): Promise<void> {
 /**
  * Envuelve React.lazy con reintentos limitados para mitigar fallos intermitentes al cargar módulos.
  */
-export function lazyWithRetry<T extends ComponentType<any>>(
+export function lazyWithRetry<T extends ComponentType<unknown>>(
   factory: LazyFactory<T>,
   options: LazyWithRetryOptions = {},
 ): LazyExoticComponent<T> {

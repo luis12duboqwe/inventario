@@ -360,14 +360,14 @@ export function exportSalesPdf(token: string, filters: SalesFilters = {}, reason
   const params = buildSalesFilterParams(filters);
   const query = params.toString();
   const path = query ? `/sales/export/pdf?${query}` : "/sales/export/pdf";
-  return request<Blob>(path, { method: "GET", headers: { "X-Reason": reason } }, token);
+  return request<Blob>(path, { method: "GET", headers: { "X-Reason": reason }, responseType: "blob" }, token);
 }
 
 export function exportSalesExcel(token: string, filters: SalesFilters = {}, reason: string): Promise<Blob> {
   const params = buildSalesFilterParams(filters);
   const query = params.toString();
   const path = query ? `/sales/export/xlsx?${query}` : "/sales/export/xlsx";
-  return request<Blob>(path, { method: "GET", headers: { "X-Reason": reason } }, token);
+  return request<Blob>(path, { method: "GET", headers: { "X-Reason": reason }, responseType: "blob" }, token);
 }
 
 export function registerSaleReturn(

@@ -1,0 +1,18 @@
+.inventory-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+.inventory-last-update {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+@media (min-width: 768px) {
+  .inventory-meta {
+    flex-direction: row;
+    gap: 1.2rem;
+  }
+}

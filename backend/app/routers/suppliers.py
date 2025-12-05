@@ -4,7 +4,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
-from .. import crud, schemas
+from .. import schemas
+from ..crud import suppliers as crud_suppliers
 from ..core.roles import ADMIN, GESTION_ROLES
 from ..database import get_db
 from ..routers.dependencies import require_reason
@@ -26,9 +27,10 @@ def list_suppliers_endpoint(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
-    suppliers = crud.list_suppliers(db, query=q, limit=limit, offset=offset)
+    suppliers = crud_suppliers.list_suppliers(
+        db, query=q, limit=limit, offset=offset)
     if export == "csv":
-        csv_content = crud.export_suppliers_csv(db, query=q)
+        csv_content = crud_suppliers.export_suppliers_csv(db, query=q)
         return Response(
             content=csv_content,
             media_type="text/csv",
@@ -45,7 +47,7 @@ def list_suppliers_endpoint(
 def get_suppliers_accounts_payable_endpoint(
     db: Session = Depends(get_db),
 ):
-    return crud.get_suppliers_accounts_payable(db)
+    return crud_suppliers.get_suppliers_accounts_payable(db)
 
 
 @router.post("/", response_model=schemas.SupplierResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(*GESTION_ROLES))])
@@ -56,7 +58,7 @@ def create_supplier_endpoint(
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     try:
-        supplier = crud.create_supplier(
+        supplier = crud_suppliers.create_supplier(
             db,
             payload,
             performed_by_id=current_user.id if current_user else None,
@@ -83,9 +85,10 @@ def get_supplier_endpoint(
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     try:
-        return crud.get_supplier(db, supplier_id)
+        return crud_suppliers.get_supplier(db, supplier_id)
     except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado") from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Proveedor no encontrado") from exc
     except ValueError as exc:
         if str(exc) == "supplier_rtn_invalid":
             raise HTTPException(
@@ -104,14 +107,15 @@ def update_supplier_endpoint(
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     try:
-        return crud.update_supplier(
+        return crud_suppliers.update_supplier(
             db,
             supplier_id,
             payload,
             performed_by_id=current_user.id if current_user else None,
         )
     except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado") from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Proveedor no encontrado") from exc
 
 
 @router.delete(
@@ -135,7 +139,7 @@ def delete_supplier_endpoint(
     ),
 ):
     try:
-        crud.delete_supplier(
+        crud_suppliers.delete_supplier(
             db,
             supplier_id,
             performed_by_id=current_user.id if current_user else None,
@@ -143,7 +147,8 @@ def delete_supplier_endpoint(
             is_superadmin=_is_superadmin(current_user, superadmin_confirmed),
         )
     except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado") from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Proveedor no encontrado") from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -160,11 +165,12 @@ def list_supplier_batches_endpoint(
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     try:
-        return crud.list_supplier_batches(
+        return crud_suppliers.list_supplier_batches(
             db, supplier_id, limit=limit, offset=offset
         )
     except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado") from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Proveedor no encontrado") from exc
 
 
 @router.post(
@@ -181,7 +187,7 @@ def create_supplier_batch_endpoint(
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     try:
-        return crud.create_supplier_batch(
+        return crud_suppliers.create_supplier_batch(
             db,
             supplier_id,
             payload,
@@ -190,8 +196,10 @@ def create_supplier_batch_endpoint(
     except LookupError as exc:
         detail = str(exc)
         if detail == "device_not_found":
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dispositivo no encontrado") from exc
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado") from exc
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail="Dispositivo no encontrado") from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Proveedor no encontrado") from exc
     except ValueError as exc:
         if str(exc) == "supplier_batch_store_mismatch":
             raise HTTPException(
@@ -214,14 +222,15 @@ def update_supplier_batch_endpoint(
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     try:
-        return crud.update_supplier_batch(
+        return crud_suppliers.update_supplier_batch(
             db,
             batch_id,
             payload,
             performed_by_id=current_user.id if current_user else None,
         )
     except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lote no encontrado") from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Lote no encontrado") from exc
 
 
 @router.delete(
@@ -237,11 +246,12 @@ def delete_supplier_batch_endpoint(
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     try:
-        crud.delete_supplier_batch(
+        crud_suppliers.delete_supplier_batch(
             db,
             batch_id,
             performed_by_id=current_user.id if current_user else None,
         )
     except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lote no encontrado") from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Lote no encontrado") from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)

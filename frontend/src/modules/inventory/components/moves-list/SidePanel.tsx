@@ -1,4 +1,5 @@
 import React from "react";
+import { Button } from "@components/ui/Button";
 import StatusBadge from "./StatusBadge";
 import type { MoveRow } from "./Table";
 
@@ -23,41 +24,23 @@ export default function SidePanel({ row, onClose }: Props) {
   ];
 
   return (
-    <aside
-      style={{
-        position: "fixed",
-        right: 0,
-        top: 0,
-        bottom: 0,
-        width: 420,
-        background: "#0b1220",
-        borderLeft: "1px solid rgba(255,255,255,0.08)",
-        padding: 16,
-        overflow: "auto",
-        zIndex: 40,
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <h3 style={{ margin: 0 }}>Resumen Movimiento</h3>
-        <button onClick={onClose} style={{ padding: "6px 10px", borderRadius: 8 }}>
+    <aside className="fixed right-0 top-0 bottom-0 w-[420px] bg-surface border-l border-border p-4 overflow-auto z-40 shadow-xl">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="m-0 text-lg font-semibold">Resumen Movimiento</h3>
+        <Button variant="ghost" onClick={onClose}>
           Cerrar
-        </button>
+        </Button>
       </div>
-      <div style={{ marginBottom: 8 }}>
+      <div className="mb-4">
         <StatusBadge value={row.status} />
       </div>
-      <div style={{ display: "grid", gap: 8 }}>
+      <div className="space-y-2">
         {fields.map(([label, value]) => (
           <div
             key={label}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              borderBottom: "1px dashed rgba(255,255,255,0.08)",
-              padding: "6px 0",
-            }}
+            className="flex justify-between border-b border-dashed border-border py-2"
           >
-            <span style={{ color: "#94a3b8" }}>{label}</span>
+            <span className="text-muted-foreground">{label}</span>
             <span>{value}</span>
           </div>
         ))}

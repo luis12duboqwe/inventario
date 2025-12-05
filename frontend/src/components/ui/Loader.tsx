@@ -16,30 +16,7 @@ type LoaderProps = {
   className?: string;
 };
 
-const Spinner = () => (
-  <div
-    style={{
-      display: "inline-block",
-      width: 24,
-      height: 24,
-      border: "3px solid #4b5563",
-      borderTopColor: "#60a5fa",
-      borderRadius: "50%",
-      animation: "spin 0.8s linear infinite",
-    }}
-  />
-);
-
-const overlayStyle: React.CSSProperties = {
-  position: "absolute",
-  inset: 0,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  backdropFilter: "blur(2px)",
-  background: "rgba(0,0,0,0.25)",
-  zIndex: 50,
-};
+const Spinner = () => <div className="loader-spinner" />;
 
 export const Loader: React.FC<LoaderProps> = ({
   variant = "spinner",
@@ -53,7 +30,7 @@ export const Loader: React.FC<LoaderProps> = ({
 
   if (variant === "overlay") {
     return (
-      <div aria-label={displayLabel} role="status" className={className} style={overlayStyle}>
+      <div aria-label={displayLabel} role="status" className={`loader-overlay ${className || ""}`}>
         <Spinner />
       </div>
     );
@@ -69,15 +46,9 @@ export const Loader: React.FC<LoaderProps> = ({
 
   // compact or spinner
   return (
-    <div
-      aria-label={displayLabel}
-      role="status"
-      className={className}
-      style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
-    >
+    <div aria-label={displayLabel} role="status" className={`loader-compact ${className || ""}`}>
       <Spinner />
-      <span style={{ fontSize: 12, color: "#9ca3af" }}>{displayLabel}</span>
-      <style>{`@keyframes spin {to { transform: rotate(360deg); }}`}</style>
+      <span className="loader-label">{displayLabel}</span>
     </div>
   );
 };

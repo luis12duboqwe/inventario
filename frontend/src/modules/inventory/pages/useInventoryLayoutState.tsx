@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, type ReactNode } from "react";
 import {
   Building2,
   Cog,
@@ -61,7 +61,7 @@ export type InventoryLayoutState = {
   contextValue: InventoryLayoutContextValue;
 
   // Page State
-  tabOptions: Array<{ id: string; label: string; icon: any; href: string }>;
+  tabOptions: Array<{ id: string; label: string; icon: ReactNode; href: string }>;
   activeTab: InventoryTabId;
   handleTabChange: (tabId: InventoryTabId) => void;
   moduleStatus: "ok" | "warning" | "critical";

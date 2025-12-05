@@ -6,6 +6,10 @@ export type TransferOrderItem = {
   device_id: number;
   quantity: number;
   reservation_id?: number | null;
+  device_name?: string | null;
+  sku?: string | null;
+  dispatched_quantity?: number;
+  received_quantity?: number;
 };
 
 export type TransferOrder = {
@@ -20,6 +24,8 @@ export type TransferOrder = {
   received_at?: string | null;
   cancelled_at?: string | null;
   items: TransferOrderItem[];
+  origin_store_name?: string | null;
+  destination_store_name?: string | null;
   ultima_accion?: {
     usuario?: string | null;
     timestamp: string;
@@ -33,8 +39,14 @@ export type TransferOrderInput = {
   items: { device_id: number; quantity: number; reservation_id?: number | null }[];
 };
 
+export type TransferReceptionItem = {
+  item_id: number;
+  received_quantity: number;
+};
+
 export type TransferTransitionInput = {
   reason?: string;
+  items?: TransferReceptionItem[];
 };
 
 export type TransferReportDevice = {
@@ -96,6 +108,10 @@ export function listTransfers(token: string, storeId?: number): Promise<Transfer
   const query = params.toString();
   const path = `/transfers${query ? `?${query}` : ""}`;
   return requestCollection<TransferOrder>(path, { method: "GET" }, token);
+}
+
+export function getTransfer(token: string, transferId: number): Promise<TransferOrder> {
+  return request<TransferOrder>(`/transfers/${transferId}`, { method: "GET" }, token);
 }
 
 export function createTransferOrder(
@@ -201,7 +217,7 @@ export function exportTransferReportPdf(
   const query = buildTransferReportQuery(filters);
   return request<Blob>(
     `/transfers/export/pdf${query}`,
-    { method: "GET", headers: { "X-Reason": reason } },
+    { method: "GET", headers: { "X-Reason": reason }, responseType: "blob" },
     token,
   );
 }
@@ -214,7 +230,7 @@ export function exportTransferReportExcel(
   const query = buildTransferReportQuery(filters);
   return request<Blob>(
     `/transfers/export/xlsx${query}`,
-    { method: "GET", headers: { "X-Reason": reason } },
+    { method: "GET", headers: { "X-Reason": reason }, responseType: "blob" },
     token,
   );
 }

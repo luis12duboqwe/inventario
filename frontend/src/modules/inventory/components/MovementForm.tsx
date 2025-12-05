@@ -1,42 +1,61 @@
-import { FormEvent, useMemo, useState } from "react";
+import { useEffect } from "react";
+import { useForm, useWatch } from "react-hook-form";
 import { Device, MovementInput } from "@api/inventory";
+import Button from "@components/ui/Button";
+import "./MovementForm.css";
 
 type Props = {
   devices: Device[];
   onSubmit: (payload: MovementInput) => Promise<void> | void;
 };
 
+type FormValues = {
+  deviceId: string;
+  movementType: MovementInput["tipo_movimiento"];
+  quantity: number;
+  unitCost: string;
+  comment: string;
+};
+
 function MovementForm({ devices, onSubmit }: Props) {
-  const [deviceId, setDeviceId] = useState<number | "">(devices[0]?.id ?? "");
-  const [movementType, setMovementType] = useState<MovementInput["tipo_movimiento"]>("entrada");
-  const [quantity, setQuantity] = useState(1);
-  const [comment, setComment] = useState("");
-  const [unitCost, setUnitCost] = useState("");
+  const {
+    register,
+    handleSubmit,
+    control,
+    reset,
+    setValue,
+    formState: { isSubmitting, errors },
+  } = useForm<FormValues>({
+    defaultValues: {
+      deviceId: "",
+      movementType: "entrada",
+      quantity: 1,
+      unitCost: "",
+      comment: "",
+    },
+  });
 
-  // Derivar el dispositivo efectivo sin setState en efectos: si no hay selección explicita, usar el primero.
-  const effectiveDeviceId = useMemo<number | "">(
-    () => (deviceId === "" ? devices[0]?.id ?? "" : deviceId),
-    [deviceId, devices],
-  );
-
-  if (devices.length === 0) {
-    return <p>Registra al menos un dispositivo para habilitar los movimientos.</p>;
-  }
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!deviceId) {
-      return;
+  // Set default device when devices list loads
+  useEffect(() => {
+    if (devices.length > 0) {
+      setValue("deviceId", String(devices[0].id));
     }
-    const normalizedComment = comment.trim();
-    const rawUnitCost = unitCost.trim();
-    const shouldSendUnitCost = movementType === "entrada" && rawUnitCost.length > 0;
+  }, [devices, setValue]);
+
+  const movementType = useWatch({ control, name: "movementType" });
+
+  const onSubmitForm = async (data: FormValues) => {
+    if (!data.deviceId) return;
+
+    const normalizedComment = data.comment.trim();
+    const rawUnitCost = data.unitCost.trim();
+    const shouldSendUnitCost = data.movementType === "entrada" && rawUnitCost.length > 0;
     const parsedUnitCost = shouldSendUnitCost ? Number(rawUnitCost) : undefined;
 
     const payload: MovementInput = {
-      producto_id: Number(deviceId),
-      tipo_movimiento: movementType,
-      cantidad: quantity,
+      producto_id: Number(data.deviceId),
+      tipo_movimiento: data.movementType,
+      cantidad: data.quantity,
       comentario: normalizedComment,
     };
 
@@ -49,88 +68,93 @@ function MovementForm({ devices, onSubmit }: Props) {
     }
 
     await onSubmit(payload);
-    setQuantity(1);
-    setComment("");
-    setUnitCost("");
+
+    reset({
+      deviceId: data.deviceId,
+      movementType: data.movementType,
+      quantity: 1,
+      unitCost: "",
+      comment: "",
+    });
   };
 
+  if (devices.length === 0) {
+    return <p>Registra al menos un dispositivo para habilitar los movimientos.</p>;
+  }
+
   return (
-    <form onSubmit={handleSubmit} className="movement-form">
-      <label htmlFor="deviceId">Dispositivo</label>
-      <select
-        id="deviceId"
-        value={effectiveDeviceId ?? ""}
-        onChange={(event) => setDeviceId(event.target.value ? Number(event.target.value) : "")}
-        required
-      >
-        <option value="" disabled>
-          Selecciona un equipo
-        </option>
-        {devices.map((device) => (
-          <option key={device.id} value={device.id}>
-            {device.sku} · {device.name}
+    <form onSubmit={handleSubmit(onSubmitForm)} className="movement-form">
+      <label>
+        <span>Dispositivo</span>
+        <select {...register("deviceId", { required: "Selecciona un dispositivo" })}>
+          <option value="" disabled>
+            Selecciona un equipo
           </option>
-        ))}
-      </select>
+          {devices.map((device) => (
+            <option key={device.id} value={device.id}>
+              {device.sku} · {device.name}
+            </option>
+          ))}
+        </select>
+        {errors.deviceId && (
+          <span className="error-text text-danger text-sm">{errors.deviceId.message}</span>
+        )}
+      </label>
 
-      <label htmlFor="movementType">Tipo de movimiento</label>
-      <select
-        id="movementType"
-        value={movementType}
-        onChange={(event) =>
-          setMovementType(event.target.value as MovementInput["tipo_movimiento"])
-        }
-      >
-        <option value="entrada">Entrada</option>
-        <option value="salida">Salida</option>
-        <option value="ajuste">Ajuste</option>
-      </select>
+      <label>
+        <span>Tipo de movimiento</span>
+        <select {...register("movementType")}>
+          <option value="entrada">Entrada</option>
+          <option value="salida">Salida</option>
+          <option value="ajuste">Ajuste</option>
+        </select>
+      </label>
 
-      <label htmlFor="quantity">Cantidad</label>
-      <input
-        id="quantity"
-        type="number"
-        min={1}
-        step={1}
-        value={quantity}
-        onChange={(event) => {
-          const nextValue = Number(event.target.value);
-          if (!Number.isFinite(nextValue)) {
-            setQuantity(1);
-            return;
-          }
-          setQuantity(Math.max(1, Math.floor(nextValue)));
-        }}
-        required
-      />
+      <label>
+        <span>Cantidad</span>
+        <input
+          type="number"
+          min={1}
+          step={1}
+          {...register("quantity", {
+            required: true,
+            min: 1,
+            valueAsNumber: true,
+          })}
+        />
+      </label>
 
-      {movementType === "entrada" ? (
-        <>
-          <label htmlFor="unitCost">Costo unitario (MXN)</label>
+      {movementType === "entrada" && (
+        <label>
+          <span>Costo unitario (MXN)</span>
           <input
-            id="unitCost"
             type="number"
             min={0}
             step={0.01}
-            value={unitCost}
-            onChange={(event) => setUnitCost(event.target.value)}
             placeholder="Ej. 8,599.99"
+            {...register("unitCost")}
           />
-        </>
-      ) : null}
+        </label>
+      )}
 
-      <label htmlFor="comment">Motivo corporativo</label>
-      <textarea
-        id="comment"
-        rows={2}
-        value={comment}
-        onChange={(event) => setComment(event.target.value)}
-        placeholder="Describe el motivo (mínimo 5 caracteres)"
-        minLength={5}
-        required
-      />
+      <label>
+        <span>Motivo corporativo</span>
+        <textarea
+          rows={2}
+          placeholder="Describe el motivo (mínimo 5 caracteres)"
+          {...register("comment", {
+            required: "El motivo es obligatorio",
+            minLength: { value: 5, message: "Mínimo 5 caracteres" },
+          })}
+        />
+        {errors.comment && (
+          <span className="error-text text-danger text-sm">{errors.comment.message}</span>
+        )}
+      </label>
 
-      <button type="submit">Registrar movimiento</button>
+      <Button type="submit" disabled={isSubmitting} className="w-full">
+        {isSubmitting ? "Registrando..." : "Registrar movimiento"}
+      </Button>
     </form>
   );
 }

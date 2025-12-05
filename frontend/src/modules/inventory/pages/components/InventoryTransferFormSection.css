@@ -1,0 +1,8 @@
+/* Extracted from styles.css */
+.inventory-transfer-error {
+  color: var(--color-danger, #ef4444);
+}
+
+.inventory-transfer-success {
+  color: var(--color-success, #22c55e);
+}

@@ -1,4 +1,5 @@
 import React from "react";
+import { Button } from "@components/ui/Button";
 
 type MoveType = "IN" | "OUT" | "TRANSFER" | "ADJUST";
 
@@ -11,22 +12,16 @@ export default function StepSelectType({ value, onChange }: Props) {
   const options: MoveType[] = ["IN", "OUT", "TRANSFER", "ADJUST"];
 
   return (
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+    <div className="flex gap-2 flex-wrap">
       {options.map((option) => (
-        <button
+        <Button
           key={option}
+          variant={value === option ? "primary" : "ghost"}
           onClick={() => onChange(option)}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 8,
-            background: value === option ? "#2563eb" : "rgba(255,255,255,0.08)",
-            color: "#fff",
-            border: 0,
-          }}
           type="button"
         >
           {option}
-        </button>
+        </Button>
       ))}
     </div>
   );

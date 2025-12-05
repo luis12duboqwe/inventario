@@ -28,9 +28,11 @@ import { promptCorporateReason } from "../../../utils/corporateReason";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 import LoadingOverlay from "../../../shared/components/LoadingOverlay";
 import ScrollableTable from "../../../shared/components/ScrollableTable";
-import AnalyticsGrid, {
-  type AnalyticsGridItem,
-} from "@components/ui/AnalyticsGrid/AnalyticsGrid";
+import AnalyticsGrid, { type AnalyticsGridItem } from "@components/ui/AnalyticsGrid/AnalyticsGrid";
+import Tooltip from "@components/ui/Tooltip";
+import TextField from "@components/ui/TextField";
+import Select from "@components/ui/Select";
+import Button from "@components/ui/Button";
 
 type Props = {
   token: string;
@@ -631,19 +633,34 @@ function AnalyticsBoard({ token }: Props) {
   const analyticsItems: AnalyticsGridItem[] = [
     {
       id: "rotation",
-      title: "Rotación por dispositivo",
+      title: (
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          Rotación por dispositivo
+          <Tooltip content="Velocidad a la que se vende el inventario. Mayor es mejor." />
+        </div>
+      ),
       description: "Velocidad de salida y recepción por SKU en cada sucursal.",
       content: rotationContent,
     },
     {
       id: "aging",
-      title: "Envejecimiento",
+      title: (
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          Envejecimiento
+          <Tooltip content="Tiempo que los productos permanecen en inventario sin venderse." />
+        </div>
+      ),
       description: "Días en stock y unidades disponibles por tienda.",
       content: agingContent,
     },
     {
       id: "forecast",
-      title: "Pronóstico de agotamiento",
+      title: (
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          Pronóstico de agotamiento
+          <Tooltip content="Estimación de cuándo se agotará el stock actual basado en ventas recientes." />
+        </div>
+      ),
       description: "Predicción de días restantes antes del quiebre.",
       content: forecastContent,
     },
@@ -655,13 +672,23 @@ function AnalyticsBoard({ token }: Props) {
     },
     {
       id: "margin",
-      title: "Margen de contribución",
+      title: (
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          Margen de contribución
+          <Tooltip content="Porcentaje de ganancia sobre el costo de los productos vendidos." />
+        </div>
+      ),
       description: "Ingresos, utilidades y porcentaje por tienda.",
       content: marginContent,
     },
     {
       id: "projection",
-      title: "Proyección de ventas (30 días)",
+      title: (
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          Proyección de ventas
+          <Tooltip content="Estimación de ventas futuras basada en tendencias históricas." />
+        </div>
+      ),
       description: "Estimación de unidades y ticket promedio mensual.",
       content: projectionContent,
     },
@@ -678,77 +705,67 @@ function AnalyticsBoard({ token }: Props) {
         </div>
         <div className="analytics-actions">
           <div className="analytics-filters">
-            <label>
-              <span>Sucursal</span>
-              <select
-                value={selectedStore}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setSelectedStore(value === "all" ? "all" : Number(value));
-                }}
-              >
-                <option value="all">Todas</option>
-                {stores.map((store) => (
-                  <option key={store.id} value={store.id}>
-                    {store.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>Desde</span>
-              <input
-                type="date"
-                value={dateFrom}
-                max={dateTo || undefined}
-                onChange={(event) => setDateFrom(event.target.value)}
-              />
-            </label>
-            <label>
-              <span>Hasta</span>
-              <input
-                type="date"
-                value={dateTo}
-                min={dateFrom || undefined}
-                onChange={(event) => setDateTo(event.target.value)}
-              />
-            </label>
-            <label>
-              <span>Categoría</span>
-              <select
-                value={selectedCategory}
-                onChange={(event) => setSelectedCategory(event.target.value)}
-              >
-                <option value="all">Todas</option>
-                {categories.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>Proveedor</span>
-              <select
-                value={selectedSupplier}
-                onChange={(event) => setSelectedSupplier(event.target.value)}
-              >
-                <option value="all">Todos</option>
-                {suppliers.map((supplierName) => (
-                  <option key={supplierName} value={supplierName}>
-                    {supplierName}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <Select
+              label="Sucursal"
+              value={selectedStore}
+              onChange={(event) => {
+                const value = event.target.value;
+                setSelectedStore(value === "all" ? "all" : Number(value));
+              }}
+            >
+              <option value="all">Todas</option>
+              {stores.map((store) => (
+                <option key={store.id} value={store.id}>
+                  {store.name}
+                </option>
+              ))}
+            </Select>
+            <TextField
+              label="Desde"
+              type="date"
+              value={dateFrom}
+              max={dateTo || undefined}
+              onChange={(event) => setDateFrom(event.target.value)}
+            />
+            <TextField
+              label="Hasta"
+              type="date"
+              value={dateTo}
+              min={dateFrom || undefined}
+              onChange={(event) => setDateTo(event.target.value)}
+            />
+            <Select
+              label="Categoría"
+              value={selectedCategory}
+              onChange={(event) => setSelectedCategory(event.target.value)}
+            >
+              <option value="all">Todas</option>
+              {categories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </Select>
+            <Select
+              label="Proveedor"
+              value={selectedSupplier}
+              onChange={(event) => setSelectedSupplier(event.target.value)}
+            >
+              <option value="all">Todos</option>
+              {suppliers.map((supplierName) => (
+                <option key={supplierName} value={supplierName}>
+                  {supplierName}
+                </option>
+              ))}
+            </Select>
           </div>
           <div className="analytics-actions__group">
-            <button className="btn btn--primary" onClick={handleDownloadPdf} aria-busy={loading}>
+            <Button onClick={handleDownloadPdf} disabled={loading}>
               Descargar PDF
-            </button>
-            <button className="btn btn--ghost" onClick={handleDownloadCsv} aria-busy={loading}>
+            </Button>
+            <Button variant="ghost" onClick={handleDownloadCsv} disabled={loading}>
               Exportar CSV
-            </button>
+            </Button>
           </div>
         </div>
       </header>

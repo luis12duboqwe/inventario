@@ -1,5 +1,5 @@
 // [PACK25-PREFETCH-START]
-export function preimport<T>(loader: () => Promise<T>) { loader().catch(()=>{}); }
+export function preimport<T>(loader: () => Promise<T>) { loader().catch(() => { /* ignore */ }); }
 
 export function prefetchJson(url: string) {
   try {

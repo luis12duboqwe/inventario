@@ -31,7 +31,8 @@ def _bootstrap_admin(client, db_session):
 
     token_response = client.post(
         "/auth/token",
-        data={"username": payload["username"], "password": payload["password"]},
+        data={"username": payload["username"],
+              "password": payload["password"]},
         headers={"content-type": "application/x-www-form-urlencoded"},
     )
     assert token_response.status_code == status.HTTP_200_OK
@@ -46,7 +47,8 @@ def _bootstrap_admin(client, db_session):
 def _create_store(client, headers):
     response = client.post(
         "/stores",
-        json={"name": "Compras Centro", "location": "CDMX", "timezone": "America/Mexico_City"},
+        json={"name": "Compras Centro", "location": "CDMX",
+              "timezone": "America/Mexico_City"},
         headers=headers,
     )
     assert response.status_code == status.HTTP_201_CREATED
@@ -105,12 +107,14 @@ def test_get_purchase_order_detail_includes_items_and_returns(client, db_session
 
         return_response = client.post(
             f"/purchases/{order_id}/returns",
-            json={"device_id": device_id, "quantity": 1, "reason": "Equipo defectuoso"},
+            json={"device_id": device_id, "quantity": 1,
+                  "reason": "Equipo defectuoso"},
             headers={**base_headers, "X-Reason": "Devolución proveedor"},
         )
         assert return_response.status_code == status.HTTP_200_OK
 
-        detail_response = client.get(f"/purchases/{order_id}", headers=base_headers)
+        detail_response = client.get(
+            f"/purchases/{order_id}", headers=base_headers)
         assert detail_response.status_code == status.HTTP_200_OK
         payload = detail_response.json()
 
@@ -144,12 +148,14 @@ def test_purchase_receipt_and_return_flow(client, db_session):
     previous_flag = settings.enable_purchases_sales
     settings.enable_purchases_sales = True
     token, user_id = _bootstrap_admin(client, db_session)
-    auth_headers = {"Authorization": f"Bearer {token}", "X-Reason": "Operacion de compra"}
+    auth_headers = {"Authorization": f"Bearer {token}",
+                    "X-Reason": "Operacion de compra"}
 
     try:
         store_response = client.post(
             "/stores",
-            json={"name": "Compras Centro", "location": "CDMX", "timezone": "America/Mexico_City"},
+            json={"name": "Compras Centro", "location": "CDMX",
+                  "timezone": "America/Mexico_City"},
             headers=auth_headers,
         )
         assert store_response.status_code == status.HTTP_201_CREATED
@@ -178,7 +184,8 @@ def test_purchase_receipt_and_return_flow(client, db_session):
                 {"device_id": device_id, "quantity_ordered": 10, "unit_cost": 850.0},
             ],
         }
-        order_response = client.post("/purchases", json=order_payload, headers=auth_headers)
+        order_response = client.post(
+            "/purchases", json=order_payload, headers=auth_headers)
         assert order_response.status_code == status.HTTP_201_CREATED
         order_id = order_response.json()["id"]
 
@@ -201,7 +208,8 @@ def test_purchase_receipt_and_return_flow(client, db_session):
             if item["id"] == device_id
         )
         assert stored_device["quantity"] == 15
-        assert Decimal(str(stored_device["costo_unitario"])) == Decimal("950.00")
+        assert Decimal(
+            str(stored_device["costo_unitario"])) == Decimal("950.00")
 
         complete_receive = client.post(
             f"/purchases/{order_id}/receive",
@@ -213,7 +221,8 @@ def test_purchase_receipt_and_return_flow(client, db_session):
 
         return_response = client.post(
             f"/purchases/{order_id}/returns",
-            json={"device_id": device_id, "quantity": 2, "reason": "Equipo danado"},
+            json={"device_id": device_id, "quantity": 2,
+                  "reason": "Equipo danado"},
             headers={**auth_headers, "X-Reason": "Devolucion proveedor"},
         )
         assert return_response.status_code == status.HTTP_200_OK
@@ -237,13 +246,15 @@ def test_purchase_receipt_and_return_flow(client, db_session):
             ).scalars()
         )
         assert len(movements) == 3
-        received_movements = [m for m in movements if m.movement_type == models.MovementType.IN]
+        received_movements = [
+            m for m in movements if m.movement_type == models.MovementType.IN]
         assert {movement.quantity for movement in received_movements} == {5}
         for movement in received_movements:
             assert movement.performed_by_id == user_id
             assert movement.comment is not None and "Proveedor Mayorista" in movement.comment
             assert "Recepción OC" in movement.comment
-        return_movement = next(m for m in movements if m.movement_type == models.MovementType.OUT)
+        return_movement = next(
+            m for m in movements if m.movement_type == models.MovementType.OUT)
         assert return_movement.quantity == 2
         assert return_movement.performed_by_id == user_id
         assert "Devolución proveedor" in return_movement.comment
@@ -265,7 +276,8 @@ def test_purchase_receipt_and_return_flow(client, db_session):
             movement.movement_type.value for movement in movements
         }
         assert all(row["usuario_id"] == user_id for row in legacy_rows)
-        assert any("Proveedor Mayorista" in row["comentario"] for row in legacy_rows)
+        assert any(
+            "Proveedor Mayorista" in row["comentario"] for row in legacy_rows)
 
         settings.enable_purchases_sales = False
         disabled_list = client.get("/purchases/vendors", headers=auth_headers)
@@ -381,7 +393,8 @@ def test_purchase_completes_after_covering_pending_items(client, db_session):
         assert second_receive.json()["status"] == "COMPLETADA"
         assert second_receive.json()["pending_items"] == 0
 
-        devices_after = client.get(f"/stores/{store_id}/devices", headers=headers)
+        devices_after = client.get(
+            f"/stores/{store_id}/devices", headers=headers)
         assert devices_after.status_code == status.HTTP_200_OK
         stored_device = next(
             item for item in _extract_items(devices_after.json()) if item["id"] == device_id
@@ -396,7 +409,8 @@ def test_upload_purchase_order_document_and_download(client, db_session):
     previous_flag = settings.enable_purchases_sales
     settings.enable_purchases_sales = True
     token, _ = _bootstrap_admin(client, db_session)
-    base_headers = {"Authorization": f"Bearer {token}", "X-Reason": "Operación compras"}
+    base_headers = {"Authorization": f"Bearer {token}",
+                    "X-Reason": "Operación compras"}
 
     previous_backend = settings.purchases_documents_backend
     previous_path = settings.purchases_documents_local_path
@@ -417,7 +431,8 @@ def test_upload_purchase_order_document_and_download(client, db_session):
                     "store_id": store_id,
                     "supplier": "Proveedor Mayorista",
                     "items": [
-                        {"device_id": device_id, "quantity_ordered": 3, "unit_cost": 720.0},
+                        {"device_id": device_id,
+                            "quantity_ordered": 3, "unit_cost": 720.0},
                     ],
                 },
                 headers=base_headers,
@@ -467,7 +482,8 @@ def test_purchase_status_transition_records_history(client, db_session):
     previous_flag = settings.enable_purchases_sales
     settings.enable_purchases_sales = True
     token, _ = _bootstrap_admin(client, db_session)
-    base_headers = {"Authorization": f"Bearer {token}", "X-Reason": "Operación compras"}
+    base_headers = {"Authorization": f"Bearer {token}",
+                    "X-Reason": "Operación compras"}
 
     try:
         store_id = _create_store(client, base_headers)
@@ -490,7 +506,8 @@ def test_purchase_status_transition_records_history(client, db_session):
         transition_response = client.post(
             f"/purchases/{order_id}/status",
             json={"status": "APROBADA"},
-            headers={"Authorization": f"Bearer {token}", "X-Reason": "Aprobación de orden"},
+            headers={"Authorization": f"Bearer {token}",
+                     "X-Reason": "Aprobación de orden"},
         )
         assert transition_response.status_code == status.HTTP_200_OK
         payload = transition_response.json()
@@ -506,7 +523,8 @@ def test_purchase_status_transition_records_history(client, db_session):
         conflict_response = client.post(
             f"/purchases/{order_id}/status",
             json={"status": "APROBADA"},
-            headers={"Authorization": f"Bearer {token}", "X-Reason": "Aprobación duplicada"},
+            headers={"Authorization": f"Bearer {token}",
+                     "X-Reason": "Aprobación duplicada"},
         )
         assert conflict_response.status_code == status.HTTP_409_CONFLICT
     finally:
@@ -517,7 +535,8 @@ def test_purchase_status_transition_rejects_invalid_status(client, db_session):
     previous_flag = settings.enable_purchases_sales
     settings.enable_purchases_sales = True
     token, _ = _bootstrap_admin(client, db_session)
-    base_headers = {"Authorization": f"Bearer {token}", "X-Reason": "Operación compras"}
+    base_headers = {"Authorization": f"Bearer {token}",
+                    "X-Reason": "Operación compras"}
 
     try:
         store_id = _create_store(client, base_headers)
@@ -540,7 +559,8 @@ def test_purchase_status_transition_rejects_invalid_status(client, db_session):
         invalid_response = client.post(
             f"/purchases/{order_id}/status",
             json={"status": "CANCELADA"},
-            headers={"Authorization": f"Bearer {token}", "X-Reason": "Cancelación manual"},
+            headers={"Authorization": f"Bearer {token}",
+                     "X-Reason": "Cancelación manual"},
         )
         assert invalid_response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
         assert invalid_response.json()["detail"] == "Estado de orden inválido."
@@ -552,14 +572,16 @@ def test_send_purchase_order_email_uses_notification_service(client, db_session,
     previous_flag = settings.enable_purchases_sales
     settings.enable_purchases_sales = True
     token, _ = _bootstrap_admin(client, db_session)
-    base_headers = {"Authorization": f"Bearer {token}", "X-Reason": "Operación compras"}
+    base_headers = {"Authorization": f"Bearer {token}",
+                    "X-Reason": "Operación compras"}
 
     captured: dict[str, object] = {}
 
     def fake_send_purchase_order_email(**kwargs):
         captured.update(kwargs)
 
-    monkeypatch.setattr(crud.purchase_documents, "send_purchase_order_email", fake_send_purchase_order_email)
+    monkeypatch.setattr(crud.purchase_documents,
+                        "send_purchase_order_email", fake_send_purchase_order_email)
 
     try:
         store_id = _create_store(client, base_headers)
@@ -601,13 +623,15 @@ def test_upload_purchase_order_document_handles_storage_errors(client, db_sessio
     previous_flag = settings.enable_purchases_sales
     settings.enable_purchases_sales = True
     token, _ = _bootstrap_admin(client, db_session)
-    base_headers = {"Authorization": f"Bearer {token}", "X-Reason": "Operación compras"}
+    base_headers = {"Authorization": f"Bearer {token}",
+                    "X-Reason": "Operación compras"}
 
     class _FailingStorage(purchase_documents.PurchaseDocumentStorage):
         backend_name = "failing"
 
         def save(self, *, filename: str, content_type: str, content: bytes):
-            raise purchase_documents.PurchaseDocumentStorageError("forced_error")
+            raise purchase_documents.PurchaseDocumentStorageError(
+                "forced_error")
 
         def open(self, path: str) -> bytes:  # pragma: no cover - no se usa
             raise NotImplementedError
@@ -615,7 +639,8 @@ def test_upload_purchase_order_document_handles_storage_errors(client, db_sessio
         def delete(self, path: str) -> None:  # pragma: no cover - no se usa
             return None
 
-    monkeypatch.setattr(crud.purchase_documents, "get_storage", lambda: _FailingStorage())
+    monkeypatch.setattr(crud.purchase_documents,
+                        "get_storage", lambda: _FailingStorage())
 
     try:
         store_id = _create_store(client, base_headers)
@@ -731,12 +756,14 @@ def test_purchase_cancellation_reverts_inventory_and_records_movement(client, db
     previous_flag = settings.enable_purchases_sales
     settings.enable_purchases_sales = True
     token, user_id = _bootstrap_admin(client, db_session)
-    auth_headers = {"Authorization": f"Bearer {token}", "X-Reason": "Motivo compras"}
+    auth_headers = {"Authorization": f"Bearer {token}",
+                    "X-Reason": "Motivo compras"}
 
     try:
         store_response = client.post(
             "/stores",
-            json={"name": "Sucursal Serial", "location": "GDL", "timezone": "America/Mexico_City"},
+            json={"name": "Sucursal Serial", "location": "GDL",
+                  "timezone": "America/Mexico_City"},
             headers=auth_headers,
         )
         assert store_response.status_code == status.HTTP_201_CREATED
@@ -765,7 +792,8 @@ def test_purchase_cancellation_reverts_inventory_and_records_movement(client, db
                 {"device_id": device_id, "quantity_ordered": 1, "unit_cost": 1800.0},
             ],
         }
-        order_response = client.post("/purchases", json=order_payload, headers=auth_headers)
+        order_response = client.post(
+            "/purchases", json=order_payload, headers=auth_headers)
         assert order_response.status_code == status.HTTP_201_CREATED
         order_id = order_response.json()["id"]
 
@@ -802,7 +830,8 @@ def test_purchase_cancellation_reverts_inventory_and_records_movement(client, db
             ).scalars()
         )
         assert len(movements) == 2
-        reversal = next(m for m in movements if m.movement_type == models.MovementType.OUT)
+        reversal = next(m for m in movements if m.movement_type ==
+                        models.MovementType.OUT)
         assert reversal.quantity == 1
         assert reversal.performed_by_id == user_id
         assert "Reversión OC" in reversal.comment
@@ -830,7 +859,8 @@ def test_purchase_records_and_vendor_statistics(client, db_session):
     previous_flag = settings.enable_purchases_sales
     settings.enable_purchases_sales = True
     token, _ = _bootstrap_admin(client, db_session)
-    base_headers = {"Authorization": f"Bearer {token}", "X-Reason": "Gestion compras"}
+    base_headers = {"Authorization": f"Bearer {token}",
+                    "X-Reason": "Gestion compras"}
 
     try:
         vendor_response = client.post(
@@ -849,7 +879,8 @@ def test_purchase_records_and_vendor_statistics(client, db_session):
 
         store_response = client.post(
             "/stores",
-            json={"name": "Compras Norte", "location": "MTY", "timezone": "America/Mexico_City"},
+            json={"name": "Compras Norte", "location": "MTY",
+                  "timezone": "America/Mexico_City"},
             headers=base_headers,
         )
         assert store_response.status_code == status.HTTP_201_CREATED
@@ -897,7 +928,8 @@ def test_purchase_records_and_vendor_statistics(client, db_session):
         )
         assert list_response.status_code == status.HTTP_200_OK
         listed_payload = _extract_items(list_response.json())
-        assert any(entry["id_compra"] == record["id_compra"] for entry in listed_payload)
+        assert any(entry["id_compra"] == record["id_compra"]
+                   for entry in listed_payload)
 
         history_response = client.get(
             f"/purchases/vendors/{vendor_id}/history",
@@ -911,21 +943,24 @@ def test_purchase_records_and_vendor_statistics(client, db_session):
 
         csv_response = client.get(
             "/purchases/vendors/export/csv",
-            headers={"Authorization": f"Bearer {token}", "X-Reason": "Reporte proveedores"},
+            headers={"Authorization": f"Bearer {token}",
+                     "X-Reason": "Reporte proveedores"},
         )
         assert csv_response.status_code == status.HTTP_200_OK
         assert csv_response.headers["content-type"] == "text/csv"
 
         pdf_response = client.get(
             "/purchases/records/export/pdf",
-            headers={"Authorization": f"Bearer {token}", "X-Reason": "Reporte compras"},
+            headers={"Authorization": f"Bearer {token}",
+                     "X-Reason": "Reporte compras"},
         )
         assert pdf_response.status_code == status.HTTP_200_OK
         assert pdf_response.headers["content-type"] == "application/pdf"
 
         excel_response = client.get(
             "/purchases/records/export/xlsx",
-            headers={"Authorization": f"Bearer {token}", "X-Reason": "Reporte compras"},
+            headers={"Authorization": f"Bearer {token}",
+                     "X-Reason": "Reporte compras"},
         )
         assert excel_response.status_code == status.HTTP_200_OK
         assert (
@@ -939,8 +974,8 @@ def test_purchase_records_and_vendor_statistics(client, db_session):
         )
         assert stats_response.status_code == status.HTTP_200_OK
         stats_payload = stats_response.json()
-        assert stats_payload["compras_registradas"] >= 1
-        assert stats_payload["total"] >= float(record["total"])
+        assert stats_payload["monthly_count"] >= 1
+        assert stats_payload["monthly_total"] >= float(record["total"])
 
         status_response = client.post(
             f"/purchases/vendors/{vendor_id}/status",

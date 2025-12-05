@@ -1,4 +1,6 @@
 import React from "react";
+import { Button } from "@components/ui/Button";
+import { TextField } from "@components/ui/TextField";
 
 type Row = {
   id: string;
@@ -18,52 +20,51 @@ export default function StepItems({ items, onAdd, onEdit, onRemove }: Props) {
   const data = Array.isArray(items) ? items : [];
 
   return (
-    <div style={{ display: "grid", gap: 8 }}>
+    <div className="space-y-4">
       <div>
-        <button onClick={onAdd} style={{ padding: "8px 12px", borderRadius: 8 }} type="button">
+        <Button variant="ghost" onClick={onAdd} type="button">
           Agregar ítem
-        </button>
+        </Button>
       </div>
-      <div style={{ overflow: "auto", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+      <div className="overflow-auto rounded-xl border border-border">
+        <table className="w-full border-collapse text-sm">
           <thead>
-            <tr style={{ background: "rgba(255,255,255,0.03)" }}>
-              <th style={{ textAlign: "left", padding: 10 }}>SKU</th>
-              <th style={{ textAlign: "left", padding: 10 }}>Producto</th>
-              <th style={{ textAlign: "center", padding: 10 }}>Cant.</th>
-              <th style={{ textAlign: "right", padding: 10 }}>Acciones</th>
+            <tr className="bg-surface-highlight">
+              <th className="text-left p-3 font-medium text-muted-foreground">SKU</th>
+              <th className="text-left p-3 font-medium text-muted-foreground">Producto</th>
+              <th className="text-center p-3 font-medium text-muted-foreground">Cant.</th>
+              <th className="text-right p-3 font-medium text-muted-foreground">Acciones</th>
             </tr>
           </thead>
           <tbody>
             {data.length === 0 ? (
               <tr>
-                <td colSpan={4} style={{ padding: 12, color: "#9ca3af" }}>
+                <td colSpan={4} className="p-4 text-center text-muted-foreground">
                   Sin items
                 </td>
               </tr>
             ) : (
               data.map((row) => (
-                <tr key={row.id}>
-                  <td style={{ padding: 10 }}>{row.sku}</td>
-                  <td style={{ padding: 10 }}>{row.name}</td>
-                  <td style={{ padding: 10, textAlign: "center" }}>
-                    <input
+                <tr key={row.id} className="border-t border-border">
+                  <td className="p-3">{row.sku}</td>
+                  <td className="p-3">{row.name}</td>
+                  <td className="p-3 text-center">
+                    <TextField
                       type="number"
-                      value={row.qty}
-                      onChange={(event) =>
-                        onEdit(row.id, { qty: Number(event.target.value || 0) })
-                      }
-                      style={{ width: 90, padding: 6, borderRadius: 8 }}
+                      value={String(row.qty)}
+                      onChange={(event) => onEdit(row.id, { qty: Number(event.target.value || 0) })}
+                      className="w-24 text-center"
                     />
                   </td>
-                  <td style={{ padding: 10, textAlign: "right" }}>
-                    <button
+                  <td className="p-3 text-right">
+                    <Button
+                      variant="danger"
                       onClick={() => onRemove(row.id)}
-                      style={{ padding: "6px 10px", borderRadius: 8, background: "#b91c1c", color: "#fff", border: 0 }}
                       type="button"
+                      size="sm"
                     >
                       Quitar
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               ))

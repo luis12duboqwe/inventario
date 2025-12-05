@@ -1,8 +1,10 @@
 import React from "react";
+import TextField from "../../../../../components/ui/TextField";
+import { FILTER_ALL_VALUE, FILTER_ALL_LABEL } from "../../../../../config/constants";
 
 type StoreOption = { id: number; name: string }; // [PACK30-31-FRONTEND]
 
-type ProductStatus = "ACTIVE" | "INACTIVE" | "ALL";
+type ProductStatus = "ACTIVE" | "INACTIVE" | typeof FILTER_ALL_VALUE;
 
 export type ProductFilters = {
   query?: string;
@@ -24,65 +26,77 @@ export default function FiltersBar({ value, onChange, stores = [] }: Props) {
   const v = value || {};
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr 1fr",
-        gap: 8,
-      }}
-    >
-      <input
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3 items-end">
+      <TextField
+        label="Buscar"
+        hideLabel
         placeholder="Buscar (nombre o SKU)"
         value={v.query || ""}
         onChange={(event) => onChange({ ...v, query: event.target.value })}
-        style={{ padding: 8, borderRadius: 8 }}
       />
-      <select
-        value={v.status || "ALL"}
-        onChange={(event) => {
-          const selected = event.target.value as ProductStatus;
-          const next: ProductFilters = { ...v };
-          next.status = selected;
-          onChange(next);
-        }}
-        style={{ padding: 8, borderRadius: 8 }}
-      >
-        <option value="ALL">Todos</option>
-        <option value="ACTIVE">Activos</option>
-        <option value="INACTIVE">Inactivos</option>
-      </select>
-      <input
+
+      <div className="ui-field">
+        <div className="ui-field__control">
+          <select
+            className="ui-field__input cursor-pointer"
+            value={v.status || FILTER_ALL_VALUE}
+            onChange={(event) => {
+              const selected = event.target.value as ProductStatus;
+              const next: ProductFilters = { ...v };
+              next.status = selected;
+              onChange(next);
+            }}
+          >
+            <option value={FILTER_ALL_VALUE}>{FILTER_ALL_LABEL}</option>
+            <option value="ACTIVE">Activos</option>
+            <option value="INACTIVE">Inactivos</option>
+          </select>
+        </div>
+      </div>
+
+      <TextField
+        label="Categoría"
+        hideLabel
         placeholder="Categoría ID"
         value={v.categoryId || ""}
         onChange={(event) => onChange({ ...v, categoryId: event.target.value })}
-        style={{ padding: 8, borderRadius: 8 }}
       />
-      <select
-        value={v.storeId ?? ""}
-        onChange={(event) =>
-          onChange({
-            ...v,
-            storeId: event.target.value ? Number(event.target.value) : null,
-          })
-        }
-        style={{ padding: 8, borderRadius: 8 }}
-      >
-        <option value="">Todas las sucursales</option>
-        {stores.map((store) => (
-          <option key={store.id} value={store.id}>
-            {store.name}
-          </option>
-        ))}
-      </select>
-      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+
+      <div className="ui-field">
+        <div className="ui-field__control">
+          <select
+            className="ui-field__input cursor-pointer"
+            value={v.storeId ?? ""}
+            onChange={(event) =>
+              onChange({
+                ...v,
+                storeId: event.target.value ? Number(event.target.value) : null,
+              })
+            }
+          >
+            <option value="">Todas las sucursales</option>
+            {stores.map((store) => (
+              <option key={store.id} value={store.id}>
+                {store.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <label className="ui-field__control cursor-pointer justify-center select-none h-[42px]">
         <input
           type="checkbox"
           checked={!!v.lowStock}
           onChange={(event) => onChange({ ...v, lowStock: event.target.checked })}
+          className="w-[1.1rem] h-[1.1rem] accent-accent"
         />
-        Stock bajo
+        <span className="text-sm text-text-primary">Stock bajo</span>
       </label>
-      <input
+
+      <TextField
+        label="Min"
+        hideLabel
         type="number"
         placeholder="Precio min"
         value={v.priceMin ?? ""}
@@ -96,9 +110,11 @@ export default function FiltersBar({ value, onChange, stores = [] }: Props) {
           }
           onChange(next);
         }}
-        style={{ padding: 8, borderRadius: 8 }}
       />
-      <input
+
+      <TextField
+        label="Max"
+        hideLabel
         type="number"
         placeholder="Precio max"
         value={v.priceMax ?? ""}
@@ -112,7 +128,6 @@ export default function FiltersBar({ value, onChange, stores = [] }: Props) {
           }
           onChange(next);
         }}
-        style={{ padding: 8, borderRadius: 8 }}
       />
     </div>
   );

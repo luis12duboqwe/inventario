@@ -34,25 +34,26 @@ export default function Table({
   const selected = Array.isArray(selectedIds) ? selectedIds : [];
   const allSelected = data.length > 0 && data.every((r) => selected.includes(r.id));
 
-  if (loading) return <div style={{ padding: 12 }}>Cargando…</div>;
-  if (!data.length) return <div style={{ padding: 12, color: "#9ca3af" }}>Sin resultados</div>;
+  if (loading) return <div className="p-4 text-center text-muted-foreground">Cargando…</div>;
+  if (!data.length)
+    return <div className="p-4 text-center text-muted-foreground">Sin resultados</div>;
 
   return (
-    <div style={{ overflow: "auto", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+    <div className="overflow-auto rounded-xl border border-border">
+      <table className="w-full border-collapse text-sm">
         <thead>
-          <tr style={{ background: "rgba(255,255,255,0.03)" }}>
-            <th style={{ textAlign: "center", padding: 10, width: 36 }}>
+          <tr className="bg-surface-highlight">
+            <th className="text-center p-2.5 w-9">
               <input type="checkbox" checked={allSelected} onChange={onToggleSelectAll} />
             </th>
-            <th style={{ textAlign: "left", padding: 10 }}>SKU</th>
-            <th style={{ textAlign: "left", padding: 10 }}>Nombre</th>
-            <th style={{ textAlign: "left", padding: 10 }}>Marca</th>
-            <th style={{ textAlign: "left", padding: 10 }}>Categoría</th>
-            <th style={{ textAlign: "left", padding: 10 }}>Sucursal</th>
-            <th style={{ textAlign: "right", padding: 10 }}>Stock</th>
-            <th style={{ textAlign: "right", padding: 10 }}>Precio</th>
-            <th style={{ textAlign: "left", padding: 10 }}>Estado</th>
+            <th className="text-left p-2.5">SKU</th>
+            <th className="text-left p-2.5">Nombre</th>
+            <th className="text-left p-2.5">Marca</th>
+            <th className="text-left p-2.5">Categoría</th>
+            <th className="text-left p-2.5">Sucursal</th>
+            <th className="text-right p-2.5">Stock</th>
+            <th className="text-right p-2.5">Precio</th>
+            <th className="text-left p-2.5">Estado</th>
           </tr>
         </thead>
         <tbody>
@@ -60,23 +61,23 @@ export default function Table({
             <tr
               key={r.id}
               onClick={() => onRowClick?.(r)}
-              style={{ cursor: onRowClick ? "pointer" : "default" }}
+              className={onRowClick ? "cursor-pointer hover:bg-surface-highlight" : ""}
             >
-              <td style={{ textAlign: "center", padding: 10 }} onClick={(e) => e.stopPropagation()}>
+              <td className="text-center p-2.5" onClick={(e) => e.stopPropagation()}>
                 <input
                   type="checkbox"
                   checked={selected.includes(r.id)}
                   onChange={() => onToggleSelect?.(r.id)}
                 />
               </td>
-              <td style={{ padding: 10 }}>{r.sku}</td>
-              <td style={{ padding: 10 }}>{r.name}</td>
-              <td style={{ padding: 10 }}>{r.brand || "-"}</td>
-              <td style={{ padding: 10 }}>{r.category || "-"}</td>
-              <td style={{ padding: 10 }}>{r.store || "-"}</td>
-              <td style={{ padding: 10, textAlign: "right" }}>{r.stock}</td>
-              <td style={{ padding: 10, textAlign: "right" }}>{r.price}</td>
-              <td style={{ padding: 10 }}>{r.status || "-"}</td>
+              <td className="p-2.5">{r.sku}</td>
+              <td className="p-2.5">{r.name}</td>
+              <td className="p-2.5">{r.brand || "-"}</td>
+              <td className="p-2.5">{r.category || "-"}</td>
+              <td className="p-2.5">{r.store || "-"}</td>
+              <td className="p-2.5 text-right">{r.stock}</td>
+              <td className="p-2.5 text-right">{r.price}</td>
+              <td className="p-2.5">{r.status || "-"}</td>
             </tr>
           ))}
         </tbody>

@@ -42,6 +42,8 @@ export type DashboardContextValue = {
   enableVariants: boolean;
   enableBundles: boolean;
   enableDte: boolean;
+  enableLoyalty: boolean;
+  enableWMS: boolean;
   compactMode: boolean;
   setCompactMode: (value: boolean) => void;
   toggleCompactMode: () => void;
@@ -143,6 +145,8 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     variants: enableVariants,
     bundles: enableBundles,
     dte: enableDte,
+    loyalty: enableLoyalty,
+    wms: enableWMS,
   } = featureFlags;
 
   const {
@@ -383,6 +387,8 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       enableVariants,
       enableBundles,
       enableDte,
+      enableLoyalty,
+      enableWMS,
       compactMode,
       setCompactMode,
       toggleCompactMode,
@@ -464,6 +470,8 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       enableVariants,
       enableBundles,
       enableDte,
+      enableLoyalty,
+      enableWMS,
       compactMode,
       setCompactMode,
       toggleCompactMode,

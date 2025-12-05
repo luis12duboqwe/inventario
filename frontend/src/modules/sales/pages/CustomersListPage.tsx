@@ -2,6 +2,7 @@ import React from "react";
 // [PACK23-CUSTOMERS-LIST-IMPORTS-START]
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { emitClientError } from "../../../utils/clientLog";
 import { SalesCustomers } from "../../../services/sales";
 import type { Customer, CustomerListParams } from "../../../services/sales";
 // [PACK23-CUSTOMERS-LIST-IMPORTS-END]
@@ -82,8 +83,9 @@ export function CustomersListPage() {
         const response = await SalesCustomers.listCustomers(params);
         setItems(response.items);
         setTotal(response.total);
-      } catch (error) {
-        console.error("Error fetching customers:", error);
+      } catch (err) {
+        emitClientError("CustomersListPage", "Error loading customers", err);
+        pushToast("Error al cargar clientes", "error");
       } finally {
         setLoading(false);
       }

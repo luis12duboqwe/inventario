@@ -5,6 +5,7 @@ from fastapi_limiter import FastAPILimiter
 from backend.app import models
 from backend.app.config import settings
 from backend.app.core.roles import ADMIN, OPERADOR
+from backend.app.models import Store, Device
 
 
 def _bootstrap_admin(client):
@@ -268,6 +269,26 @@ def test_module_permissions_block_operator_edit_without_permission(client, db_se
     assert login_response.status_code == status.HTTP_200_OK
     admin_token = login_response.json()["access_token"]
 
+    # Create store and device
+    store = Store(name="Test Store Security", code="SEC-001", status="activa")
+    db_session.add(store)
+    db_session.flush()
+    store_id = store.id
+
+    device = Device(
+        store_id=store_id,
+        sku="SEC-DEV-001",
+        name="Security Device",
+        quantity=10,
+        unit_price=100.0,
+        costo_unitario=50.0,
+        estado="disponible"
+    )
+    db_session.add(device)
+    db_session.flush()
+    device_id = device.id
+    db_session.commit()
+
     operator_payload = {
         "username": "operador@example.com",
         "password": "Operador123$",
@@ -290,7 +311,10 @@ def test_module_permissions_block_operator_edit_without_permission(client, db_se
         .one()
     )
     permission.can_edit = False
+    permission.can_delete = False
     db_session.commit()
+    db_session.refresh(permission)
+    assert permission.can_edit is False
 
     operator_login = client.post(
         "/auth/token",
@@ -302,14 +326,14 @@ def test_module_permissions_block_operator_edit_without_permission(client, db_se
     operator_token = operator_login.json()["access_token"]
 
     movement_payload = {
-        "producto_id": 1,
-        "tipo_movimiento": "IN",
+        "producto_id": device_id,
+        "tipo_movimiento": "entrada",
         "cantidad": 1,
         "comentario": "Ajuste inventario",
         "sucursal_origen_id": None,
     }
     denied_response = client.post(
-        "/inventory/stores/1/movements",
+        f"/inventory/stores/{store_id}/movements",
         json=movement_payload,
         headers={
             "Authorization": f"Bearer {operator_token}",

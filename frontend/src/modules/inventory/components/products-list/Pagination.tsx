@@ -1,4 +1,5 @@
 import React from "react";
+import Button from "../../../../../components/ui/Button";
 
 type Props = {
   page: number;
@@ -11,16 +12,16 @@ export default function Pagination({ page, pages, onPage }: Props) {
   const next = () => onPage(Math.min(pages, page + 1));
 
   return (
-    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8 }}>
-      <button onClick={prev} disabled={page <= 1} style={{ padding: "6px 10px", borderRadius: 8 }}>
+    <div className="flex justify-center items-center gap-2">
+      <Button variant="ghost" size="sm" onClick={prev} disabled={page <= 1}>
         Prev
-      </button>
-      <span style={{ fontSize: 12, color: "#94a3b8" }}>
+      </Button>
+      <span className="text-sm text-muted-foreground">
         Página {page} de {pages}
       </span>
-      <button onClick={next} disabled={page >= pages} style={{ padding: "6px 10px", borderRadius: 8 }}>
+      <Button variant="ghost" size="sm" onClick={next} disabled={page >= pages}>
         Next
-      </button>
+      </Button>
     </div>
   );
 }

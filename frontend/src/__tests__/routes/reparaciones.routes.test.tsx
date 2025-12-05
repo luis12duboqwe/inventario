@@ -70,6 +70,7 @@ vi.mock("../../components/layout/PageToolbar", () => ({
   default: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
 }));
 
+vi.mock("../../components/ui/Skeleton", () => ({
 vi.mock("@components/ui/Skeleton", () => ({
   Skeleton: () => <div data-testid="loading-skeleton">Cargando...</div>,
 }));
@@ -174,7 +175,17 @@ const renderDashboardRoute = (initialPath: string) =>
       <Routes>
         <Route
           path="/dashboard/*"
-          element={<DashboardRoutes theme="dark" onToggleTheme={() => {}} onLogout={() => {}} />}
+          element={
+            <DashboardRoutes
+              theme="dark"
+              onToggleTheme={() => {
+                /* no-op */
+              }}
+              onLogout={() => {
+                /* no-op */
+              }}
+            />
+          }
         />
       </Routes>
     </MemoryRouter>,

@@ -18,3 +18,6 @@ export * from "./pricing";
 export * from "./repairs";
 export * from "./security";
 export * from "./transfers";
+export * from "./loyalty";
+export * from "./wms";
+export * from "./dte";

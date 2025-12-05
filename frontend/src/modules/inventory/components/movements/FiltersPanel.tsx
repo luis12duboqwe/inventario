@@ -1,4 +1,5 @@
 import React from "react";
+import { FILTER_ALL_VALUE, FILTER_ALL_LABEL } from "../../../../../config/constants";
 
 type MovementType = "IN" | "OUT" | "TRANSFER";
 
@@ -28,11 +29,11 @@ export default function FiltersPanel({ value, onChange }: Props) {
         style={{ padding: 8, borderRadius: 8 }}
       />
       <select
-        value={v.type || "ALL"}
+        value={v.type || FILTER_ALL_VALUE}
         onChange={(e) => {
-          const selected = e.target.value as MovementType | "ALL";
+          const selected = e.target.value as MovementType | typeof FILTER_ALL_VALUE;
           const next: MovementFilters = { ...v };
-          if (selected === "ALL") {
+          if (selected === FILTER_ALL_VALUE) {
             delete next.type;
           } else {
             next.type = selected;
@@ -41,7 +42,7 @@ export default function FiltersPanel({ value, onChange }: Props) {
         }}
         style={{ padding: 8, borderRadius: 8 }}
       >
-        <option value="ALL">Todos</option>
+        <option value={FILTER_ALL_VALUE}>{FILTER_ALL_LABEL}</option>
         <option value="IN">Entrada</option>
         <option value="OUT">Salida</option>
         <option value="TRANSFER">Transferencia</option>

@@ -1,4 +1,5 @@
 import type { UserQueryFilters, Store } from "../../../../api";
+import { FILTER_ALL_VALUE, FILTER_ALL_LABEL } from "../../../../constants/filters";
 
 export type FiltersPanelProps = {
   search: string;
@@ -7,8 +8,8 @@ export type FiltersPanelProps = {
   onRoleFilterChange: (value: string) => void;
   statusFilter: UserQueryFilters["status"];
   onStatusFilterChange: (value: UserQueryFilters["status"]) => void;
-  storeFilter: number | "ALL";
-  onStoreFilterChange: (value: number | "ALL") => void;
+  storeFilter: number | typeof FILTER_ALL_VALUE;
+  onStoreFilterChange: (value: number | typeof FILTER_ALL_VALUE) => void;
   roleOptions: string[];
   stores: Store[];
 };
@@ -39,7 +40,7 @@ function FiltersPanel({
       <label>
         <span>Rol</span>
         <select value={roleFilter} onChange={(event) => onRoleFilterChange(event.target.value)}>
-          <option value="TODOS">Todos</option>
+          <option value={FILTER_ALL_VALUE}>{FILTER_ALL_LABEL}</option>
           {roleOptions.map((role) => (
             <option key={role} value={role}>
               {role}
@@ -55,7 +56,7 @@ function FiltersPanel({
             onStatusFilterChange(event.target.value as UserQueryFilters["status"])
           }
         >
-          <option value="all">Todos</option>
+          <option value={FILTER_ALL_VALUE}>{FILTER_ALL_LABEL}</option>
           <option value="active">Activos</option>
           <option value="inactive">Inactivos</option>
           <option value="locked">Bloqueados</option>
@@ -64,12 +65,16 @@ function FiltersPanel({
       <label>
         <span>Sucursal</span>
         <select
-          value={storeFilter === "ALL" ? "ALL" : String(storeFilter)}
+          value={storeFilter === FILTER_ALL_VALUE ? FILTER_ALL_VALUE : String(storeFilter)}
           onChange={(event) =>
-            onStoreFilterChange(event.target.value === "ALL" ? "ALL" : Number(event.target.value))
+            onStoreFilterChange(
+              event.target.value === FILTER_ALL_VALUE
+                ? FILTER_ALL_VALUE
+                : Number(event.target.value),
+            )
           }
         >
-          <option value="ALL">Todas</option>
+          <option value={FILTER_ALL_VALUE}>Todas</option>
           {stores.map((store) => (
             <option key={store.id} value={store.id}>
               {store.name}

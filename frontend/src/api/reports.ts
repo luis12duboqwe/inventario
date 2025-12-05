@@ -245,13 +245,21 @@ export type SalesReportFilters = {
   limit?: number;
 };
 
+interface SalesSummaryApiResponse {
+  total_sales?: number;
+  total_transactions?: number;
+  average_ticket?: number;
+  returns_count?: number;
+  net_sales?: number;
+}
+
 export async function fetchSalesSummary(filters: SalesReportFilters = {}): Promise<SalesSummaryReport> {
   const params = {
     store_id: filters.branchId,
     date_from: filters.from,
     date_to: filters.to,
   };
-  const response = await httpClient.get("/reports/sales/summary", { params });
+  const response = await httpClient.get<SalesSummaryApiResponse>("/reports/sales/summary", { params });
   const data = response.data;
   return {
     totalSales: data.total_sales ?? 0,
@@ -262,19 +270,42 @@ export async function fetchSalesSummary(filters: SalesReportFilters = {}): Promi
   };
 }
 
+interface CashCloseApiResponse {
+  closing_suggested?: number;
+  expected_amount?: number;
+  refunds?: number;
+}
+
 export async function fetchCashCloseReport(filters: SalesReportFilters = {}): Promise<CashCloseReport> {
   const params = {
     store_id: filters.branchId,
     date_from: filters.from,
     date_to: filters.to,
   };
-  const response = await httpClient.get("/reports/sales/cash-close", { params });
+  const response = await httpClient.get<CashCloseApiResponse>("/reports/sales/cash-close", { params });
   const data = response.data;
   return {
     closingSuggested: data.closing_suggested ?? data.expected_amount ?? 0,
     refunds: data.refunds ?? 0,
   };
 }
+
+interface RawSalesByProductItem {
+  sku: string;
+  name: string;
+  quantity?: number;
+  qty?: number;
+  total?: number;
+  gross?: number;
+  profit?: number;
+  net?: number;
+}
+
+interface SalesByProductApiResponse {
+  items?: RawSalesByProductItem[];
+}
+
+type SalesByProductResponse = RawSalesByProductItem[] | SalesByProductApiResponse;
 
 export async function fetchSalesByProduct(filters: SalesReportFilters = {}): Promise<SalesByProductItem[]> {
   const params = {
@@ -283,9 +314,11 @@ export async function fetchSalesByProduct(filters: SalesReportFilters = {}): Pro
     date_to: filters.to,
     limit: filters.limit,
   };
-  const response = await httpClient.get("/reports/sales/by-product", { params });
-  const items = Array.isArray(response.data) ? response.data : response.data.items || [];
-  return items.map((item: any) => ({
+  const response = await httpClient.get<SalesByProductResponse>("/reports/sales/by-product", { params });
+  const data = response.data;
+  const items = Array.isArray(data) ? data : (data as SalesByProductApiResponse).items || [];
+
+  return items.map((item: RawSalesByProductItem) => ({
     sku: item.sku,
     name: item.name,
     qty: item.quantity ?? item.qty ?? 0,

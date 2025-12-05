@@ -81,13 +81,13 @@ def test_customer_crud_flow(client):
     assert created_payload["tax_id"] == "0801-1999-000123"
     assert set(created_payload["tags"]) == {"vip", "corporativo"}
 
-    list_response = client.get("/customers", headers={"Authorization": f"Bearer {token}"})
+    list_response = client.get("/customers", headers=headers)
     assert list_response.status_code == status.HTTP_200_OK
     assert any(item["id"] == customer_id for item in list_response.json())
 
     filtered_response = client.get(
         "/customers",
-        headers={"Authorization": f"Bearer {token}"},
+        headers=headers,
         params={
             "segment_category": "b2b",
             "tags": ["vip", "corporativo"],
@@ -99,7 +99,7 @@ def test_customer_crud_flow(client):
     assert customer_id in filtered_ids
 
     csv_response = client.get(
-        "/customers", headers={"Authorization": f"Bearer {token}"}, params={"export": "csv"}
+        "/customers", headers=headers, params={"export": "csv"}
     )
     assert csv_response.status_code == status.HTTP_200_OK
     assert "Empresa Azul" in csv_response.text
@@ -115,7 +115,7 @@ def test_customer_crud_flow(client):
     delete_response = client.delete(f"/customers/{customer_id}", headers=headers)
     assert delete_response.status_code == status.HTTP_204_NO_CONTENT
 
-    list_after_delete = client.get("/customers", headers={"Authorization": f"Bearer {token}"})
+    list_after_delete = client.get("/customers", headers=headers)
     assert list_after_delete.status_code == status.HTTP_200_OK
     assert all(item["id"] != customer_id for item in list_after_delete.json())
 
@@ -169,7 +169,7 @@ def test_customers_require_reason_and_roles(client):
 def test_customers_operator_forbidden(client):
     admin_token = _bootstrap_admin(client)
     token = _bootstrap_operator(client, admin_token)
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = {"Authorization": f"Bearer {token}", "X-Reason": "Intento Operador"}
 
     list_response = client.get("/customers", headers=headers)
     assert list_response.status_code == status.HTTP_403_FORBIDDEN
@@ -177,7 +177,7 @@ def test_customers_operator_forbidden(client):
     create_response = client.post(
         "/customers",
         json={"name": "Operador Cliente", "phone": "555-101-2020"},
-        headers={**headers, "X-Reason": "Intento Operador"},
+        headers=headers,
     )
     assert create_response.status_code == status.HTTP_403_FORBIDDEN
 
@@ -279,7 +279,7 @@ def test_customer_payments_and_summary(client):
         assert payment_data["receipt_pdf_base64"]
 
         summary_response = client.get(
-            f"/customers/{customer_id}/summary", headers=auth_headers
+            f"/customers/{customer_id}/summary", headers=reason_headers
         )
         assert summary_response.status_code == status.HTTP_200_OK
         summary = summary_response.json()
@@ -413,7 +413,7 @@ def test_customer_manual_debt_adjustment_creates_ledger_entry(client):
 
     summary_response = client.get(
         f"/customers/{customer_id}/summary",
-        headers=auth_headers,
+        headers=reason_headers,
     )
     assert summary_response.status_code == status.HTTP_200_OK
     ledger_entries = summary_response.json()["ledger"]
@@ -503,7 +503,7 @@ def test_customer_filters_and_reports(client):
         filtered_status = client.get(
             "/customers",
             params={"status": "moroso"},
-            headers=auth_headers,
+            headers=reason_headers,
         )
         assert filtered_status.status_code == status.HTTP_200_OK
         assert len(filtered_status.json()) == 1
@@ -512,7 +512,7 @@ def test_customer_filters_and_reports(client):
         filtered_type = client.get(
             "/customers",
             params={"customer_type": "corporativo"},
-            headers=auth_headers,
+            headers=reason_headers,
         )
         assert filtered_type.status_code == status.HTTP_200_OK
         assert any(item["id"] == frecuente_id for item in filtered_type.json())
@@ -520,7 +520,7 @@ def test_customer_filters_and_reports(client):
         filtered_debt = client.get(
             "/customers",
             params={"has_debt": "true"},
-            headers=auth_headers,
+            headers=reason_headers,
         )
         assert filtered_debt.status_code == status.HTTP_200_OK
         ids_with_debt = {item["id"] for item in filtered_debt.json()}
@@ -530,7 +530,7 @@ def test_customer_filters_and_reports(client):
         dashboard_response = client.get(
             "/customers/dashboard",
             params={"months": 6, "top_limit": 5},
-            headers=auth_headers,
+            headers=reason_headers,
         )
         assert dashboard_response.status_code == status.HTTP_200_OK, dashboard_response.json()
         payload = dashboard_response.json()
@@ -594,6 +594,7 @@ def test_customer_portfolio_exports(client):
                 "customer_id": customer_id,
                 "payment_method": "CREDITO",
                 "items": [{"device_id": device_id, "quantity": 1}],
+                "notes": "Venta reporte",
             },
             headers={**auth_headers, "X-Reason": "Venta reporte"},
         )
@@ -602,7 +603,7 @@ def test_customer_portfolio_exports(client):
         json_response = client.get(
             "/reports/customers/portfolio",
             params={"category": "delinquent", "limit": 10},
-            headers=auth_headers,
+            headers=reason_headers,
         )
         assert json_response.status_code == status.HTTP_200_OK
         data = json_response.json()
@@ -704,7 +705,7 @@ def test_customer_list_filters_by_status_and_type(client):
 
     moroso_response = client.get(
         "/customers",
-        headers=auth_headers,
+        headers=reason_headers,
         params={"status_filter": "moroso"},
     )
     assert moroso_response.status_code == status.HTTP_200_OK
@@ -715,7 +716,7 @@ def test_customer_list_filters_by_status_and_type(client):
 
     corporativo_response = client.get(
         "/customers",
-        headers=auth_headers,
+        headers=reason_headers,
         params={"customer_type_filter": "corporativo"},
     )
     assert corporativo_response.status_code == status.HTTP_200_OK
@@ -725,7 +726,7 @@ def test_customer_list_filters_by_status_and_type(client):
 
     combined_response = client.get(
         "/customers",
-        headers=auth_headers,
+        headers=reason_headers,
         params={"status_filter": "activo", "customer_type_filter": "minorista"},
     )
     assert combined_response.status_code == status.HTTP_200_OK
@@ -735,7 +736,7 @@ def test_customer_list_filters_by_status_and_type(client):
 
     invalid_status_response = client.get(
         "/customers",
-        headers=auth_headers,
+        headers=reason_headers,
         params={"status_filter": "desconocido"},
     )
     assert invalid_status_response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
@@ -801,7 +802,7 @@ def test_customer_accounts_receivable_endpoints(client):
 
         receivable_response = client.get(
             f"/customers/{customer_id}/accounts-receivable",
-            headers=auth_headers,
+            headers=reason_headers,
         )
         assert receivable_response.status_code == status.HTTP_200_OK
         payload = receivable_response.json()
@@ -857,7 +858,7 @@ def test_customer_privacy_consent_request(client):
     assert payload["request"]["consent_snapshot"]["sms"] is False
 
     summary_response = client.get(
-        f"/customers/{customer_id}/summary", headers=auth_headers
+        f"/customers/{customer_id}/summary", headers=reason_headers
     )
     assert summary_response.status_code == status.HTTP_200_OK
     summary = summary_response.json()
@@ -909,7 +910,7 @@ def test_customer_privacy_anonymization_masks_fields(client):
     assert set(payload["request"]["masked_fields"]) == {"email", "phone", "address"}
 
     summary_response = client.get(
-        f"/customers/{customer_id}/summary", headers=auth_headers
+        f"/customers/{customer_id}/summary", headers=reason_headers
     )
     assert summary_response.status_code == status.HTTP_200_OK
     summary = summary_response.json()

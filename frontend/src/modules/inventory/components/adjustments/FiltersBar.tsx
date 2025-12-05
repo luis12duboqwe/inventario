@@ -1,8 +1,9 @@
+import { FILTER_ALL_VALUE } from "@/config/constants";
 import type { ChangeEvent } from "react";
 
 export type AdjustmentFilters = {
   query?: string;
-  reason?: string | "ALL";
+  reason?: string | typeof FILTER_ALL_VALUE;
   dateFrom?: string;
   dateTo?: string;
   user?: string;
@@ -15,7 +16,7 @@ type Props = {
 };
 
 const reasonOptions: Array<{ value: AdjustmentFilters["reason"]; label: string }> = [
-  { value: "ALL", label: "Motivo" },
+  { value: FILTER_ALL_VALUE, label: "Motivo" },
   { value: "DAMAGE", label: "Daño" },
   { value: "THEFT", label: "Robo" },
   { value: "WRITE_OFF", label: "Baja" },
@@ -25,12 +26,14 @@ const reasonOptions: Array<{ value: AdjustmentFilters["reason"]; label: string }
 ];
 
 function FiltersBar({ value, onChange, onNew }: Props) {
-  const handleChange = (field: keyof AdjustmentFilters) => (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    onChange({
-      ...value,
-      [field]: event.target.value,
-    });
-  };
+  const handleChange =
+    (field: keyof AdjustmentFilters) =>
+    (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+      onChange({
+        ...value,
+        [field]: event.target.value,
+      });
+    };
 
   return (
     <div className="inventory-filters-grid">
@@ -39,7 +42,7 @@ function FiltersBar({ value, onChange, onNew }: Props) {
         value={value.query ?? ""}
         onChange={handleChange("query")}
       />
-      <select value={value.reason ?? "ALL"} onChange={handleChange("reason")}>
+      <select value={value.reason ?? FILTER_ALL_VALUE} onChange={handleChange("reason")}>
         {reasonOptions.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}

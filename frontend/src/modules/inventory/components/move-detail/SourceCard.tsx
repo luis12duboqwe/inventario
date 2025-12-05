@@ -13,17 +13,10 @@ export default function SourceCard({ node }: Props) {
   const n = node || {};
 
   return (
-    <div
-      style={{
-        padding: 12,
-        borderRadius: 12,
-        background: "rgba(255,255,255,0.04)",
-        border: "1px solid rgba(255,255,255,0.08)",
-      }}
-    >
-      <div style={{ fontSize: 12, color: "#94a3b8" }}>Origen</div>
-      <div style={{ fontWeight: 700 }}>{n.name || "—"}</div>
-      <div style={{ fontSize: 12, color: "#94a3b8" }}>{n.id || ""}</div>
+    <div className="p-3 rounded-xl bg-surface border border-border">
+      <div className="text-xs text-muted-foreground">Origen</div>
+      <div className="font-bold">{n.name || "—"}</div>
+      <div className="text-xs text-muted-foreground">{n.id || ""}</div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 
-type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "link";
+type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "link" | "success";
 type ButtonSize = "sm" | "md" | "lg";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -19,12 +19,23 @@ function buildClassName(variant: ButtonVariant, size: ButtonSize, className?: st
 }
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ variant = "primary", size = "md", leadingIcon, trailingIcon, className, children, ...rest }, ref) => {
+  (
+    { variant = "primary", size = "md", leadingIcon, trailingIcon, className, children, ...rest },
+    ref,
+  ) => {
     return (
       <button ref={ref} className={buildClassName(variant, size, className)} {...rest}>
-        {leadingIcon ? <span className="ui-button__icon" aria-hidden="true">{leadingIcon}</span> : null}
+        {leadingIcon ? (
+          <span className="ui-button__icon" aria-hidden="true">
+            {leadingIcon}
+          </span>
+        ) : null}
         <span className="ui-button__label">{children}</span>
-        {trailingIcon ? <span className="ui-button__icon" aria-hidden="true">{trailingIcon}</span> : null}
+        {trailingIcon ? (
+          <span className="ui-button__icon" aria-hidden="true">
+            {trailingIcon}
+          </span>
+        ) : null}
       </button>
     );
   },

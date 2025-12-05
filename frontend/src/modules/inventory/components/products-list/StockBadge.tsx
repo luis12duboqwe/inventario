@@ -1,24 +1,20 @@
 import React from "react";
+import "../../InventoryTable.css"; // Ensure styles are loaded
 
 type Props = {
   qty: number;
 };
 
 export default function StockBadge({ qty }: Props) {
-  const background = qty <= 0 ? "#b91c1c" : qty < 5 ? "#f59e0b" : "#2563eb";
+  let className = "status-chip";
 
-  return (
-    <span
-      style={{
-        padding: "2px 8px",
-        borderRadius: 999,
-        background,
-        color: "#0b1220",
-        fontSize: 12,
-        fontWeight: 700,
-      }}
-    >
-      {qty}
-    </span>
-  );
+  if (qty <= 0) {
+    className += " danger";
+  } else if (qty < 5) {
+    className += " warning";
+  } else {
+    className += " info";
+  }
+
+  return <span className={className}>{qty}</span>;
 }

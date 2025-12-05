@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
-from ..acl import require_roles
+from ..security import require_roles
 from ..audit_logger import audit_event
 from ..config import settings
 
@@ -18,7 +18,7 @@ from .. import crud
 router = APIRouter(
     prefix="/reports/sales",
     tags=["ventas"],
-    dependencies=[Depends(require_roles('OPERADOR','GERENTE','ADMIN'))],
+    dependencies=[Depends(require_roles('OPERADOR', 'GERENTE', 'ADMIN'))],
 )
 
 
@@ -28,7 +28,8 @@ def _parse_date(d: Optional[str]) -> date:
     try:
         return datetime.strptime(d, "%Y-%m-%d").date()
     except Exception:
-        raise HTTPException(status_code=400, detail="Formato de fecha inválido, use YYYY-MM-DD")
+        raise HTTPException(
+            status_code=400, detail="Formato de fecha inválido, use YYYY-MM-DD")
 
 
 def _ensure_sales_feature_enabled() -> None:
@@ -77,7 +78,8 @@ def get_daily_sales(
     # Si hay crud con sumatorias, intentamos poblar datos reales
     try:
         if crud is not None and hasattr(crud, 'summarize_sales_daily'):
-            data = crud.summarize_sales_daily(target_date=target_date, store_id=store_id, payment_method=payment_method)
+            data = crud.summarize_sales_daily(
+                target_date=target_date, store_id=store_id, payment_method=payment_method)
             if isinstance(data, dict):
                 payload.update(data)
     except Exception:
@@ -103,7 +105,7 @@ def export_daily_sales_csv(
 
     # Cabecera CSV estándar
     header = [
-        'date','store_id','store_name','gross','discounts','net','cost','margin','margin_pct','tickets','avg_ticket','method','amount','count','returns_count','returns_amount'
+        'date', 'store_id', 'store_name', 'gross', 'discounts', 'net', 'cost', 'margin', 'margin_pct', 'tickets', 'avg_ticket', 'method', 'amount', 'count', 'returns_count', 'returns_amount'
     ]
 
     row = [
@@ -119,7 +121,8 @@ def export_daily_sales_csv(
     # Intentar datos reales si hay crud.summarize_sales_daily
     try:
         if crud is not None and hasattr(crud, 'summarize_sales_daily'):
-            data = crud.summarize_sales_daily(target_date=target_date, store_id=store_id, payment_method=payment_method)
+            data = crud.summarize_sales_daily(
+                target_date=target_date, store_id=store_id, payment_method=payment_method)
             if isinstance(data, dict):
                 totals = data.get('totals') or {}
                 tickets = data.get('tickets') or {}
@@ -132,11 +135,15 @@ def export_daily_sales_csv(
                         rows.append([
                             target_date.isoformat(),
                             store_id or '',
-                            (data.get('store') or {}).get('name') if isinstance(data.get('store'), dict) else '',
-                            totals.get('gross',0.0), totals.get('discounts',0.0), totals.get('net',0.0), totals.get('cost',0.0), totals.get('margin',0.0), totals.get('margin_pct',0.0),
-                            tickets.get('count',0), tickets.get('avg_ticket',0.0),
-                            p.get('method',''), p.get('amount',0.0), p.get('count',0),
-                            returns.get('count',0), returns.get('amount',0.0)
+                            (data.get('store') or {}).get('name') if isinstance(
+                                data.get('store'), dict) else '',
+                            totals.get('gross', 0.0), totals.get('discounts', 0.0), totals.get('net', 0.0), totals.get(
+                                'cost', 0.0), totals.get('margin', 0.0), totals.get('margin_pct', 0.0),
+                            tickets.get('count', 0), tickets.get(
+                                'avg_ticket', 0.0),
+                            p.get('method', ''), p.get(
+                                'amount', 0.0), p.get('count', 0),
+                            returns.get('count', 0), returns.get('amount', 0.0)
                         ])
                 else:
                     rows = [row]

@@ -1,5 +1,5 @@
 import React from "react";
-
+import { Button } from "../../../../../components/ui/Button";
 import ProductStatusBadge from "../products-list/StatusBadge";
 
 type Props = {
@@ -12,22 +12,22 @@ type Props = {
 
 export default function Header({ name, sku, status = "ACTIVE", onPrint, onExportPDF }: Props) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <div className="flex justify-between items-center">
       <div>
-        <div style={{ fontSize: 12, color: "#94a3b8" }}>Producto</div>
-        <h2 style={{ margin: "4px 0 0 0" }}>{name || "—"}</h2>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ fontSize: 12, color: "#94a3b8" }}>{sku || "—"}</span>
+        <div className="text-xs text-muted-foreground">Producto</div>
+        <h2 className="m-0 mt-1 text-2xl font-bold">{name || "—"}</h2>
+        <div className="flex gap-2 items-center mt-1">
+          <span className="text-xs text-muted-foreground">{sku || "—"}</span>
           <ProductStatusBadge value={status} />
         </div>
       </div>
-      <div style={{ display: "flex", gap: 8 }}>
-        <button onClick={onPrint} style={{ padding: "8px 12px", borderRadius: 8 }}>
+      <div className="flex gap-2">
+        <Button variant="ghost" onClick={onPrint}>
           Imprimir
-        </button>
-        <button onClick={onExportPDF} style={{ padding: "8px 12px", borderRadius: 8 }}>
+        </Button>
+        <Button variant="ghost" onClick={onExportPDF}>
           PDF
-        </button>
+        </Button>
       </div>
     </div>
   );

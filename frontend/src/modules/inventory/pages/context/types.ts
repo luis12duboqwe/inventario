@@ -1,18 +1,3 @@
-import type {
-  Device,
-  DeviceImportSummary,
-  DeviceUpdateInput,
-  InventoryReservation,
-  InventoryReservationInput,
-  InventoryReservationRenewInput,
-  ProductVariant,
-  ProductVariantCreateInput,
-  ProductVariantUpdateInput,
-  ProductBundle,
-  ProductBundleCreateInput,
-  ProductBundleUpdateInput,
-} from "@api/inventory";
-import type { ModuleStatus } from "../../../../shared/components/ModuleHeader";
 import type { useInventoryModule } from "../../hooks/useInventoryModule";
 import type { useSmartImportManager } from "../hooks/useSmartImportManager";
 

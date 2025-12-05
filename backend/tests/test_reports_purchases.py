@@ -21,7 +21,8 @@ def _bootstrap_admin(client):
     assert response.status_code == status.HTTP_201_CREATED
     token_response = client.post(
         "/auth/token",
-        data={"username": payload["username"], "password": payload["password"]},
+        data={"username": payload["username"],
+              "password": payload["password"]},
         headers={"content-type": "application/x-www-form-urlencoded"},
     )
     assert token_response.status_code == status.HTTP_200_OK
@@ -39,7 +40,8 @@ def test_purchases_report_combines_metrics(client, db_session: Session):
 
         store_resp = client.post(
             "/stores",
-            json={"name": "Compras Centro", "location": "CDMX", "timezone": "America/Mexico_City"},
+            json={"name": "Compras Centro", "location": "CDMX",
+                  "timezone": "America/Mexico_City"},
             headers=headers,
         )
         assert store_resp.status_code == status.HTTP_201_CREATED
@@ -70,7 +72,7 @@ def test_purchases_report_combines_metrics(client, db_session: Session):
         purchase_order = models.PurchaseOrder(
             store_id=store_id,
             supplier=supplier_name,
-            status=models.PurchaseStatus.RECIBIDA,
+            status=models.PurchaseStatus.RECIBIDA_TOTAL,
             created_at=datetime.utcnow() - timedelta(days=2),
         )
         db_session.add(purchase_order)

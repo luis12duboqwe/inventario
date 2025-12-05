@@ -48,7 +48,8 @@ def list_store_warehouses(
             detail="La sucursal solicitada no existe.",
         ) from exc
     return [
-        schemas.WarehouseResponse.model_validate(warehouse, from_attributes=True)
+        schemas.WarehouseResponse.model_validate(
+            warehouse, from_attributes=True)
         for warehouse in warehouses
     ]
 
@@ -155,7 +156,8 @@ def get_inventory_availability(
     device_id: list[int] = Query(default_factory=list),
 ) -> schemas.InventoryAvailabilityResponse:
     normalized_query = query.strip() if query else None
-    normalized_skus = [value.strip() for value in sku if value and value.strip()]
+    normalized_skus = [value.strip()
+                       for value in sku if value and value.strip()]
     normalized_ids = sorted({int(value) for value in device_id if value > 0})
     payload = inventory_availability.get_inventory_availability(
         db,
@@ -199,7 +201,7 @@ def list_inventory_reservations_endpoint(
         pagination.offset if (pagination.page > 1 and offset == 0) else offset
     )
     page_size = min(pagination.size, limit)
-    sliced = reservations[page_offset : page_offset + page_size]
+    sliced = reservations[page_offset: page_offset + page_size]
     items = [
         schemas.InventoryReservationResponse.model_validate(record)
         for record in sliced
@@ -355,7 +357,8 @@ def list_incomplete_inventory_devices(
     "/stores/{store_id}/movements",
     response_model=schemas.MovementResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+    dependencies=[Depends(require_roles(
+        *MOVEMENT_ROLES, module="inventario"))],
 )
 def register_movement(
     payload: schemas.MovementCreate,
@@ -594,11 +597,13 @@ def advanced_device_search(
             if isinstance(context, dict) and "error" in context:
                 serialized_context = dict(context)
                 if isinstance(serialized_context["error"], ValueError):
-                    serialized_context["error"] = str(serialized_context["error"])
+                    serialized_context["error"] = str(
+                        serialized_context["error"])
                 serialized_errors.append({**error, "ctx": serialized_context})
             else:
                 serialized_errors.append(error)
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=serialized_errors) from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=serialized_errors) from exc
     if not any(
         [
             filters.imei,
@@ -674,5 +679,3 @@ def inventory_summary(
             )
         )
     return Page.from_items(summaries, page=pagination.page, size=page_size, total=total)
-
-

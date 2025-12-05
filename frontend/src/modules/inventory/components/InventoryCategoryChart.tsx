@@ -17,6 +17,8 @@ export type InventoryCategoryDatum = {
   value: number;
 };
 
+import "./InventoryCategoryChart.css";
+
 type InventoryCategoryChartProps = {
   data: InventoryCategoryDatum[];
   totalUnits: number;

@@ -1,4 +1,5 @@
 import React from "react";
+import { Button } from "@components/ui/Button";
 
 type Props = {
   selectedCount: number;
@@ -22,39 +23,24 @@ export default function BulkActions({
   }
 
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-      <div style={{ color: "#94a3b8", fontSize: 13 }}>{selectedCount} seleccionados</div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button
-          onClick={onApprove}
-          style={{ padding: "8px 12px", borderRadius: 8, background: "#22c55e", color: "#0b1220", border: 0 }}
-        >
+    <div className="flex items-center justify-between p-4 bg-surface rounded-lg border border-border mb-4">
+      <div className="text-sm text-muted-foreground">{selectedCount} seleccionados</div>
+      <div className="flex gap-2 flex-wrap">
+        <Button variant="success" onClick={onApprove}>
           Aprobar
-        </button>
-        <button
-          onClick={onCancel}
-          style={{ padding: "8px 12px", borderRadius: 8, background: "#b91c1c", color: "#fff", border: 0 }}
-        >
+        </Button>
+        <Button variant="danger" onClick={onCancel}>
           Cancelar
-        </button>
-        <button onClick={onImport} style={{ padding: "8px 12px", borderRadius: 8 }}>
+        </Button>
+        <Button variant="ghost" onClick={onImport}>
           Importar
-        </button>
-        <button
-          onClick={onExport}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 8,
-            background: "rgba(255,255,255,0.08)",
-            color: "#e5e7eb",
-            border: 0,
-          }}
-        >
+        </Button>
+        <Button variant="ghost" onClick={onExport}>
           Exportar
-        </button>
-        <button onClick={onPrint} style={{ padding: "8px 12px", borderRadius: 8 }}>
+        </Button>
+        <Button variant="ghost" onClick={onPrint}>
           Imprimir
-        </button>
+        </Button>
       </div>
     </div>
   );

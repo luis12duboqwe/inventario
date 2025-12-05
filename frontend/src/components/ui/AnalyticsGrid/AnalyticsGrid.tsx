@@ -4,7 +4,7 @@ import styles from "./AnalyticsGrid.module.css";
 
 export type AnalyticsGridItem = {
   id: string;
-  title: string;
+  title: ReactNode;
   description?: string;
   content: ReactNode;
 };

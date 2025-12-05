@@ -1,4 +1,5 @@
 import React from "react";
+import { TextField } from "@components/ui/TextField";
 
 type MoveType = "IN" | "OUT" | "TRANSFER" | "ADJUST";
 
@@ -12,34 +13,34 @@ type Props = {
 
 export default function StepSourceDest({ type, sourceId, destId, reason, onChange }: Props) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div>
-        <div style={{ fontSize: 12, color: "#94a3b8" }}>Origen</div>
-        <input
+        <TextField
+          label="Origen"
           placeholder="Sucursal origen ID"
           value={sourceId || ""}
           onChange={(event) => onChange({ sourceId: event.target.value })}
-          style={{ width: "100%", padding: 8, borderRadius: 8 }}
+          fullWidth
         />
       </div>
       {type !== "OUT" ? (
         <div>
-          <div style={{ fontSize: 12, color: "#94a3b8" }}>Destino</div>
-          <input
+          <TextField
+            label="Destino"
             placeholder="Sucursal destino ID"
             value={destId || ""}
             onChange={(event) => onChange({ destId: event.target.value })}
-            style={{ width: "100%", padding: 8, borderRadius: 8 }}
+            fullWidth
           />
         </div>
       ) : null}
-      <div style={{ gridColumn: "1 / -1" }}>
-        <div style={{ fontSize: 12, color: "#94a3b8" }}>Motivo</div>
-        <input
+      <div className="col-span-1 md:col-span-2">
+        <TextField
+          label="Motivo"
           placeholder="Motivo del movimiento"
           value={reason || ""}
           onChange={(event) => onChange({ reason: event.target.value })}
-          style={{ width: "100%", padding: 8, borderRadius: 8 }}
+          fullWidth
         />
       </div>
     </div>

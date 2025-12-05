@@ -1,40 +1,29 @@
 import React from "react";
+import Modal from "@components/ui/Modal";
+import Button from "@components/ui/Button";
 
 type Props = {
   open?: boolean;
   onClose?: () => void;
 };
 
-export default function ExportModal({ open, onClose }: Props) {
-  if (!open) {
-    return null;
-  }
-
+export default function ExportModal({ open = false, onClose = () => {} }: Props) {
   return (
-    <div
-      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "grid", placeItems: "center" }}
-    >
-      <div
-        style={{
-          width: 520,
-          background: "#0b1220",
-          borderRadius: 12,
-          border: "1px solid rgba(255,255,255,0.08)",
-          padding: 16,
-        }}
-      >
-        <h3 style={{ marginTop: 0 }}>Exportar productos</h3>
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
-          <button onClick={onClose} style={{ padding: "8px 12px", borderRadius: 8 }}>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Exportar productos"
+      size="sm"
+      footer={
+        <>
+          <Button onClick={onClose} variant="ghost">
             Cerrar
-          </button>
-          <button
-            style={{ padding: "8px 12px", borderRadius: 8, background: "#2563eb", color: "#fff", border: 0 }}
-          >
-            Exportar
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+          <Button variant="primary">Exportar</Button>
+        </>
+      }
+    >
+      <p>¿Desea exportar el catálogo de productos?</p>
+    </Modal>
   );
 }

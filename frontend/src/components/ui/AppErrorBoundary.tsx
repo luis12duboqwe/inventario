@@ -65,57 +65,20 @@ class AppErrorBoundary extends React.Component<AppErrorBoundaryProps, AppErrorBo
       <div
         role="alert"
         aria-live="assertive"
-        style={{
-          minHeight: isInline ? "auto" : "100vh",
-          display: "grid",
-          placeItems: "center",
-          padding: isInline ? 16 : 32,
-          background: isInline ? "transparent" : "linear-gradient(180deg,#0f172a,#111827)",
-        }}
+        className={`error-boundary ${isInline ? "error-boundary--inline" : "error-boundary--full"}`}
       >
-        <div
-          style={{
-            width: "100%",
-            maxWidth: 520,
-            borderRadius: 16,
-            border: "1px solid rgba(56,189,248,0.25)",
-            background: "rgba(15,23,42,0.92)",
-            boxShadow: "0 18px 38px rgba(8, 47, 73, 0.35)",
-            padding: 28,
-            color: "#e2e8f0",
-            textAlign: "center",
-          }}
-        >
-          <h1 style={{ fontSize: 24, marginBottom: 8 }}>{title ?? "Algo salió mal"}</h1>
-          <p style={{ marginBottom: 18, color: "#94a3b8" }}>
+        <div className="error-boundary__card">
+          <h1 className="error-boundary__title">{title ?? "Algo salió mal"}</h1>
+          <p className="error-boundary__description">
             {description ?? "Se produjo un error inesperado al mostrar esta sección."}
           </p>
           {errorDetails ? (
-            <details
-              style={{
-                textAlign: "left",
-                marginBottom: 20,
-                background: "rgba(148,163,184,0.08)",
-                borderRadius: 12,
-                padding: 16,
-                border: "1px solid rgba(148,163,184,0.25)",
-              }}
-            >
-              <summary style={{ cursor: "pointer", color: "#38bdf8" }}>Detalles técnicos</summary>
-              <pre
-                style={{
-                  marginTop: 12,
-                  whiteSpace: "pre-wrap",
-                  fontFamily: "var(--font-mono, 'Fira Code', monospace)",
-                  fontSize: 13,
-                  lineHeight: 1.5,
-                }}
-              >
-                {errorDetails}
-              </pre>
+            <details className="error-boundary__details">
+              <summary className="error-boundary__summary">Detalles técnicos</summary>
+              <pre className="error-boundary__pre">{errorDetails}</pre>
             </details>
           ) : null}
-          <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+          <div className="error-boundary__actions">
             <Button type="button" variant="primary" onClick={this.handleRetry}>
               Reintentar
             </Button>

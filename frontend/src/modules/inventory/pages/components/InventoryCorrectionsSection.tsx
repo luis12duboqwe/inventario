@@ -1,6 +1,8 @@
 import Button from "@components/ui/Button";
 import { useInventoryLayout } from "../context/InventoryLayoutContext";
 
+import "./InventoryCorrectionsSection.css";
+
 function InventoryCorrectionsSection() {
   const {
     smartImport: { pendingDevices, pendingDevicesLoading, refreshPendingDevices },
@@ -12,7 +14,9 @@ function InventoryCorrectionsSection() {
       <header className="card-header">
         <div>
           <h2>Correcciones pendientes</h2>
-          <p className="card-subtitle">Completa los campos faltantes identificados por la importación inteligente.</p>
+          <p className="card-subtitle">
+            Completa los campos faltantes identificados por la importación inteligente.
+          </p>
         </div>
         <Button
           type="button"
@@ -44,7 +48,8 @@ function InventoryCorrectionsSection() {
             <tbody>
               {pendingDevices.map((device) => {
                 const missingFields = resolvePendingFields(device);
-                const storeName = storeNameById.get(device.store_id) ?? `Sucursal nueva (ID ${device.store_id})`;
+                const storeName =
+                  storeNameById.get(device.store_id) ?? `Sucursal nueva (ID ${device.store_id})`;
                 return (
                   <tr key={device.id}>
                     <td>
@@ -67,7 +72,9 @@ function InventoryCorrectionsSection() {
                     </td>
                     <td>
                       <span
-                        className={`smart-import-status smart-import-status--${device.completo ? "ok" : "falta"}`}
+                        className={`smart-import-status smart-import-status--${
+                          device.completo ? "ok" : "falta"
+                        }`}
                       >
                         {device.completo ? "Completo" : "Pendiente"}
                       </span>
