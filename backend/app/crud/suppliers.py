@@ -5,7 +5,7 @@ import csv
 import json
 import re
 from collections.abc import Mapping, Sequence
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from io import StringIO
 
@@ -46,7 +46,7 @@ def _history_to_json(
         elif isinstance(timestamp, datetime):
             parsed_timestamp = timestamp.isoformat()
         else:
-            parsed_timestamp = datetime.utcnow().isoformat()
+            parsed_timestamp = datetime.now(timezone.utc).isoformat()
         normalized.append({"timestamp": parsed_timestamp,
                           "note": (note or "").strip()})
     return normalized
@@ -317,7 +317,7 @@ def delete_supplier(
             return
 
         supplier.is_deleted = True
-        supplier.deleted_at = datetime.utcnow()
+        supplier.deleted_at = datetime.now(timezone.utc)
         _log_action(
             db,
             action="supplier_archived",
@@ -350,7 +350,7 @@ def get_suppliers_accounts_payable(
     total_balance = Decimal("0.00")
     total_overdue = Decimal("0.00")
     items: list[schemas.SupplierAccountsPayableSupplier] = []
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
 
     for supplier in suppliers:
         balance = _to_decimal(supplier.outstanding_debt).quantize(
@@ -450,7 +450,7 @@ def get_suppliers_accounts_payable(
         total_balance=float(total_balance),
         total_overdue=float(total_overdue),
         supplier_count=len(items),
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         buckets=summary_buckets
     )
 
@@ -663,7 +663,7 @@ def create_supplier_batch(
             purchase_date=payload.purchase_date,
             notes=payload.notes,
         )
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         batch.created_at = now
         batch.updated_at = now
         db.add(batch)
@@ -746,7 +746,7 @@ def update_supplier_batch(
                 batch.device_id = None
                 updated_fields["device_id"] = None
 
-        batch.updated_at = datetime.utcnow()
+        batch.updated_at = datetime.now(timezone.utc)
 
         db.add(batch)
         flush_session(db)

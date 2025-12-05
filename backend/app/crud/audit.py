@@ -5,7 +5,7 @@ import copy
 import csv
 import json
 from collections.abc import Iterable, Mapping
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from io import StringIO
 
 from sqlalchemy import func, or_, select, tuple_
@@ -117,7 +117,7 @@ def _create_system_log(
             modulo=normalized_module,
             accion=action,
             descripcion=description,
-            fecha=datetime.utcnow(),
+            fecha=datetime.now(timezone.utc),
             nivel=level,
             ip_origen=ip_address,
             audit_log=audit_log,
@@ -561,7 +561,7 @@ def acknowledge_audit_alert(
         .where(models.AuditAlertAcknowledgement.entity_id == normalized_id)
     )
     acknowledgement = db.scalars(statement).first()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     if (
         acknowledgement is not None
@@ -645,7 +645,7 @@ def get_persistent_audit_alerts(
     if cached is not None:
         return copy.deepcopy(cached)[offset: offset + limit]
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     lookback_start = now - timedelta(hours=lookback_hours)
 
     statement = (

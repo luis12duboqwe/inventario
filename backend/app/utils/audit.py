@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Iterable, Literal, TypedDict
 
 from ..models import AuditLog
@@ -158,7 +158,7 @@ def identify_persistent_critical_alerts(
 ) -> list[dict[str, object]]:
     """Detecta alertas críticas recurrentes para alimentar recordatorios."""
 
-    reference_time = reference_time or datetime.utcnow()
+    reference_time = reference_time or datetime.now(timezone.utc)
     threshold_delta = timedelta(minutes=threshold_minutes)
 
     aggregates: dict[tuple[str, str], dict[str, object]] = {}

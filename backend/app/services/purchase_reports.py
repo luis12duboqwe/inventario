@@ -1,6 +1,6 @@
 """Herramientas para generar reportes PDF/Excel del módulo de compras."""
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from io import BytesIO
 
@@ -43,7 +43,7 @@ def _build_pdf_document(title: str) -> tuple[list, SimpleDocTemplate, BytesIO]: 
     buffer = BytesIO()
     document = SimpleDocTemplate(buffer, pagesize=A4, title=title)
     styles = getSampleStyleSheet()
-    now_label = datetime.utcnow().strftime("%d/%m/%Y %H:%M UTC")
+    now_label = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
 
     heading_style = ParagraphStyle(
         "Heading1SoftmobileCompras",
@@ -131,7 +131,7 @@ def build_purchase_report(
     )
 
     return schemas.PurchaseReport(
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         filters=filters,
         totals=totals,
         daily_stats=daily_stats,

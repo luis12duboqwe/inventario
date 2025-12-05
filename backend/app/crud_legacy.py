@@ -270,7 +270,7 @@ def _calculate_weighted_average_cost(
 def _normalize_date_range(
     date_from: date | datetime | None, date_to: date | datetime | None
 ) -> tuple[datetime, datetime]:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     if isinstance(date_from, datetime):
         start_dt = date_from
@@ -490,7 +490,7 @@ def _create_system_log(
             modulo=normalized_module,
             accion=action,
             descripcion=description,
-            fecha=datetime.utcnow(),
+            fecha=datetime.now(timezone.utc),
             nivel=level,
             ip_origen=ip_address,
             audit_log=audit_log,
@@ -616,7 +616,7 @@ def register_system_error(
             mensaje=mensaje,
             stack_trace=stack_trace,
             modulo=normalized_module,
-            fecha=datetime.utcnow(),
+            fecha=datetime.now(timezone.utc),
             usuario=usuario,
         )
         db.add(error)
@@ -739,7 +739,7 @@ def purge_system_logs(
     Preserva CRITICAL si keep_critical=True.
     Devuelve cantidad eliminada.
     """
-    now = reference or datetime.utcnow()
+    now = reference or datetime.now(timezone.utc)
     cutoff = now - timedelta(days=retention_days)
     query = db.query(models.SystemLog).filter(models.SystemLog.fecha < cutoff)
     if keep_critical:
@@ -1030,7 +1030,7 @@ def build_global_report_overview(
         item) for item in errors]
 
     return schemas.GlobalReportOverview(
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         filters=filters,
         totals=totals,
         module_breakdown=module_breakdown,
@@ -1187,7 +1187,7 @@ def build_global_report_dashboard(
     )
 
     return schemas.GlobalReportDashboard(
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         filters=filters,
         activity_series=activity_series,
         module_distribution=module_distribution,
@@ -1948,7 +1948,7 @@ def _history_to_json(
         elif isinstance(timestamp, datetime):
             parsed_timestamp = timestamp.isoformat()
         else:
-            parsed_timestamp = datetime.utcnow().isoformat()
+            parsed_timestamp = datetime.now(timezone.utc).isoformat()
         normalized.append({"timestamp": parsed_timestamp,
                           "note": (note or "").strip()})
     return normalized
@@ -2014,9 +2014,9 @@ def _last_history_timestamp(history: list[dict[str, object]]) -> datetime | None
 
 def _append_customer_history(customer: models.Customer, note: str) -> None:
     history = list(customer.history or [])
-    history.append({"timestamp": datetime.utcnow().isoformat(), "note": note})
+    history.append({"timestamp": datetime.now(timezone.utc).isoformat(), "note": note})
     customer.history = history
-    customer.last_interaction_at = datetime.utcnow()
+    customer.last_interaction_at = datetime.now(timezone.utc)
 
 
 def _mask_email(value: str) -> str:
@@ -2480,7 +2480,7 @@ def _apply_store_credit_redemption(
     credit.balance_amount = new_balance
     if new_balance == Decimal("0"):
         credit.status = models.StoreCreditStatus.REDIMIDO
-        credit.redeemed_at = datetime.utcnow()
+        credit.redeemed_at = datetime.now(timezone.utc)
     else:
         credit.status = models.StoreCreditStatus.PARCIAL
 
@@ -2644,7 +2644,7 @@ def redeem_store_credit(
         raise LookupError("store_credit_not_found")
     if credit.status == models.StoreCreditStatus.CANCELADO:
         raise ValueError("store_credit_cancelled")
-    if credit.expires_at and credit.expires_at <= datetime.utcnow():
+    if credit.expires_at and credit.expires_at <= datetime.now(timezone.utc):
         raise ValueError("store_credit_expired")
 
     with transactional_session(db):
@@ -3037,7 +3037,7 @@ def _record_loyalty_transaction(
         currency_amount=_quantize_currency(currency_amount),
         description=description,
         details=details or {},
-        registered_at=datetime.utcnow(),
+        registered_at=datetime.now(timezone.utc),
         registered_by_id=performed_by_id,
         expires_at=expires_at,
     )
@@ -3069,7 +3069,7 @@ def apply_loyalty_for_sale(
         return None
 
     account = ensure_loyalty_account(db, sale.customer_id)
-    now = sale.created_at or datetime.utcnow()
+    now = sale.created_at or datetime.now(timezone.utc)
 
     expiration_tx = _expire_loyalty_account_if_needed(
         db,
@@ -3666,7 +3666,7 @@ def acknowledge_audit_alert(
         .where(models.AuditAlertAcknowledgement.entity_id == normalized_id)
     )
     acknowledgement = db.scalars(statement).first()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     if (
         acknowledgement is not None
@@ -3750,7 +3750,7 @@ def get_persistent_audit_alerts(
     if cached is not None:
         return copy.deepcopy(cached)[offset: offset + limit]
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     lookback_start = now - timedelta(hours=lookback_hours)
 
     statement = (
@@ -4445,7 +4445,7 @@ def _user_is_locked(user: models.User) -> bool:
     if locked_until is None:
         return False
     if locked_until.tzinfo is None:
-        return locked_until > datetime.utcnow()
+        return locked_until > datetime.now(timezone.utc)
     return locked_until > datetime.now(timezone.utc)
 
 
@@ -4502,7 +4502,7 @@ def build_user_directory(
     ]
 
     report = schemas.UserDirectoryReport(
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         filters=schemas.UserDirectoryFilters(
             search=search,
             role=role,
@@ -4706,7 +4706,7 @@ def get_user_dashboard_metrics(
     )
 
     return schemas.UserDashboardMetrics(
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         totals=directory.totals,
         recent_activity=recent_activity,
         active_sessions=session_entries,
@@ -4768,7 +4768,7 @@ def activate_totp_secret(
         if record is None:
             raise LookupError("totp_not_provisioned")
         record.is_active = True
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         record.activated_at = now
         record.last_verified_at = now
         flush_session(db)
@@ -4814,12 +4814,12 @@ def update_totp_last_verified(db: Session, user_id: int) -> None:
         record = get_totp_secret(db, user_id)
         if record is None:
             return
-        record.last_verified_at = datetime.utcnow()
+        record.last_verified_at = datetime.now(timezone.utc)
         flush_session(db)
 
 
 def clear_login_lock(db: Session, user: models.User) -> models.User:
-    if user.locked_until and user.locked_until <= datetime.utcnow():
+    if user.locked_until and user.locked_until <= datetime.now(timezone.utc):
         with transactional_session(db):
             user.locked_until = None
             user.failed_login_attempts = 0
@@ -4833,7 +4833,7 @@ def register_failed_login(
 ) -> models.User:
     locked_until: datetime | None = None
     with transactional_session(db):
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         user.failed_login_attempts += 1
         user.last_login_attempt_at = now
         if user.failed_login_attempts >= settings.max_failed_login_attempts:
@@ -4866,7 +4866,7 @@ def register_successful_login(
     with transactional_session(db):
         user.failed_login_attempts = 0
         user.locked_until = None
-        user.last_login_attempt_at = datetime.utcnow()
+        user.last_login_attempt_at = datetime.now(timezone.utc)
         details_payload = (
             {"session_hint": session_token[-6:]} if session_token else None
         )
@@ -4902,7 +4902,7 @@ def create_password_reset_token(
     db: Session, user_id: int, *, expires_minutes: int
 ) -> models.PasswordResetToken:
     token = secrets.token_urlsafe(48)
-    expires_at = datetime.utcnow() + timedelta(minutes=expires_minutes)
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)
     protected_token = token_protection.protect_token(token)
     record = models.PasswordResetToken(
         user_id=user_id,
@@ -4941,7 +4941,7 @@ def mark_password_reset_token_used(
     db: Session, token_record: models.PasswordResetToken
 ) -> models.PasswordResetToken:
     with transactional_session(db):
-        token_record.used_at = datetime.utcnow()
+        token_record.used_at = datetime.now(timezone.utc)
         flush_session(db)
     db.refresh(token_record)
     return token_record
@@ -4958,7 +4958,7 @@ def reset_user_password(
         user.password_hash = password_hash
         user.failed_login_attempts = 0
         user.locked_until = None
-        user.last_login_attempt_at = datetime.utcnow()
+        user.last_login_attempt_at = datetime.now(timezone.utc)
         flush_session(db)
         _log_action(
             db,
@@ -4975,7 +4975,7 @@ def is_session_expired(expires_at: datetime | None) -> bool:
     if expires_at is None:
         return False
     if expires_at.tzinfo is None:
-        return expires_at <= datetime.utcnow()
+        return expires_at <= datetime.now(timezone.utc)
     return expires_at <= datetime.now(timezone.utc)
 
 
@@ -5023,7 +5023,7 @@ def mark_session_used(db: Session, session_token: str) -> models.ActiveSession |
             db.refresh(session)
         return None
     with transactional_session(db):
-        session.last_used_at = datetime.utcnow()
+        session.last_used_at = datetime.now(timezone.utc)
         flush_session(db)
     db.refresh(session)
     return session
@@ -5099,7 +5099,7 @@ def revoke_session(
     if session.revoked_at is not None:
         return session
     with transactional_session(db):
-        session.revoked_at = datetime.utcnow()
+        session.revoked_at = datetime.now(timezone.utc)
         session.revoked_by_id = revoked_by_id
         session.revoke_reason = reason
         flush_session(db)
@@ -5610,7 +5610,7 @@ def delete_customer(
 
         customer.status = _normalize_customer_status("inactivo")
         customer.is_deleted = True
-        customer.deleted_at = datetime.utcnow()
+        customer.deleted_at = datetime.now(timezone.utc)
         flush_session(db)
         _log_action(
             db,
@@ -5978,7 +5978,7 @@ def get_payment_center_summary(
     *,
     reference: datetime | None = None,
 ) -> schemas.PaymentCenterSummary:
-    reference = reference or datetime.utcnow()
+    reference = reference or datetime.now(timezone.utc)
     tzinfo = reference.tzinfo
     today_start = datetime(reference.year, reference.month,
                            reference.day, tzinfo=tzinfo)
@@ -6381,7 +6381,7 @@ def create_customer_privacy_request(
 ) -> tuple[models.Customer, models.CustomerPrivacyRequest]:
     customer = get_customer(db, customer_id)
     request_type = models.PrivacyRequestType(payload.request_type)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     consent_snapshot = dict(customer.privacy_consents or {})
     masked_fields: list[str] = []
 
@@ -6612,7 +6612,7 @@ def get_customer_accounts_receivable(
         for label, start, end in bucket_defs
     ]
 
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
     weighted_days = Decimal("0.00")
     open_entries: list[schemas.AccountsReceivableEntry] = []
     for charge in charges:
@@ -6760,7 +6760,7 @@ def get_customer_accounts_receivable(
     )
 
     customer_schema = schemas.CustomerResponse.model_validate(customer)
-    generated_at = datetime.utcnow()
+    generated_at = datetime.now(timezone.utc)
     return schemas.CustomerAccountsReceivableResponse(
         customer=customer_schema,
         summary=summary,
@@ -6830,7 +6830,7 @@ def build_customer_statement_report(
         customer=receivable.customer,
         summary=receivable.summary,
         lines=lines,
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
     )
 
 
@@ -6953,7 +6953,7 @@ def build_customer_portfolio(
     )
 
     return schemas.CustomerPortfolioReport(
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         category=category,
         filters=filters,
         items=items,
@@ -6968,7 +6968,7 @@ def get_customer_dashboard_metrics(
     top_limit: int = 5,
 ) -> schemas.CustomerDashboardMetrics:
     months = max(1, min(months, 24))
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
     current_month = date(today.year, today.month, 1)
     months_sequence: list[date] = []
     for _ in range(months):
@@ -7048,7 +7048,7 @@ def get_customer_dashboard_metrics(
     )
 
     return schemas.CustomerDashboardMetrics(
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         months=months,
         new_customers_per_month=new_customers_chart,
         top_customers=top_customers,
@@ -7241,7 +7241,7 @@ def compute_purchase_suggestions(
     settings_alerts = inventory_alert_settings
     threshold = settings_alerts.clamp_threshold(minimum_stock)
 
-    since = datetime.utcnow() - timedelta(days=normalized_lookback)
+    since = datetime.now(timezone.utc) - timedelta(days=normalized_lookback)
 
     device_stmt = (
         select(
@@ -7263,7 +7263,7 @@ def compute_purchase_suggestions(
     device_rows = list(db.execute(device_stmt))
     if not device_rows:
         return schemas.PurchaseSuggestionsResponse(
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(timezone.utc),
             lookback_days=normalized_lookback,
             planning_horizon_days=normalized_horizon,
             minimum_stock=threshold,
@@ -7421,7 +7421,7 @@ def compute_purchase_suggestions(
     stores.sort(key=lambda store: (-store.total_value, store.store_name))
 
     return schemas.PurchaseSuggestionsResponse(
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         lookback_days=normalized_lookback,
         planning_horizon_days=normalized_horizon,
         minimum_stock=threshold,
@@ -7533,7 +7533,7 @@ def soft_delete_store(
 
     with transactional_session(db):
         store.is_deleted = True
-        store.deleted_at = datetime.utcnow()
+        store.deleted_at = datetime.now(timezone.utc)
         db.add(store)
 
         details = {
@@ -8236,7 +8236,7 @@ def delete_price_list(
 
         price_list.is_active = False
         price_list.is_deleted = True
-        price_list.deleted_at = datetime.utcnow()
+        price_list.deleted_at = datetime.now(timezone.utc)
         flush_session(db)
         _log_action(
             db,
@@ -8386,7 +8386,7 @@ def delete_price_list_item(
             return
 
         item.is_deleted = True
-        item.deleted_at = datetime.utcnow()
+        item.deleted_at = datetime.now(timezone.utc)
         flush_session(db)
         _log_action(
             db,
@@ -9069,7 +9069,7 @@ def assign_device_to_bin(
                 # Ya asignado al mismo bin, no duplicar
                 return prev
             prev.active = False
-            prev.unassigned_at = datetime.utcnow()
+            prev.unassigned_at = datetime.now(timezone.utc)
             db.add(prev)
             moved = True
 
@@ -9077,7 +9077,7 @@ def assign_device_to_bin(
             device_id=device.id,
             bin_id=bin_obj.id,
             active=True,
-            assigned_at=datetime.utcnow(),
+            assigned_at=datetime.now(timezone.utc),
         )
         db.add(assignment)
         flush_session(db)
@@ -10060,7 +10060,7 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
     credit_total = Decimal("0")
     cash_total = Decimal("0")
 
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
     window_days = [today - timedelta(days=delta) for delta in range(6, -1, -1)]
     window_set = set(window_days)
 
@@ -10841,7 +10841,7 @@ def get_inactive_products_report(
     )
 
     return schemas.InactiveProductReport(
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         filters=filters,
         totals=totals,
         items=items,
@@ -10988,7 +10988,7 @@ def calculate_aging_analytics(
     offset: int = 0,
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
-    now_date = datetime.utcnow().date()
+    now_date = datetime.now(timezone.utc).date()
     category_expr = _device_category_expr()
     device_stmt = (
         select(
@@ -11344,7 +11344,7 @@ def calculate_store_comparatives(
         for store_id, (total, count) in aging_totals.items()
     }
 
-    window_start = start_dt or (datetime.utcnow() - timedelta(days=30))
+    window_start = start_dt or (datetime.now(timezone.utc) - timedelta(days=30))
     sales_stmt = (
         select(
             models.Sale.store_id,
@@ -11653,7 +11653,7 @@ def calculate_sales_projection(
     start_dt, end_dt = _normalize_date_range(date_from, date_to)
     category_expr = _device_category_expr()
     lookback_days = max(horizon_days, 30)
-    since = start_dt or (datetime.utcnow() - timedelta(days=lookback_days))
+    since = start_dt or (datetime.now(timezone.utc) - timedelta(days=lookback_days))
 
     store_stmt = select(models.Store.id, models.Store.name).order_by(
         models.Store.name.asc())
@@ -12137,7 +12137,7 @@ def calculate_realtime_store_widget(
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
     category_expr = _device_category_expr()
-    today_start = datetime.utcnow().replace(
+    today_start = datetime.now(timezone.utc).replace(
         hour=0, minute=0, second=0, microsecond=0)
 
     stores_stmt = select(models.Store.id, models.Store.name,
@@ -12501,8 +12501,8 @@ def record_sync_session(
         store_id=store_id,
         mode=mode,
         status=status,
-        started_at=datetime.utcnow(),
-        finished_at=datetime.utcnow(),
+        started_at=datetime.now(timezone.utc),
+        finished_at=datetime.now(timezone.utc),
         error_message=error_message,
         triggered_by_id=triggered_by_id,
     )
@@ -12585,7 +12585,7 @@ def mark_outbox_entries_sent(
     if not entries:
         return []
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     with transactional_session(db):
         for entry in entries:
             entry.status = models.SyncOutboxStatus.SENT
@@ -12625,7 +12625,7 @@ def mark_outbox_entry_failed(
     if entry is None:
         return None
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     with transactional_session(db):
         entry.status = models.SyncOutboxStatus.FAILED
         entry.last_attempt_at = now
@@ -12878,7 +12878,7 @@ def enqueue_sync_queue_events(
     if not events:
         return queued, reused
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     with transactional_session(db):
         for event in events:
             existing: models.SyncQueue | None = None
@@ -12995,7 +12995,7 @@ def update_sync_queue_entry(
             entry.attempts += 1
         entry.status = status
         entry.last_error = error_message
-        entry.updated_at = datetime.utcnow()
+        entry.updated_at = datetime.now(timezone.utc)
         flush_session(db)
         db.refresh(entry)
     return entry
@@ -13009,7 +13009,7 @@ def resolve_sync_queue_entry(
     with transactional_session(db):
         entry.status = models.SyncQueueStatus.SENT
         entry.last_error = None
-        entry.updated_at = datetime.utcnow()
+        entry.updated_at = datetime.now(timezone.utc)
         flush_session(db)
         db.refresh(entry)
     return entry
@@ -13307,7 +13307,7 @@ def reset_outbox_entries(
     if not entries:
         return []
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     with transactional_session(db):
         for entry in entries:
             entry.status = models.SyncOutboxStatus.PENDING
@@ -13356,7 +13356,7 @@ def update_outbox_priority(
 
     with transactional_session(db):
         entry.priority = priority
-        entry.updated_at = datetime.utcnow()
+        entry.updated_at = datetime.now(timezone.utc)
         flush_session(db)
         db.refresh(entry)
         details_payload = {"priority": priority.value,
@@ -13493,7 +13493,7 @@ def resolve_outbox_conflicts(
     if not entries:
         return []
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     with transactional_session(db):
         for entry in entries:
             previous_version = int(entry.version or 1)
@@ -13645,7 +13645,7 @@ def get_store_sync_overview(
                 conflict_counts[candidate_id] += 1
 
     results: list[dict[str, object]] = []
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     stale_threshold = timedelta(hours=12)
     for row in store_rows:
         key = int(row.id)
@@ -13912,7 +13912,7 @@ def get_sync_discrepancies_report(
     )
 
     return schemas.SyncDiscrepancyReport(
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         filters=filters,
         totals=totals,
         items=conflicts,
@@ -14072,7 +14072,7 @@ def create_transfer_order(
                     raise ValueError("reservation_not_active")
                 if reservation.quantity != item.quantity:
                     raise ValueError("reservation_quantity_mismatch")
-                if reservation.expires_at <= datetime.utcnow():
+                if reservation.expires_at <= datetime.now(timezone.utc):
                     raise ValueError("reservation_expired")
             order_item = models.TransferOrderItem(
                 transfer_order=order,
@@ -14177,7 +14177,7 @@ def _apply_transfer_dispatch(
             raise ValueError("reservation_not_active")
         if reservation.quantity != item.quantity:
             raise ValueError("reservation_quantity_mismatch")
-        if reservation.expires_at <= datetime.utcnow():
+        if reservation.expires_at <= datetime.now(timezone.utc):
             raise ValueError("reservation_expired")
         reservation_map[item.reservation_id] = reservation
         reserved_allowances[item.device_id] = reserved_allowances.get(
@@ -14291,7 +14291,7 @@ def _apply_transfer_dispatch(
                 flush_session(db)
 
     order.dispatched_by_id = order.dispatched_by_id or performed_by_id
-    order.dispatched_at = order.dispatched_at or datetime.utcnow()
+    order.dispatched_at = order.dispatched_at or datetime.now(timezone.utc)
     if reason:
         order.reason = reason
 
@@ -14322,7 +14322,7 @@ def dispatch_transfer_order(
         )
         order.status = models.TransferStatus.EN_TRANSITO
         order.dispatched_by_id = performed_by_id
-        order.dispatched_at = datetime.utcnow()
+        order.dispatched_at = datetime.now(timezone.utc)
         order.reason = reason or order.reason
 
         flush_session(db)
@@ -14608,7 +14608,7 @@ def receive_transfer_order(
 
         order.status = models.TransferStatus.RECIBIDA
         order.received_by_id = performed_by_id
-        order.received_at = datetime.utcnow()
+        order.received_at = datetime.now(timezone.utc)
         order.reason = reason or order.reason
 
         flush_session(db)
@@ -14689,7 +14689,7 @@ def reject_transfer_order(
 
         order.status = models.TransferStatus.RECHAZADA
         order.received_by_id = performed_by_id
-        order.received_at = datetime.utcnow()
+        order.received_at = datetime.now(timezone.utc)
         order.reason = reason or order.reason
 
         flush_session(db)
@@ -14738,7 +14738,7 @@ def cancel_transfer_order(
     with transactional_session(db):
         order.status = models.TransferStatus.CANCELADA
         order.cancelled_by_id = performed_by_id
-        order.cancelled_at = datetime.utcnow()
+        order.cancelled_at = datetime.now(timezone.utc)
         order.reason = reason or order.reason
 
         flush_session(db)
@@ -15093,7 +15093,7 @@ def create_purchase_record(
     purchase = models.Compra(
         proveedor_id=vendor.id_proveedor,
         usuario_id=performed_by_id,
-        fecha=payload.fecha or datetime.utcnow(),
+        fecha=payload.fecha or datetime.now(timezone.utc),
         total=Decimal("0"),
         impuesto=Decimal("0"),
         forma_pago=payload.forma_pago,
@@ -15347,7 +15347,7 @@ def get_purchase_statistics(
     ]
 
     return schemas.PurchaseStatistics(
-        updated_at=datetime.utcnow(),
+        updated_at=datetime.now(timezone.utc),
         compras_registradas=int(total_count or 0),
         total=_to_decimal(total_amount or 0),
         impuesto=_to_decimal(total_tax or 0),
@@ -15614,7 +15614,7 @@ def receive_purchase_order(
                 batch_code=batch_code,
                 quantity=receive_item.quantity,
                 unit_cost=_to_decimal(order_item.unit_cost),
-                purchase_date=datetime.utcnow().date(),
+                purchase_date=datetime.now(timezone.utc).date(),
             )
             movement_device.lote = batch.batch_code
             movement_device.fecha_compra = batch.purchase_date
@@ -15629,7 +15629,7 @@ def receive_purchase_order(
     with transactional_session(db):
         if all(item.quantity_received == item.quantity_ordered for item in order.items):
             order.status = models.PurchaseStatus.COMPLETADA
-            order.closed_at = datetime.utcnow()
+            order.closed_at = datetime.now(timezone.utc)
         else:
             order.status = models.PurchaseStatus.PARCIAL
 
@@ -15741,7 +15741,7 @@ def cancel_purchase_order(
         )
 
         order.status = models.PurchaseStatus.CANCELADA
-        order.closed_at = datetime.utcnow()
+        order.closed_at = datetime.now(timezone.utc)
         if reason:
             order.notes = (order.notes or "") + \
                 f" | Cancelación: {reason}" if order.notes else reason
@@ -16087,7 +16087,7 @@ def transition_purchase_order_status(
             models.PurchaseStatus.PENDIENTE,
         }:
             order.approved_by_id = None
-        order.updated_at = datetime.utcnow()
+        order.updated_at = datetime.now(timezone.utc)
         flush_session(db)
         db.refresh(order)
         _register_purchase_status_event(
@@ -16409,7 +16409,7 @@ def execute_recurring_order(
     reason: str | None = None,
 ) -> schemas.RecurringOrderExecutionResult:
     template = get_recurring_order(db, template_id)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     if template.order_type is models.RecurringOrderType.PURCHASE:
         purchase_payload = schemas.PurchaseOrderCreate.model_validate(
@@ -16838,7 +16838,7 @@ def update_repair_order(
             models.RepairStatus.ENTREGADO,
             models.RepairStatus.CANCELADO,
         }:  # // [PACK37-backend]
-            order.delivered_at = datetime.utcnow()
+            order.delivered_at = datetime.now(timezone.utc)
         elif payload.status in {models.RepairStatus.PENDIENTE, models.RepairStatus.EN_PROCESO}:
             order.delivered_at = None
     if payload.labor_cost is not None:
@@ -17225,7 +17225,7 @@ def update_warranty_claim_status(
             models.WarrantyClaimStatus.RESUELTO,
             models.WarrantyClaimStatus.CANCELADO,
         }:
-            claim.resolved_at = datetime.utcnow()
+            claim.resolved_at = datetime.now(timezone.utc)
         assignment = claim.assignment
         if assignment:
             if new_status == models.WarrantyClaimStatus.RESUELTO:
@@ -17240,7 +17240,7 @@ def update_warranty_claim_status(
                 assignment.status = models.WarrantyStatus.RECLAMO
                 if assignment.sale_item:
                     assignment.sale_item.warranty_status = models.WarrantyStatus.RECLAMO
-            assignment.updated_at = datetime.utcnow()
+            assignment.updated_at = datetime.now(timezone.utc)
             db.add(assignment)
         claim.performed_by_id = performed_by_id or claim.performed_by_id
         db.add(claim)
@@ -17305,7 +17305,7 @@ def get_warranty_metrics(
         claims_resolved=claims_resolved,
         expiring_soon=expiring,
         average_coverage_days=round(average_days, 2),
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
     )
 
 
@@ -17568,7 +17568,7 @@ def _active_reservations_by_device(
     device_ids: Iterable[int] | None = None,
 ) -> dict[int, int]:
     ids = set(device_ids or [])
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     statement = (
         select(
             models.InventoryReservation.device_id,
@@ -17599,7 +17599,7 @@ def expire_reservations(
     store_id: int | None = None,
     device_ids: Iterable[int] | None = None,
 ) -> int:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     ids = set(device_ids or [])
     statement = select(models.InventoryReservation).where(
         models.InventoryReservation.status == models.InventoryState.RESERVADO,
@@ -17651,7 +17651,7 @@ def list_inventory_reservations(
         )
         .order_by(models.InventoryReservation.created_at.desc())
     )
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     if store_id is not None:
         statement = statement.where(
             models.InventoryReservation.store_id == store_id)
@@ -17683,7 +17683,7 @@ def create_reservation(
 ) -> models.InventoryReservation:
     if quantity <= 0:
         raise ValueError("reservation_invalid_quantity")
-    if expires_at <= datetime.utcnow():
+    if expires_at <= datetime.now(timezone.utc):
         raise ValueError("reservation_invalid_expiration")
 
     normalized_reason = _normalize_reservation_reason(reason)
@@ -17750,14 +17750,14 @@ def renew_reservation(
     reservation = get_inventory_reservation(db, reservation_id)
     if reservation.status != models.InventoryState.RESERVADO:
         raise ValueError("reservation_not_active")
-    if expires_at <= datetime.utcnow():
+    if expires_at <= datetime.now(timezone.utc):
         raise ValueError("reservation_invalid_expiration")
 
     _ = _normalize_reservation_reason(reason)
 
     with transactional_session(db):
         reservation.expires_at = expires_at
-        reservation.updated_at = datetime.utcnow()
+        reservation.updated_at = datetime.now(timezone.utc)
         flush_session(db)
         details = json.dumps(
             {
@@ -17798,7 +17798,7 @@ def release_reservation(
         raise ValueError("reservation_not_active")
 
     normalized_reason = (reason or "").strip() or None
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     with transactional_session(db):
         reservation.status = target_state
@@ -18129,7 +18129,7 @@ def _resolve_warranty_serial(device: models.Device) -> str | None:
 def _create_warranty_assignments(
     db: Session, sale: models.Sale
 ) -> list[models.WarrantyAssignment]:
-    activation_dt = sale.created_at or datetime.utcnow()
+    activation_dt = sale.created_at or datetime.now(timezone.utc)
     activation_date = activation_dt.date()
     assignments: list[models.WarrantyAssignment] = []
 
@@ -18213,7 +18213,7 @@ def create_sale(
                 raise ValueError("reservation_not_active")
             if reservation.quantity != item.quantity:
                 raise ValueError("reservation_quantity_mismatch")
-            if reservation.expires_at <= datetime.utcnow():
+            if reservation.expires_at <= datetime.now(timezone.utc):
                 raise ValueError("reservation_expired")
             reservation_map[reservation.id] = reservation
             reserved_allowances[item.device_id] = reserved_allowances.get(
@@ -18454,7 +18454,7 @@ def update_sale(
                 raise ValueError("reservation_not_active")
             if reservation.quantity != item.quantity:
                 raise ValueError("reservation_quantity_mismatch")
-            if reservation.expires_at <= datetime.utcnow():
+            if reservation.expires_at <= datetime.now(timezone.utc):
                 raise ValueError("reservation_expired")
             reservation_map[reservation.id] = reservation
             reserved_allowances[item.device_id] = reserved_allowances.get(
@@ -18759,7 +18759,7 @@ def cancel_sale(
                 reason=cancel_reason,
             )
             sale.invoice_reported = False
-            sale.invoice_annulled_at = datetime.utcnow()
+            sale.invoice_annulled_at = datetime.now(timezone.utc)
             sale.invoice_credit_note_code = credit_note.code
 
         sale.status = "CANCELADA"
@@ -19303,8 +19303,8 @@ def list_operations_history(
     limit: int | None = 50,
     offset: int = 0,
 ) -> schemas.OperationsHistoryResponse:
-    start_dt = start or (datetime.utcnow() - timedelta(days=30))
-    end_dt = end or datetime.utcnow()
+    start_dt = start or (datetime.now(timezone.utc) - timedelta(days=30))
+    end_dt = end or datetime.now(timezone.utc)
     if start_dt > end_dt:
         start_dt, end_dt = end_dt, start_dt
 
@@ -19652,7 +19652,7 @@ def close_cash_session(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
     session.closed_by_id = closed_by_id
-    session.closed_at = datetime.utcnow()
+    session.closed_at = datetime.now(timezone.utc)
     session.status = models.CashSessionStatus.CERRADO
     breakdown_snapshot = dict(session.payment_breakdown or {})
     for key, value in sales_totals.items():
@@ -20686,7 +20686,7 @@ def mark_import_validation_corrected(
         raise LookupError("validation_not_found")
     with transactional_session(db):
         validation.corregido = corrected
-        validation.fecha = datetime.utcnow()
+        validation.fecha = datetime.now(timezone.utc)
         db.add(validation)
         flush_session(db)
         db.refresh(validation)
@@ -20996,7 +20996,7 @@ def enqueue_dte_dispatch(
             models.DTEDispatchQueue.document_id == document.id
         )
     )
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     if existing:
         existing.status = models.DTEDispatchStatus.PENDING
         existing.last_error = error_message
@@ -21033,7 +21033,7 @@ def mark_dte_dispatch_sent(
             models.DTEDispatchQueue.document_id == document.id
         )
     )
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     if entry is None:
         entry = models.DTEDispatchQueue(
             document=document,
@@ -21112,7 +21112,7 @@ def update_support_feedback_status(
 
     entry.status = status
     entry.resolution_notes = resolution_notes
-    entry.updated_at = datetime.utcnow()
+    entry.updated_at = datetime.now(timezone.utc)
     db.add(entry)
     db.flush()
     db.refresh(entry)
@@ -21148,7 +21148,7 @@ def support_feedback_metrics(
         )
     ]
 
-    since = datetime.utcnow() - timedelta(days=days)
+    since = datetime.now(timezone.utc) - timedelta(days=days)
     usage_rows = db.execute(
         select(models.AuditUI.module, func.count(models.AuditUI.id))
         .where(models.AuditUI.ts >= since)

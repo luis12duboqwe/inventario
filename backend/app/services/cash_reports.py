@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from hashlib import sha256
 from io import BytesIO
@@ -79,7 +79,7 @@ def render_cash_close_pdf(
     )
 
     store_label = session.store.name if getattr(session, "store", None) else f"Sucursal #{session.store_id}"
-    now_label = datetime.utcnow().strftime("%d/%m/%Y %H:%M UTC")
+    now_label = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
     elements: list = [  # type: ignore[var-annotated]
         Paragraph("Softmobile 2025 — Cierre de caja", heading),
         Spacer(1, 12),

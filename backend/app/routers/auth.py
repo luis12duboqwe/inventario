@@ -557,7 +557,7 @@ def reset_password(payload: schemas.PasswordResetConfirm, db: Session = Depends(
     if (
         record is None
         or record.used_at is not None
-        or record.expires_at <= datetime.utcnow()
+        or record.expires_at <= datetime.now(timezone.utc)
     ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

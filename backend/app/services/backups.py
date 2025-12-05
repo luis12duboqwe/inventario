@@ -6,7 +6,7 @@ import os
 import json
 import shutil
 from contextlib import closing
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from io import BytesIO, StringIO
 from pathlib import Path
@@ -340,7 +340,7 @@ def render_snapshot_pdf(snapshot: dict[str, Any]) -> bytes:
 
     elements = [Paragraph(
         "Softmobile 2025 — Reporte Empresarial", styles["Title"]), Spacer(1, 12)]
-    generated_at = datetime.utcnow().strftime("%d/%m/%Y %H:%M UTC")
+    generated_at = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
     elements.append(
         Paragraph(f"Generado automáticamente el {generated_at}", styles["Normal"]))
     elements.append(Spacer(1, 18))
@@ -525,7 +525,7 @@ def generate_backup(
     )
     snapshot = build_inventory_snapshot(db)
 
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     directory = Path(base_dir)
     directory.mkdir(parents=True, exist_ok=True)
 
@@ -907,7 +907,7 @@ def restore_backup(
 
     target_base = target_base.resolve()
     restore_dir = (
-        target_base / f"restauracion_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}").resolve()
+        target_base / f"restauracion_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}").resolve()
 
     # Enforce safe restoration path under configured backup_directory solo si se pasa destino relativo
     enforce_safe_root = True

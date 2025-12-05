@@ -1,7 +1,7 @@
 """Servicios de apoyo para consumo de lotes en ventas."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -48,7 +48,7 @@ def consume_supplier_batch(
         raise ValueError("supplier_batch_insufficient_stock")
 
     target.quantity -= quantity
-    target.updated_at = datetime.utcnow()
+    target.updated_at = datetime.now(timezone.utc)
     if target.store_id is None:
         target.store_id = store.id
     if target.device_id is None:

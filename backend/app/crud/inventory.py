@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Sequence
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
@@ -1245,7 +1245,7 @@ def _active_reservations_by_device(
     device_ids: Iterable[int] | None = None,
 ) -> dict[int, int]:
     ids = set(device_ids or [])
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     statement = (
         select(
             models.InventoryReservation.device_id,
@@ -1276,7 +1276,7 @@ def expire_reservations(
     store_id: int | None = None,
     device_ids: Iterable[int] | None = None,
 ) -> int:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     ids = set(device_ids or [])
     statement = select(models.InventoryReservation).where(
         models.InventoryReservation.status == models.InventoryState.RESERVADO,
@@ -1328,7 +1328,7 @@ def list_inventory_reservations(
         )
         .order_by(models.InventoryReservation.created_at.desc())
     )
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     if store_id is not None:
         statement = statement.where(
             models.InventoryReservation.store_id == store_id)
@@ -1360,7 +1360,7 @@ def create_reservation(
 ) -> models.InventoryReservation:
     if quantity <= 0:
         raise ValueError("reservation_invalid_quantity")
-    if expires_at <= datetime.utcnow():
+    if expires_at <= datetime.now(timezone.utc):
         raise ValueError("reservation_invalid_expiration")
 
     normalized_reason = _normalize_reservation_reason(reason)
@@ -1427,14 +1427,14 @@ def renew_reservation(
     reservation = get_inventory_reservation(db, reservation_id)
     if reservation.status != models.InventoryState.RESERVADO:
         raise ValueError("reservation_not_active")
-    if expires_at <= datetime.utcnow():
+    if expires_at <= datetime.now(timezone.utc):
         raise ValueError("reservation_invalid_expiration")
 
     _ = _normalize_reservation_reason(reason)
 
     with transactional_session(db):
         reservation.expires_at = expires_at
-        reservation.updated_at = datetime.utcnow()
+        reservation.updated_at = datetime.now(timezone.utc)
         flush_session(db)
         details = json.dumps(
             {
@@ -1475,7 +1475,7 @@ def release_reservation(
         raise ValueError("reservation_not_active")
 
     normalized_reason = (reason or "").strip() or None
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     with transactional_session(db):
         reservation.status = target_state

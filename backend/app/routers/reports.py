@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import calendar
 import csv
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from io import BytesIO, StringIO
 from typing import Literal
 
@@ -390,7 +390,7 @@ def get_cash_close_report(
     current_user=Depends(require_roles(ADMIN)),
 ):
     _ensure_analytics_enabled()
-    report_date = target_date or datetime.utcnow().date()
+    report_date = target_date or datetime.now(timezone.utc).date()
     start_of_day = datetime.combine(report_date, datetime.min.time())
     end_of_day = start_of_day + timedelta(days=1)
     return crud.build_cash_close_report(
@@ -1210,7 +1210,7 @@ def financial_report(
         category=category,
     )
     report = schemas.FinancialPerformanceReport(
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         filters=filters,
         rotation=[
             schemas.RotationMetric.model_validate(item).model_dump()
@@ -1334,7 +1334,7 @@ def inventory_performance_report(
         category=category,
     )
     report = schemas.InventoryPerformanceReport(
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         filters=filters,
         rotation=[
             schemas.RotationMetric.model_validate(item).model_dump()
@@ -1677,7 +1677,7 @@ def inventory_csv(
     writer = csv.writer(buffer)
 
     writer.writerow(["Inventario corporativo"])
-    writer.writerow(["Generado", datetime.utcnow().isoformat()])
+    writer.writerow(["Generado", datetime.now(timezone.utc).isoformat()])
 
     consolidated_total = 0.0
 

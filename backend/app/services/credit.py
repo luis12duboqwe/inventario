@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import List
 
@@ -62,8 +62,8 @@ def build_credit_schedule(
     if remaining <= Decimal("0"):
         return []
 
-    today = datetime.utcnow().date()
-    base_reference = base_date or datetime.utcnow()
+    today = datetime.now(timezone.utc).date()
+    base_reference = base_date or datetime.now(timezone.utc)
     normalized_base = base_reference.replace(
         hour=0, minute=0, second=0, microsecond=0
     )

@@ -5,7 +5,7 @@ import json
 import re
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Sequence, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select, func, cast, String, or_
 from sqlalchemy.orm import Session, selectinload
@@ -66,7 +66,7 @@ def _history_to_json(
         elif isinstance(timestamp, datetime):
             parsed_timestamp = timestamp.isoformat()
         else:
-            parsed_timestamp = datetime.utcnow().isoformat()
+            parsed_timestamp = datetime.now(timezone.utc).isoformat()
         normalized.append({"timestamp": parsed_timestamp,
                           "note": (note or "").strip()})
     return normalized
@@ -90,9 +90,9 @@ def _last_history_timestamp(history: list[dict[str, object]]) -> datetime | None
 
 def _append_customer_history(customer: models.Customer, note: str) -> None:
     history = list(customer.history or [])
-    history.append({"timestamp": datetime.utcnow().isoformat(), "note": note})
+    history.append({"timestamp": datetime.now(timezone.utc).isoformat(), "note": note})
     customer.history = history
-    customer.last_interaction_at = datetime.utcnow()
+    customer.last_interaction_at = datetime.now(timezone.utc)
 
 
 def _mask_email(value: str) -> str:

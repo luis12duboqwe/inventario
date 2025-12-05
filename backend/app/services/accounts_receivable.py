@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Iterable
 
 from sqlalchemy import select
@@ -62,7 +62,7 @@ def send_upcoming_due_reminders(session: Session) -> list[ReminderResult]:
 
     days_before_due = max(0, settings.accounts_receivable_reminder_days_before_due)
     results: list[ReminderResult] = []
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     for customer in _collect_target_customers(session):
         summary = crud.get_customer_accounts_receivable(session, customer.id)

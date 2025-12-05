@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Sequence
 
@@ -26,7 +26,7 @@ def _normalize_range(
     date_from: datetime | None,
     date_to: datetime | None,
 ) -> tuple[datetime, datetime]:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     default_window = max(1, return_policy_settings.history_window_days)
     start = date_from or (now - timedelta(days=default_window))
     end = date_to or now

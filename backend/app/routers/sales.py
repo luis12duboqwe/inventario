@@ -1,7 +1,7 @@
 """Endpoints para ventas y devoluciones."""
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from io import BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -161,7 +161,7 @@ def export_sales_pdf(
     )
     pdf_bytes = sales_reports.render_sales_report_pdf(report)
     metadata = schemas.BinaryFileResponse(
-        filename=f"ventas_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf",
+        filename=f"ventas_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.pdf",
         media_type="application/pdf",
     )
     return StreamingResponse(
@@ -202,7 +202,7 @@ def export_sales_excel(
     )
     excel_bytes = sales_reports.render_sales_report_excel(report)
     metadata = schemas.BinaryFileResponse(
-        filename=f"ventas_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx",
+        filename=f"ventas_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.xlsx",
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
     return StreamingResponse(

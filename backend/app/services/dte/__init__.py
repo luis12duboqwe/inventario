@@ -32,7 +32,7 @@ def _format_amount(value: Decimal | float | int) -> str:
 
 def _format_timestamp(value: datetime | None) -> str:
     if value is None:
-        value = datetime.utcnow().replace(tzinfo=timezone.utc)
+        value = datetime.now(timezone.utc).replace(tzinfo=timezone.utc)
     elif value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
     else:
@@ -239,7 +239,7 @@ def register_acknowledgement(
 ) -> models.DTEDocument:
     """Registra el acuse o respuesta del SAR para el documento."""
 
-    received_at = payload.received_at or datetime.utcnow()
+    received_at = payload.received_at or datetime.now(timezone.utc)
     with transactional_session(db):
         updated_document = crud.register_dte_ack(
             db,

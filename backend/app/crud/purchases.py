@@ -6,7 +6,7 @@ import csv
 import io
 import math
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import func, select, extract
@@ -346,7 +346,7 @@ def receive_purchase_order(
                 batch_code=batch_code,
                 quantity=receive_item.quantity,
                 unit_cost=_to_decimal(order_item.unit_cost),
-                purchase_date=datetime.utcnow().date(),
+                purchase_date=datetime.now(timezone.utc).date(),
             )
             movement_device.lote = batch.batch_code
             movement_device.fecha_compra = batch.purchase_date
@@ -361,7 +361,7 @@ def receive_purchase_order(
     with transactional_session(db):
         if all(item.quantity_received == item.quantity_ordered for item in order.items):
             order.status = models.PurchaseStatus.COMPLETADA
-            order.closed_at = datetime.utcnow()
+            order.closed_at = datetime.now(timezone.utc)
         else:
             order.status = models.PurchaseStatus.PARCIAL
 
@@ -477,7 +477,7 @@ def cancel_purchase_order(
         )
 
         order.status = models.PurchaseStatus.CANCELADA
-        order.closed_at = datetime.utcnow()
+        order.closed_at = datetime.now(timezone.utc)
         if reason:
             order.notes = (order.notes or "") + \
                 f" | Cancelación: {reason}" if order.notes else reason
@@ -681,7 +681,7 @@ def compute_purchase_suggestions(
     Calcula venta diaria promedio (ADS) y sugiere reabastecimiento.
     """
     # 1. Calcular fecha de inicio para análisis de ventas
-    start_date = datetime.utcnow() - timedelta(weeks=weeks_history)
+    start_date = datetime.now(timezone.utc) - timedelta(weeks=weeks_history)
 
     # 2. Obtener ventas por producto en el periodo
     sales_query = (
@@ -880,7 +880,7 @@ def create_purchase_record(
     db_purchase = models.Compra(
         proveedor_id=purchase.proveedor_id,
         usuario_id=user_id,
-        fecha=purchase.fecha or datetime.utcnow(),
+        fecha=purchase.fecha or datetime.now(timezone.utc),
         total=0,  # Se calcula después
         impuesto=0,
         forma_pago=purchase.forma_pago,

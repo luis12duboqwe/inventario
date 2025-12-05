@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from io import BytesIO
 from time import perf_counter
@@ -45,7 +45,7 @@ def validar_importacion(
     """Analiza los registros importados y almacena incidencias detectadas."""
 
     start_time = perf_counter()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     validations: list[models.ImportValidation] = []
     errores = 0
     advertencias = 0

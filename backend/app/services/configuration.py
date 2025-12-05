@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Mapping, Sequence
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -316,7 +316,7 @@ def update_config_rate(
             rate.metadata_json = _sanitize_metadata(payload.metadata)
         if payload.is_active is not None:
             rate.is_active = payload.is_active
-        rate.updated_at = datetime.utcnow()
+        rate.updated_at = datetime.now(timezone.utc)
         db.flush()
         db.refresh(rate)
     _log_configuration_audit(
@@ -397,7 +397,7 @@ def update_config_xml_template(
             template.metadata_json = _sanitize_metadata(payload.metadata)
         if payload.is_active is not None:
             template.is_active = payload.is_active
-        template.updated_at = datetime.utcnow()
+        template.updated_at = datetime.now(timezone.utc)
         db.flush()
         db.refresh(template)
     _log_configuration_audit(
@@ -494,7 +494,7 @@ def update_config_parameter(
             parameter.metadata_json = _sanitize_metadata(payload.metadata)
         if payload.is_active is not None:
             parameter.is_active = payload.is_active
-        parameter.updated_at = datetime.utcnow()
+        parameter.updated_at = datetime.now(timezone.utc)
         db.flush()
         db.refresh(parameter)
     _log_configuration_audit(
@@ -589,7 +589,7 @@ def synchronize_from_yaml(db: Session, base_dir: Path) -> schemas.ConfigurationS
                 current.effective_to = payload.effective_to
                 current.metadata_json = _sanitize_metadata(payload.metadata)
                 current.is_active = True
-                current.updated_at = datetime.utcnow()
+                current.updated_at = datetime.now(timezone.utc)
                 if not previous_active:
                     rates_activated += 1
             else:
@@ -611,7 +611,7 @@ def synchronize_from_yaml(db: Session, base_dir: Path) -> schemas.ConfigurationS
         for slug, rate in existing_rates.items():
             if slug not in processed_rate_slugs and rate.is_active:
                 rate.is_active = False
-                rate.updated_at = datetime.utcnow()
+                rate.updated_at = datetime.now(timezone.utc)
                 rates_deactivated += 1
 
         existing_templates = {
@@ -634,7 +634,7 @@ def synchronize_from_yaml(db: Session, base_dir: Path) -> schemas.ConfigurationS
                 current.checksum = checksum
                 current.metadata_json = _sanitize_metadata(payload.metadata)
                 current.is_active = True
-                current.updated_at = datetime.utcnow()
+                current.updated_at = datetime.now(timezone.utc)
                 if not previous_active:
                     templates_activated += 1
             else:
@@ -655,7 +655,7 @@ def synchronize_from_yaml(db: Session, base_dir: Path) -> schemas.ConfigurationS
         for code, template in existing_templates.items():
             if code not in processed_template_codes and template.is_active:
                 template.is_active = False
-                template.updated_at = datetime.utcnow()
+                template.updated_at = datetime.now(timezone.utc)
                 templates_deactivated += 1
 
         existing_parameters = {
@@ -681,7 +681,7 @@ def synchronize_from_yaml(db: Session, base_dir: Path) -> schemas.ConfigurationS
                 current.is_sensitive = payload.is_sensitive
                 current.metadata_json = _sanitize_metadata(payload.metadata)
                 current.is_active = True
-                current.updated_at = datetime.utcnow()
+                current.updated_at = datetime.now(timezone.utc)
                 if not previous_active:
                     parameters_activated += 1
             else:
@@ -703,7 +703,7 @@ def synchronize_from_yaml(db: Session, base_dir: Path) -> schemas.ConfigurationS
         for key, parameter in existing_parameters.items():
             if key not in processed_parameter_keys and parameter.is_active:
                 parameter.is_active = False
-                parameter.updated_at = datetime.utcnow()
+                parameter.updated_at = datetime.now(timezone.utc)
                 parameters_deactivated += 1
 
     return schemas.ConfigurationSyncResult(
