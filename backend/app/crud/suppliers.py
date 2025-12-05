@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..core.transactions import flush_session, transactional_session
-from ..crud_legacy import log_audit_event as _log_action
+from .audit import log_audit_event as _log_action
 from .devices import _recalculate_sale_price
 from .stores import get_store, recalculate_store_inventory_value as _recalculate_store_inventory_value
 

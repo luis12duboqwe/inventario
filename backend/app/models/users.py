@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
@@ -90,7 +90,7 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
-        "fecha_creacion", DateTime(timezone=True), default=datetime.utcnow
+        "fecha_creacion", DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     failed_login_attempts: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0)

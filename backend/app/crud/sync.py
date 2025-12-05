@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import json
-from sqlalchemy import select
+from sqlalchemy import select, func, case
 from sqlalchemy.orm import Session
 
 from .. import models
 from ..core.transactions import transactional_session
+from ..utils.sync_helpers import priority_weight
 
 _OUTBOX_PRIORITY_MAP: dict[str, models.SyncOutboxPriority] = {
     "sale": models.SyncOutboxPriority.HIGH,
@@ -92,3 +93,103 @@ def enqueue_sync_outbox(
                 entry.version += 1
         db.add(entry)
         return entry
+
+
+def get_sync_outbox_statistics(
+    db: Session, *, limit: int | None = None, offset: int = 0
+) -> list[dict[str, object]]:
+    query_limit = None if limit is None else max(limit + offset, 0)
+    statement = (
+        select(
+            models.SyncOutbox.entity_type,
+            models.SyncOutbox.priority,
+            func.count(models.SyncOutbox.id).label("total"),
+            func.sum(
+                case(
+                    (models.SyncOutbox.status == models.SyncOutboxStatus.PENDING, 1),
+                    else_=0,
+                )
+            ).label("pending"),
+            func.sum(
+                case(
+                    (
+                        models.SyncOutbox.status == models.SyncOutboxStatus.FAILED,
+                        case(
+                            (
+                                models.SyncOutbox.attempt_count
+                                >= 1,
+                                models.SyncOutbox.attempt_count,
+                            ),
+                            else_=1,
+                        ),
+                    ),
+                    else_=0,
+                )
+            ).label("failed"),
+            func.sum(
+                case(
+                    (models.SyncOutbox.status == models.SyncOutboxStatus.FAILED, 1),
+                    else_=0,
+                )
+            ).label("failed_count"),
+            func.max(
+                case(
+                    (
+                        models.SyncOutbox.status == models.SyncOutboxStatus.FAILED,
+                        models.SyncOutbox.attempt_count,
+                    ),
+                    else_=0,
+                )
+            ).label("failed_attempts"),
+            func.sum(
+                case(
+                    (models.SyncOutbox.conflict_flag.is_(True), 1),
+                    else_=0,
+                )
+            ).label("conflicts"),
+            func.max(models.SyncOutbox.updated_at).label("latest_update"),
+            func.min(
+                case(
+                    (
+                        models.SyncOutbox.status == models.SyncOutboxStatus.PENDING,
+                        models.SyncOutbox.created_at,
+                    ),
+                    else_=None,
+                )
+            ).label("oldest_pending"),
+            func.max(
+                case(
+                    (models.SyncOutbox.conflict_flag.is_(
+                        True), models.SyncOutbox.updated_at),
+                    else_=None,
+                )
+            ).label("last_conflict_at"),
+        )
+        .group_by(models.SyncOutbox.entity_type, models.SyncOutbox.priority)
+    )
+    if query_limit is not None:
+        statement = statement.limit(query_limit)
+    results: list[dict[str, object]] = []
+    for row in db.execute(statement):
+        priority = row.priority or models.SyncOutboxPriority.NORMAL
+        results.append(
+            {
+                "entity_type": row.entity_type,
+                "priority": priority,
+                "total": int(row.total or 0),
+                "pending": max(int(row.pending or 0), 0),
+                "failed": max(
+                    int(row.failed or 0), int(
+                        getattr(row, "failed_attempts", 0) or 0)
+                ),
+                "conflicts": max(int(row.conflicts or 0), 0),
+                "latest_update": row.latest_update,
+                "oldest_pending": row.oldest_pending,
+                "last_conflict_at": row.last_conflict_at,
+            }
+        )
+    results.sort(key=lambda item: (priority_weight(
+        item["priority"]), item["entity_type"]))
+    if limit is None:
+        return results[offset:]
+    return results[offset: offset + limit]

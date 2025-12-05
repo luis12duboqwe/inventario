@@ -340,18 +340,27 @@ async def get_current_user(
     session_token: str | None = None
     if token:
         token_payload = decode_token(token)
+        print(
+            f"DEBUG: Token decoded. Sub: {token_payload.sub}, JTI: {token_payload.jti}")
         if crud.is_jwt_blacklisted(db, token_payload.jti):
+            print("DEBUG: Token blacklisted")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token revocado.",
             )
         if token_payload.token_type != "access":
+            print("DEBUG: Invalid token type")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Tipo de token inválido.",
             )
         session_token = token_payload.jti
         session = crud.get_active_session_by_token(db, session_token)
+        if session is None:
+            print(f"DEBUG: Session not found for token {session_token}")
+        elif session.revoked_at is not None:
+            print(f"DEBUG: Session revoked at {session.revoked_at}")
+
         if session is None or session.revoked_at is not None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,

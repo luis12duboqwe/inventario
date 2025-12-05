@@ -17,7 +17,7 @@ from ..services import inventory_accounting, inventory_audit
 from ..utils import audit_trail as audit_trail_utils
 from ..utils.cache import TTLCache
 from .audit import get_last_audit_entries
-from .common import log_audit_event as _log_action
+from .audit import log_audit_event as _log_action
 from .common import to_decimal
 from .devices import _recalculate_sale_price, get_device
 from .stores import get_store, recalculate_store_inventory_value

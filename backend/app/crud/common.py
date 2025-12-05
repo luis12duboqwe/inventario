@@ -19,35 +19,6 @@ def to_decimal(value: Decimal | float | int | None) -> Decimal:
     return Decimal(str(value))
 
 
-def log_audit_event(
-    db: Session,
-    *,
-    action: str,
-    entity_type: str,
-    entity_id: str | int,
-    performed_by_id: int | None,
-    details: str | Mapping[str, object] | None = None,
-) -> models.AuditLog:
-    entity_id_str = str(entity_id)
-    if isinstance(details, Mapping):
-        try:
-            serialized_details = json.dumps(details, ensure_ascii=False)
-        except TypeError:
-            serialized_details = str(details)
-    else:
-        serialized_details = details
-
-    audit_entry = models.AuditLog(
-        action=action,
-        entity_type=entity_type,
-        entity_id=entity_id_str,
-        performed_by_id=performed_by_id,
-        details=serialized_details,
-    )
-    db.add(audit_entry)
-    return audit_entry
-
-
 def normalize_date_range(
     date_from: date | datetime | None, date_to: date | datetime | None
 ) -> tuple[datetime, datetime]:

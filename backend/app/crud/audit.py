@@ -8,7 +8,8 @@ from collections.abc import Iterable, Mapping
 from datetime import date, datetime, timedelta, timezone
 from io import StringIO
 
-from sqlalchemy import func, or_, select, tuple_
+from sqlalchemy import func, or_, select, tuple_, case
+from sqlalchemy.sql import Select
 from sqlalchemy.orm import Session, joinedload
 
 from .. import models, schemas, telemetry
@@ -16,6 +17,8 @@ from ..core.transactions import flush_session, transactional_session
 from ..utils import audit as audit_utils
 from ..utils import audit_trail as audit_trail_utils
 from ..utils.cache import TTLCache
+from ..utils.misc_helpers import severity_weight
+from .sync import get_sync_outbox_statistics
 
 
 _PERSISTENT_ALERTS_CACHE: TTLCache[list[dict[str, object]]] = TTLCache(
@@ -99,7 +102,7 @@ def _map_system_level(action: str, details: str | None) -> models.SystemLogLevel
     return models.SystemLogLevel.INFO
 
 
-def _create_system_log(
+def create_system_log(
     db: Session,
     *,
     audit_log: models.AuditLog | None,
@@ -174,7 +177,7 @@ def log_audit_event(
                 usuario = user.username
         module = _resolve_system_module(entity_type)
         level = _map_system_level(action, description_text)
-        _create_system_log(
+        create_system_log(
             db,
             audit_log=log,
             usuario=usuario,
@@ -185,6 +188,10 @@ def log_audit_event(
         )
         invalidate_persistent_audit_alerts_cache()
     return log
+
+
+_log_action = log_audit_event
+log_action = log_audit_event
 
 
 def get_last_audit_entries(
@@ -698,14 +705,27 @@ def get_persistent_audit_alerts(
         acknowledged_by_id = None
         acknowledged_by_name = None
         acknowledged_note = None
-        if acknowledgement and acknowledgement.acknowledged_at >= last_seen:
-            status = "acknowledged"
-            acknowledged_at = acknowledgement.acknowledged_at
-            acknowledged_by_id = acknowledgement.acknowledged_by_id
-            if acknowledgement.acknowledged_by is not None:
-                acknowledged_by_name = _user_display_name(
-                    acknowledgement.acknowledged_by)
-            acknowledged_note = acknowledgement.note
+        if acknowledgement:
+            ack_at = acknowledgement.acknowledged_at
+            if ack_at.tzinfo is None:
+                ack_at = ack_at.replace(tzinfo=timezone.utc)
+            else:
+                ack_at = ack_at.astimezone(timezone.utc)
+
+            last_seen_aware = last_seen
+            if last_seen_aware.tzinfo is None:
+                last_seen_aware = last_seen_aware.replace(tzinfo=timezone.utc)
+            else:
+                last_seen_aware = last_seen_aware.astimezone(timezone.utc)
+
+            if ack_at >= last_seen_aware:
+                status = "acknowledged"
+                acknowledged_at = acknowledgement.acknowledged_at
+                acknowledged_by_id = acknowledgement.acknowledged_by_id
+                if acknowledgement.acknowledged_by is not None:
+                    acknowledged_by_name = _user_display_name(
+                        acknowledgement.acknowledged_by)
+                acknowledged_note = acknowledgement.note
 
         enriched.append(
             {
@@ -726,3 +746,565 @@ def get_persistent_audit_alerts(
 
     _PERSISTENT_ALERTS_CACHE.set(cache_key, copy.deepcopy(enriched))
     return enriched[offset: offset + limit]
+
+
+def register_system_error(
+    db: Session,
+    *,
+    mensaje: str,
+    stack_trace: str | None,
+    modulo: str,
+    usuario: str | None,
+    ip_origen: str | None = None,
+) -> models.SystemError:
+    with transactional_session(db):
+        normalized_module = (modulo or "general").lower()
+        error = models.SystemError(
+            mensaje=mensaje,
+            stack_trace=stack_trace,
+            modulo=normalized_module,
+            fecha=datetime.now(timezone.utc),
+            usuario=usuario,
+        )
+        db.add(error)
+        flush_session(db)
+        create_system_log(
+            db,
+            audit_log=None,
+            usuario=usuario,
+            module=normalized_module,
+            action="system_error",
+            description=mensaje,
+            level=models.SystemLogLevel.ERROR,
+            ip_address=ip_origen,
+        )
+    return error
+
+
+def list_system_logs(
+    db: Session,
+    *,
+    usuario: str | None = None,
+    modulo: str | None = None,
+    nivel: models.SystemLogLevel | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[models.SystemLog]:
+    statement = (
+        select(models.SystemLog)
+        .order_by(models.SystemLog.fecha.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    if usuario:
+        statement = statement.where(models.SystemLog.usuario == usuario)
+    if modulo:
+        statement = statement.where(models.SystemLog.modulo == modulo.lower())
+    if nivel:
+        statement = statement.where(models.SystemLog.nivel == nivel)
+    if date_from:
+        statement = statement.where(models.SystemLog.fecha >= date_from)
+    if date_to:
+        statement = statement.where(models.SystemLog.fecha <= date_to)
+    return list(db.scalars(statement))
+
+
+def list_system_errors(
+    db: Session,
+    *,
+    usuario: str | None = None,
+    modulo: str | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[models.SystemError]:
+    statement = (
+        select(models.SystemError)
+        .order_by(models.SystemError.fecha.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    if usuario:
+        statement = statement.where(models.SystemError.usuario == usuario)
+    if modulo:
+        statement = statement.where(
+            models.SystemError.modulo == modulo.lower())
+    if date_from:
+        statement = statement.where(models.SystemError.fecha >= date_from)
+    if date_to:
+        statement = statement.where(models.SystemError.fecha <= date_to)
+    return list(db.scalars(statement))
+
+
+def _apply_system_log_filters(
+    statement: Select,
+    *,
+    module: str | None = None,
+    severity: models.SystemLogLevel | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+) -> Select:
+    if module:
+        statement = statement.where(models.SystemLog.modulo == module.lower())
+    if severity:
+        statement = statement.where(models.SystemLog.nivel == severity)
+    if date_from:
+        statement = statement.where(models.SystemLog.fecha >= date_from)
+    if date_to:
+        statement = statement.where(models.SystemLog.fecha <= date_to)
+    return statement
+
+
+def _apply_system_error_filters(
+    statement: Select,
+    *,
+    module: str | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+) -> Select:
+    if module:
+        statement = statement.where(
+            models.SystemError.modulo == module.lower())
+    if date_from:
+        statement = statement.where(models.SystemError.fecha >= date_from)
+    if date_to:
+        statement = statement.where(models.SystemError.fecha <= date_to)
+    return statement
+
+
+def build_global_report_overview(
+    db: Session,
+    *,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    module: str | None = None,
+    severity: models.SystemLogLevel | None = None,
+) -> schemas.GlobalReportOverview:
+    module_filter = module.lower() if module else None
+    severity_filter = severity
+
+    log_stmt = select(models.SystemLog).order_by(models.SystemLog.fecha.desc())
+    log_stmt = _apply_system_log_filters(
+        log_stmt,
+        module=module_filter,
+        severity=severity_filter,
+        date_from=date_from,
+        date_to=date_to,
+    ).limit(20)
+    logs = list(db.scalars(log_stmt))
+
+    include_errors = severity_filter in (
+        None,
+        models.SystemLogLevel.ERROR,
+        models.SystemLogLevel.CRITICAL,
+    )
+
+    if include_errors:
+        error_stmt = select(models.SystemError).order_by(
+            models.SystemError.fecha.desc()).limit(10)
+        error_stmt = _apply_system_error_filters(
+            error_stmt,
+            module=module_filter,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        errors = list(db.scalars(error_stmt))
+    else:
+        errors = []
+
+    totals_stmt = select(
+        func.count(models.SystemLog.id).label("total"),
+        func.sum(
+            case((models.SystemLog.nivel == models.SystemLogLevel.INFO, 1), else_=0)
+        ).label("info"),
+        func.sum(
+            case((models.SystemLog.nivel == models.SystemLogLevel.WARNING, 1), else_=0)
+        ).label("warning"),
+        func.sum(
+            case((models.SystemLog.nivel == models.SystemLogLevel.ERROR, 1), else_=0)
+        ).label("error"),
+        func.sum(
+            case((models.SystemLog.nivel == models.SystemLogLevel.CRITICAL, 1), else_=0)
+        ).label("critical"),
+    )
+    totals_stmt = _apply_system_log_filters(
+        totals_stmt,
+        module=module_filter,
+        severity=severity_filter,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    totals_row = db.execute(totals_stmt).first()
+    total_logs = int(totals_row.total or 0) if totals_row else 0
+    info_count = int(totals_row.info or 0) if totals_row else 0
+    warning_count = int(totals_row.warning or 0) if totals_row else 0
+    error_count = int(totals_row.error or 0) if totals_row else 0
+    critical_count = int(totals_row.critical or 0) if totals_row else 0
+
+    if include_errors:
+        error_total_stmt = select(func.count(models.SystemError.id))
+        error_total_stmt = _apply_system_error_filters(
+            error_total_stmt,
+            module=module_filter,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        errors_total = int(db.execute(error_total_stmt).scalar_one() or 0)
+        latest_error_stmt = select(func.max(models.SystemError.fecha))
+        latest_error_stmt = _apply_system_error_filters(
+            latest_error_stmt,
+            module=module_filter,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        latest_error_at = db.execute(latest_error_stmt).scalar_one()
+    else:
+        errors_total = 0
+        latest_error_at = None
+
+    module_expr = models.SystemLog.modulo
+    module_stmt = (
+        select(module_expr, func.count(models.SystemLog.id).label("total"))
+        .group_by(module_expr)
+        .order_by(func.count(models.SystemLog.id).desc())
+    )
+    module_stmt = _apply_system_log_filters(
+        module_stmt,
+        module=module_filter,
+        severity=severity_filter,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    module_rows = db.execute(module_stmt).all()
+    module_breakdown = [
+        schemas.GlobalReportBreakdownItem(
+            name=row[0], total=int(row.total or 0))
+        for row in module_rows
+    ]
+
+    level_expr = models.SystemLog.nivel
+    severity_stmt = (
+        select(level_expr, func.count(models.SystemLog.id).label("total"))
+        .group_by(level_expr)
+        .order_by(func.count(models.SystemLog.id).desc())
+    )
+    severity_stmt = _apply_system_log_filters(
+        severity_stmt,
+        module=module_filter,
+        severity=severity_filter,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    severity_rows = db.execute(severity_stmt).all()
+    severity_breakdown = [
+        schemas.GlobalReportBreakdownItem(
+            name=(row[0].value if isinstance(
+                row[0], models.SystemLogLevel) else str(row[0])),
+            total=int(row.total or 0),
+        )
+        for row in severity_rows
+    ]
+
+    latest_log_stmt = select(func.max(models.SystemLog.fecha))
+    latest_log_stmt = _apply_system_log_filters(
+        latest_log_stmt,
+        module=module_filter,
+        severity=severity_filter,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    latest_log_at = db.execute(latest_log_stmt).scalar_one()
+
+    last_activity_candidates = [
+        value for value in [latest_log_at, latest_error_at] if value is not None
+    ]
+    last_activity_at = max(
+        last_activity_candidates) if last_activity_candidates else None
+
+    sync_stats = get_sync_outbox_statistics(db)
+    sync_pending = sum(
+        max(int(entry.get("pending", 0) or 0), 0) for entry in sync_stats
+    )
+    sync_failed = sum(int(entry.get("failed", 0) or 0) for entry in sync_stats)
+
+    filters = schemas.GlobalReportFiltersState(
+        date_from=date_from,
+        date_to=date_to,
+        module=module_filter,
+        severity=severity_filter,
+    )
+
+    totals = schemas.GlobalReportTotals(
+        logs=total_logs,
+        errors=errors_total,
+        info=info_count,
+        warning=warning_count,
+        error=error_count,
+        critical=critical_count,
+        sync_pending=sync_pending,
+        sync_failed=sync_failed,
+        last_activity_at=last_activity_at,
+    )
+
+    alerts_map: dict[tuple[str, str | None, str | None],
+                     schemas.GlobalReportAlert] = {}
+
+    for log in logs:
+        if log.nivel not in (models.SystemLogLevel.ERROR, models.SystemLogLevel.CRITICAL):
+            continue
+        key = ("critical_log", log.modulo, log.accion)
+        existing = alerts_map.get(key)
+        if existing:
+            existing.count += 1
+            if severity_weight(log.nivel) > severity_weight(existing.level):
+                existing.level = log.nivel
+            if existing.occurred_at is None or (log.fecha and log.fecha > existing.occurred_at):
+                existing.occurred_at = log.fecha
+            if log.descripcion:
+                existing.message = log.descripcion
+        else:
+            alerts_map[key] = schemas.GlobalReportAlert(
+                type="critical_log",
+                level=log.nivel,
+                module=log.modulo,
+                message=log.descripcion,
+                occurred_at=log.fecha,
+                reference=log.accion,
+                count=1,
+            )
+
+    for error in errors:
+        key = ("system_error", error.modulo, error.mensaje)
+        existing = alerts_map.get(key)
+        if existing:
+            existing.count += 1
+            if existing.occurred_at is None or (error.fecha and error.fecha > existing.occurred_at):
+                existing.occurred_at = error.fecha
+        else:
+            error_reference = getattr(error, "id", None)
+            if error_reference is None and hasattr(error, "id_error"):
+                error_reference = getattr(error, "id_error")
+            alerts_map[key] = schemas.GlobalReportAlert(
+                type="system_error",
+                level=models.SystemLogLevel.ERROR,
+                module=error.modulo,
+                message=error.mensaje,
+                occurred_at=error.fecha,
+                reference=str(
+                    error_reference) if error_reference is not None else None,
+                count=1,
+            )
+
+    for stat in sync_stats:
+        failed = int(stat.get("failed", 0) or 0)
+        pending = max(int(stat.get("pending", 0) or 0), 0)
+        if failed <= 0:
+            continue
+        severity_level = (
+            models.SystemLogLevel.CRITICAL if failed >= 5 else models.SystemLogLevel.ERROR
+        )
+        entity_type = str(stat.get("entity_type") or "sync")
+        message = f"{failed} eventos de sincronización fallidos para {entity_type}"
+        occurred_at = stat.get("latest_update")
+        alerts_map[("sync_failure", entity_type, message)] = schemas.GlobalReportAlert(
+            type="sync_failure",
+            level=severity_level,
+            module=entity_type,
+            message=message,
+            occurred_at=occurred_at,
+            reference=str(stat.get("entity_type") or "sync"),
+            count=failed,
+        )
+        if pending >= 25:
+            pending_message = f"{pending} eventos pendientes en {entity_type}"
+            alerts_map[("sync_failure", f"{entity_type}_pending", pending_message)] = (
+                schemas.GlobalReportAlert(
+                    type="sync_failure",
+                    level=models.SystemLogLevel.WARNING,
+                    module=entity_type,
+                    message=pending_message,
+                    occurred_at=occurred_at,
+                    reference=str(stat.get("entity_type") or "sync"),
+                    count=pending,
+                )
+            )
+
+    alerts = sorted(
+        alerts_map.values(),
+        key=lambda alert: (severity_weight(alert.level),
+                           alert.occurred_at or datetime.min),
+        reverse=True,
+    )
+
+    recent_logs = [schemas.SystemLogEntry.model_validate(
+        item) for item in logs]
+    recent_errors = [schemas.SystemErrorEntry.model_validate(
+        item) for item in errors]
+
+    return schemas.GlobalReportOverview(
+        generated_at=datetime.now(timezone.utc),
+        filters=filters,
+        totals=totals,
+        module_breakdown=module_breakdown,
+        severity_breakdown=severity_breakdown,
+        recent_logs=recent_logs,
+        recent_errors=recent_errors,
+        alerts=alerts,
+    )
+
+
+def build_global_report_dashboard(
+    db: Session,
+    *,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    module: str | None = None,
+    severity: models.SystemLogLevel | None = None,
+) -> schemas.GlobalReportDashboard:
+    module_filter = module.lower() if module else None
+    severity_filter = severity
+
+    date_expr = func.date(models.SystemLog.fecha)
+    activity_stmt = select(
+        date_expr.label("activity_date"),
+        func.sum(
+            case((models.SystemLog.nivel == models.SystemLogLevel.INFO, 1), else_=0)
+        ).label("info"),
+        func.sum(
+            case((models.SystemLog.nivel == models.SystemLogLevel.WARNING, 1), else_=0)
+        ).label("warning"),
+        func.sum(
+            case((models.SystemLog.nivel == models.SystemLogLevel.ERROR, 1), else_=0)
+        ).label("error"),
+        func.sum(
+            case((models.SystemLog.nivel == models.SystemLogLevel.CRITICAL, 1), else_=0)
+        ).label("critical"),
+    ).group_by(date_expr).order_by(date_expr)
+    activity_stmt = _apply_system_log_filters(
+        activity_stmt,
+        module=module_filter,
+        severity=severity_filter,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    activity_rows = db.execute(activity_stmt).all()
+
+    series_map: dict[date, dict[str, int]] = {}
+    for row in activity_rows:
+        raw_date = row.activity_date
+        if isinstance(raw_date, str):
+            activity_date = date.fromisoformat(raw_date)
+        else:
+            activity_date = raw_date
+        series_map[activity_date] = {
+            "info": int(row.info or 0),
+            "warning": int(row.warning or 0),
+            "error": int(row.error or 0),
+            "critical": int(row.critical or 0),
+            "system_errors": 0,
+        }
+
+    include_errors = severity_filter in (
+        None,
+        models.SystemLogLevel.ERROR,
+        models.SystemLogLevel.CRITICAL,
+    )
+    if include_errors:
+        error_date_expr = func.date(models.SystemError.fecha)
+        error_stmt = (
+            select(error_date_expr.label("activity_date"),
+                   func.count(models.SystemError.id))
+            .group_by(error_date_expr)
+            .order_by(error_date_expr)
+        )
+        error_stmt = _apply_system_error_filters(
+            error_stmt,
+            module=module_filter,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        for row in db.execute(error_stmt):
+            raw_date = row.activity_date
+            if isinstance(raw_date, str):
+                activity_date = date.fromisoformat(raw_date)
+            else:
+                activity_date = raw_date
+            entry = series_map.setdefault(
+                activity_date,
+                {"info": 0, "warning": 0, "error": 0,
+                    "critical": 0, "system_errors": 0},
+            )
+            entry["system_errors"] = int(row[1] or 0)
+
+    activity_series = [
+        schemas.GlobalReportSeriesPoint(
+            date=series_date,
+            info=values["info"],
+            warning=values["warning"],
+            error=values["error"],
+            critical=values["critical"],
+            system_errors=values["system_errors"],
+        )
+        for series_date, values in sorted(series_map.items())
+    ]
+
+    module_expr = models.SystemLog.modulo
+    module_stmt = (
+        select(module_expr, func.count(models.SystemLog.id).label("total"))
+        .group_by(module_expr)
+        .order_by(func.count(models.SystemLog.id).desc())
+    )
+    module_stmt = _apply_system_log_filters(
+        module_stmt,
+        module=module_filter,
+        severity=severity_filter,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    module_rows = db.execute(module_stmt).all()
+    module_distribution = [
+        schemas.GlobalReportBreakdownItem(
+            name=row[0], total=int(row.total or 0))
+        for row in module_rows
+    ]
+
+    level_expr = models.SystemLog.nivel
+    severity_stmt = (
+        select(level_expr, func.count(models.SystemLog.id).label("total"))
+        .group_by(level_expr)
+        .order_by(func.count(models.SystemLog.id).desc())
+    )
+    severity_stmt = _apply_system_log_filters(
+        severity_stmt,
+        module=module_filter,
+        severity=severity_filter,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    severity_rows = db.execute(severity_stmt).all()
+    severity_distribution = [
+        schemas.GlobalReportBreakdownItem(
+            name=(row[0].value if isinstance(
+                row[0], models.SystemLogLevel) else str(row[0])),
+            total=int(row.total or 0),
+        )
+        for row in severity_rows
+    ]
+
+    filters = schemas.GlobalReportFiltersState(
+        date_from=date_from,
+        date_to=date_to,
+        module=module_filter,
+        severity=severity_filter,
+    )
+
+    return schemas.GlobalReportDashboard(
+        generated_at=datetime.now(timezone.utc),
+        filters=filters,
+        activity_series=activity_series,
+        module_distribution=module_distribution,
+        severity_distribution=severity_distribution,
+    )

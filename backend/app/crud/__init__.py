@@ -1,5 +1,4 @@
 from ..crud_legacy import *
-from ..crud_legacy import _log_action
 from .users import *
 from .devices import *
 from .stores import *
@@ -10,3 +9,4 @@ from .customers import *
 from .sync import *
 from .sales import *
 from .purchases import *
+from .loyalty import *

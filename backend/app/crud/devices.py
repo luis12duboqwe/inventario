@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session, selectinload
 
 from .. import models, schemas
 from ..core.transactions import flush_session, transactional_session
-from .common import log_audit_event as _log_action, to_decimal
+from .common import to_decimal
+from .audit import log_audit_event as _log_action
 from .stores import recalculate_store_inventory_value
 from .warehouses import ensure_default_warehouse
 
@@ -335,6 +336,7 @@ def list_devices(
         stmt = stmt.offset(offset).limit(limit)
 
     return list(db.scalars(stmt))
+
 
 def _ensure_unique_identifiers(
     db: Session,

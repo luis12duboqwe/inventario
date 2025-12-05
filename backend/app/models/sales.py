@@ -84,7 +84,9 @@ class POSConfig(Base):
     require_customer: Mapped[bool] = mapped_column(Boolean, default=False)
     allow_discounts: Mapped[bool] = mapped_column(Boolean, default=True)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
 
     # Relaciones
@@ -392,7 +394,7 @@ class SaleReturn(Base):
         index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow)
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     sale: Mapped[Sale] = relationship("Sale", back_populates="returns")
     device: Mapped[Device] = relationship("Device")
@@ -442,7 +444,7 @@ class WarrantyAssignment(Base):
         String(120), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
     sale_item: Mapped[SaleItem] = relationship(
@@ -479,7 +481,7 @@ class WarrantyClaim(Base):
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     opened_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     resolved_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -543,12 +545,12 @@ class PriceListItem(Base):
         DateTime(timezone=True), nullable=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, nullable=False
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
 
@@ -605,12 +607,12 @@ class PriceList(Base):
         DateTime(timezone=True), nullable=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, nullable=False
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
 
@@ -718,7 +720,7 @@ class CashRegisterSession(Base):
         Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
     )
     opened_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow)
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     closed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True)
 
@@ -774,10 +776,12 @@ class RMARequest(Base):
     reason: Mapped[str] = mapped_column(String(255), nullable=False)
     resolution_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
 
     sale_return: Mapped[SaleReturn | None] = relationship(
@@ -831,7 +835,7 @@ class CashSession(Base):
         Integer, ForeignKey("usuarios.id_usuario"), nullable=True
     )
     opened_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, nullable=False
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
     )
     closed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -867,7 +871,7 @@ class CashEntry(Base):
         Integer, ForeignKey("usuarios.id_usuario"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, nullable=False
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
     )
 
     # Relaciones

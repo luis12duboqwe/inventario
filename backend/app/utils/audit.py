@@ -166,25 +166,29 @@ def identify_persistent_critical_alerts(
         severity = classify_severity(log.action or "", log.details)
         if severity != "critical":
             continue
+
+        created_at = log.created_at
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+
         key = (log.entity_type, log.entity_id)
         entry = aggregates.get(key)
         if entry is None:
             entry = {
                 "entity_type": log.entity_type,
                 "entity_id": log.entity_id,
-                "first_seen": log.created_at,
-                "last_seen": log.created_at,
+                "first_seen": created_at,
+                "last_seen": created_at,
                 "occurrences": 0,
                 "latest_action": log.action,
                 "latest_details": log.details,
             }
             aggregates[key] = entry
         entry["occurrences"] += 1
-        if log.created_at > entry["last_seen"]:
-            entry["last_seen"] = log.created_at
+        if created_at > entry["last_seen"]:
+            entry["last_seen"] = created_at
             entry["latest_action"] = log.action
             entry["latest_details"] = log.details
-
     candidates: list[dict[str, object]] = []
     for entry in aggregates.values():
         if entry["occurrences"] < min_occurrences:

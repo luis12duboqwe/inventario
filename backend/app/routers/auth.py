@@ -276,7 +276,7 @@ def login_with_jwt(
         db, user, session_token=session.session_token)
     refresh_token, refresh_expiration = create_refresh_token(
         subject=user.username,
-        session_token=session.session_token,
+        session_token=session_token,
         claims=claims,
         expires_days=settings.refresh_token_expire_days,
     )
@@ -439,14 +439,19 @@ def refresh_access_token(
             detail="Usuario inactivo.",
         )
     claims = _build_pack28_claims(user)
+
+    # Rotar token de sesión para seguridad (el anterior era hash, necesitamos plaintext nuevo)
+    new_session_token = secrets.token_urlsafe(48)
+    crud.update_active_session_token(db, session, new_session_token)
+
     access_token, _, _ = create_access_token(
         subject=user.username,
-        session_token=session.session_token,
+        session_token=new_session_token,
         claims=claims,
     )
     new_refresh_token, refresh_expires = create_refresh_token(
         subject=user.username,
-        session_token=session.session_token,
+        session_token=new_session_token,
         claims=claims,
         expires_days=settings.refresh_token_expire_days,
     )
@@ -554,10 +559,22 @@ def request_password_reset(
 )
 def reset_password(payload: schemas.PasswordResetConfirm, db: Session = Depends(get_db)):
     record = crud.get_password_reset_token(db, payload.token)
+
+    is_expired = False
+    if record:
+        expires_at = record.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        else:
+            expires_at = expires_at.astimezone(timezone.utc)
+
+        if expires_at <= datetime.now(timezone.utc):
+            is_expired = True
+
     if (
         record is None
         or record.used_at is not None
-        or record.expires_at <= datetime.now(timezone.utc)
+        or is_expired
     ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
