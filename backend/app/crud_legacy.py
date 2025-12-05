@@ -161,21 +161,7 @@ _PERSISTENT_ALERTS_CACHE: TTLCache[list[dict[str, object]]] = TTLCache(
 )
 
 
-def invalidate_inventory_movements_cache() -> None:
-    """Limpia la caché de reportes de movimientos de inventario."""
-
-    _INVENTORY_MOVEMENTS_CACHE.clear()
-
-
-def token_filter(column: Any, candidate: str) -> ColumnElement[bool]:
-    protected = token_protection.protect_token(candidate)
-    return or_(column == candidate, column == protected)
-
-
-
-
-
-def _persistent_alerts_cache_key(
+def persistent_alerts_cache_key(
     *,
     threshold_minutes: int,
     min_occurrences: int,
@@ -185,13 +171,7 @@ def _persistent_alerts_cache_key(
     return (threshold_minutes, min_occurrences, lookback_hours, limit)
 
 
-def invalidate_persistent_audit_alerts_cache() -> None:
-    """Limpia la cache en memoria de recordatorios críticos."""
-
-    _PERSISTENT_ALERTS_CACHE.clear()
-
-
-def _create_system_log(
+def create_system_log(
     db: Session,
     *,
     audit_log: models.AuditLog | None,
@@ -221,7 +201,7 @@ def _create_system_log(
 
 
 
-def _inventory_movements_report_cache_key(
+def inventory_movements_report_cache_key(
     store_filter: set[int] | None,
     start_dt: datetime,
     end_dt: datetime,
@@ -288,7 +268,7 @@ def log_audit_event(
                 usuario = user.username
         module = resolve_system_module(entity_type)
         level = map_system_level(action, description_text)
-        _create_system_log(
+        create_system_log(
             db,
             audit_log=log,
             usuario=usuario,
@@ -325,7 +305,7 @@ def register_system_error(
         )
         db.add(error)
         flush_session(db)
-        _create_system_log(
+        create_system_log(
             db,
             audit_log=None,
             usuario=usuario,
@@ -394,31 +374,6 @@ def list_system_errors(
     if date_to:
         statement = statement.where(models.SystemError.fecha <= date_to)
     return list(db.scalars(statement))
-
-
-def purge_system_logs(
-    db: Session,
-    *,
-    retention_days: int = 180,
-    keep_critical: bool = True,
-    reference: datetime | None = None,
-) -> int:
-    """Purga logs del sistema anteriores al cutoff de retención.
-
-    Preserva CRITICAL si keep_critical=True.
-    Devuelve cantidad eliminada.
-    """
-    now = reference or datetime.now(timezone.utc)
-    cutoff = now - timedelta(days=retention_days)
-    query = db.query(models.SystemLog).filter(models.SystemLog.fecha < cutoff)
-    if keep_critical:
-        query = query.filter(models.SystemLog.nivel !=
-                             models.SystemLogLevel.CRITICAL)
-    deleted = query.delete(synchronize_session=False)
-    db.commit()
-    return int(deleted or 0)
-
-
 
 
 def build_global_report_overview(
@@ -2100,7 +2055,7 @@ def get_persistent_audit_alerts(
 
     fetch_limit = limit + offset
 
-    cache_key = _persistent_alerts_cache_key(
+    cache_key = persistent_alerts_cache_key(
         threshold_minutes=threshold_minutes,
         min_occurrences=min_occurrences,
         lookback_hours=lookback_hours,
@@ -2308,7 +2263,7 @@ ROLE_PRIORITY: dict[str, int] = {
 }
 
 
-def _select_primary_role(role_names: Iterable[str]) -> str:
+def select_primary_role(role_names: Iterable[str]) -> str:
     """Determina el rol primario a persistir en la tabla de usuarios."""
 
     ordered_roles = [role for role in role_names if role in ROLE_PRIORITY]
@@ -2319,7 +2274,7 @@ def _select_primary_role(role_names: Iterable[str]) -> str:
 
 
 
-def _build_role_assignments(
+def build_role_assignments(
     db: Session, role_names: Iterable[str]
 ) -> list[models.UserRole]:
     """Crea las asociaciones de roles a partir de los nombres únicos provistos."""
@@ -2345,7 +2300,7 @@ def create_user(
     reason: str | None = None,
 ) -> models.User:
     normalized_roles = normalize_role_names(role_names)
-    primary_role = _select_primary_role(normalized_roles)
+    primary_role = select_primary_role(normalized_roles)
     if primary_role not in normalized_roles:
         normalized_roles.append(primary_role)
     store_id: int | None = None
@@ -2371,7 +2326,7 @@ def create_user(
         except IntegrityError as exc:
             raise ValueError("user_already_exists") from exc
 
-        assignments = _build_role_assignments(db, normalized_roles)
+        assignments = build_role_assignments(db, normalized_roles)
         user.roles.extend(assignments)
 
         log_details: dict[str, object] = {
@@ -2524,7 +2479,7 @@ def set_user_roles(
     reason: str | None = None,
 ) -> models.User:
     normalized_roles = normalize_role_names(role_names)
-    primary_role = _select_primary_role(normalized_roles)
+    primary_role = select_primary_role(normalized_roles)
     if primary_role not in normalized_roles:
         normalized_roles.append(primary_role)
     log_payload: dict[str, object] = {"roles": sorted(normalized_roles)}
@@ -2534,7 +2489,7 @@ def set_user_roles(
     with transactional_session(db):
         user.roles.clear()
         flush_session(db)
-        assignments = _build_role_assignments(db, normalized_roles)
+        assignments = build_role_assignments(db, normalized_roles)
         user.roles.extend(assignments)
 
         user.rol = primary_role
@@ -8798,7 +8753,7 @@ def get_inventory_movements_report(
     store_filter = normalize_store_ids(store_ids)
     start_dt, end_dt = normalize_date_range(date_from, date_to)
 
-    cache_key = _inventory_movements_report_cache_key(
+    cache_key = inventory_movements_report_cache_key(
         store_filter, start_dt, end_dt, movement_type, limit, offset
     )
     cached_report = _INVENTORY_MOVEMENTS_CACHE.get(cache_key)
