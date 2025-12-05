@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Any, Optional, List, Dict
+from typing import TYPE_CHECKING, Any, Optional
 from datetime import datetime, date
 from decimal import Decimal
 import enum
@@ -387,12 +387,12 @@ class PurchaseReturn(Base):
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     reason: Mapped[str] = mapped_column(String(255), nullable=False)
     reason_category: Mapped[ReturnReasonCategory] = mapped_column(
-        RETURN_REASON_CATEGORY_ENUM.copy(),
+        Enum(ReturnReasonCategory, name="purchase_return_reason_category"),
         nullable=False,
         default=ReturnReasonCategory.OTRO,
     )
     disposition: Mapped[ReturnDisposition] = mapped_column(
-        RETURN_DISPOSITION_ENUM.copy(),
+        Enum(ReturnDisposition, name="purchase_return_disposition"),
         nullable=False,
         default=ReturnDisposition.DEFECTUOSO,
     )

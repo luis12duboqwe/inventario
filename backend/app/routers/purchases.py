@@ -1,7 +1,7 @@
 """Endpoints para la gestión de órdenes de compra."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from io import BytesIO
 
@@ -314,7 +314,7 @@ def export_purchase_vendors_csv_endpoint(
         estado=estado_value,
     )
     metadata = schemas.BinaryFileResponse(
-        filename=f"proveedores_compras_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv",
+        filename=f"proveedores_compras_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv",
         media_type="text/csv",
     )
     response = Response(
@@ -464,7 +464,7 @@ def export_purchase_records_pdf_endpoint(
     )
     pdf_bytes = purchase_reports.render_purchase_report_pdf(report)
     metadata = schemas.BinaryFileResponse(
-        filename=f"compras_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf",
+        filename=f"compras_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.pdf",
         media_type="application/pdf",
     )
     return StreamingResponse(
@@ -500,7 +500,7 @@ def export_purchase_records_excel_endpoint(
     )
     excel_bytes = purchase_reports.render_purchase_report_excel(report)
     metadata = schemas.BinaryFileResponse(
-        filename=f"compras_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx",
+        filename=f"compras_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.xlsx",
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
     return StreamingResponse(

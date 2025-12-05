@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 from typing import Mapping, Sequence
 
@@ -112,7 +112,7 @@ def build_transfer_report(
     )
 
     return schemas.TransferReport(
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         filters=filters,
         totals=totals,
         items=items,
@@ -129,7 +129,7 @@ def render_transfer_report_pdf(report: schemas.TransferReport) -> bytes:
         parent=styles["Heading1"],
         textColor=ACCENT,
     )
-    now_label = datetime.utcnow().strftime("%d/%m/%Y %H:%M UTC")
+    now_label = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
 
     elements: list = [  # type: ignore[var-annotated]
         Paragraph("Softmobile 2025 — Transferencias entre sucursales", heading_style),

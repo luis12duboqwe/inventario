@@ -22,7 +22,6 @@ from uuid import uuid4
 
 from pydantic import ValidationError
 
-from passlib.context import CryptContext
 from sqlalchemy import and_, case, cast, desc, func, literal, or_, select, tuple_, String
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -49,267 +48,120 @@ from .services import (
 from .services.purchases import assign_supplier_batch
 from .services.sales import consume_supplier_batch
 from .services.inventory import calculate_inventory_valuation
+from .services.inventory_validation import (
+    ensure_unique_identifiers,
+    ensure_unique_identifier_payload,
+    validate_device_numeric_fields,
+)
+from .core.security import verify_supervisor_pin_hash
 from .config import settings
 from .core.settings import inventory_alert_settings, return_policy_settings
 from . import security_tokens as token_protection
 from .utils import audit as audit_utils
 from .utils import audit_trail as audit_trail_utils
 from .utils.cache import TTLCache
+from .utils.decimal_helpers import (
+    to_decimal,
+    quantize_currency,
+    quantize_points,
+    quantize_rate,
+    format_currency,
+    calculate_weighted_average_cost,
+)
+from .utils.date_helpers import normalize_date_range
+from .utils.inventory_helpers import (
+    device_value,
+    movement_value,
+    recalculate_store_inventory_value,
+    device_category_expr,
+)
+from .utils.sync_helpers import (
+    resolve_outbox_priority,
+    priority_weight,
+    resolve_system_module,
+    map_system_level,
+    OUTBOX_PRIORITY_MAP,
+    OUTBOX_PRIORITY_ORDER,
+    SYSTEM_MODULE_MAP,
+)
+from .utils.privacy_helpers import (
+    mask_email,
+    mask_phone,
+    mask_person_name,
+    mask_generic_text,
+    apply_customer_anonymization,
+)
+from .utils.customer_helpers import (
+    normalize_customer_status,
+    normalize_customer_type,
+    normalize_customer_segment_category,
+    normalize_customer_tags,
+    normalize_rtn,
+    generate_customer_tax_id_placeholder,
+    normalize_customer_tax_id,
+    is_tax_id_integrity_error,
+    ensure_non_negative_decimal,
+    ensure_positive_decimal,
+    ensure_discount_percentage,
+    ALLOWED_CUSTOMER_STATUSES,
+    ALLOWED_CUSTOMER_TYPES,
+    RTN_CANONICAL_TEMPLATE,
+)
+from .utils.analytics_helpers import (
+    linear_regression,
+    project_linear_sum,
+    user_display_name,
+)
+from .utils.json_helpers import (
+    merge_defaults,
+    normalize_hardware_settings,
+    history_to_json,
+    contacts_to_json,
+    products_to_json,
+    last_history_timestamp,
+    append_customer_history,
+)
+from .utils.normalization_helpers import (
+    normalize_store_ids,
+    normalize_optional_note,
+    normalize_movement_comment,
+    normalize_role_names,
+    normalize_store_status,
+    normalize_store_code,
+    normalize_reservation_reason,
+)
+from .utils.comment_builders import (
+    build_transfer_movement_comment,
+    build_purchase_movement_comment,
+    build_sale_movement_comment,
+    build_sale_return_comment,
+)
+from .utils.misc_helpers import (
+    get_supplier_by_name,
+    recalculate_sale_price,
+    severity_weight,
+)
+from .utils.payload_serializers import (
+    customer_payload,
+    customer_privacy_request_payload,
+    device_sync_payload,
+    inventory_movement_payload,
+    purchase_order_payload,
+    transfer_order_payload,
+)
 
 logger = core_logger.bind(component=__name__)
-
-_PIN_CONTEXT = CryptContext(
-    schemes=["pbkdf2_sha256", "bcrypt_sha256", "bcrypt"], deprecated="auto"
-)
 
 _INVENTORY_MOVEMENTS_CACHE: TTLCache[schemas.InventoryMovementsReport] = TTLCache(
     ttl_seconds=60.0
 )
 
-
-def invalidate_inventory_movements_cache() -> None:
-    """Limpia la caché de reportes de movimientos de inventario."""
-
-    _INVENTORY_MOVEMENTS_CACHE.clear()
-
-
-def _verify_supervisor_pin_hash(hashed: str, candidate: str) -> bool:
-    try:
-        return _PIN_CONTEXT.verify(candidate, hashed)
-    except ValueError:
-        return False
-
-
-def token_filter(column: Any, candidate: str) -> ColumnElement[bool]:
-    protected = token_protection.protect_token(candidate)
-    return or_(column == candidate, column == protected)
-
-
-def _ensure_unique_identifiers(
-    db: Session,
-    *,
-    imei: str | None,
-    serial: str | None,
-    exclude_device_id: int | None = None,
-) -> None:
-    if imei:
-        statement = select(models.Device).where(models.Device.imei == imei)
-        if exclude_device_id:
-            statement = statement.where(models.Device.id != exclude_device_id)
-        if db.scalars(statement).first() is not None:
-            raise ValueError("device_identifier_conflict")
-        identifier_statement = select(models.DeviceIdentifier).where(
-            or_(
-                models.DeviceIdentifier.imei_1 == imei,
-                models.DeviceIdentifier.imei_2 == imei,
-            )
-        )
-        if exclude_device_id:
-            identifier_statement = identifier_statement.where(
-                models.DeviceIdentifier.producto_id != exclude_device_id
-            )
-        if db.scalars(identifier_statement).first() is not None:
-            raise ValueError("device_identifier_conflict")
-    if serial:
-        statement = select(models.Device).where(models.Device.serial == serial)
-        if exclude_device_id:
-            statement = statement.where(models.Device.id != exclude_device_id)
-        if db.scalars(statement).first() is not None:
-            raise ValueError("device_identifier_conflict")
-        identifier_statement = select(models.DeviceIdentifier).where(
-            models.DeviceIdentifier.numero_serie == serial
-        )
-        if exclude_device_id:
-            identifier_statement = identifier_statement.where(
-                models.DeviceIdentifier.producto_id != exclude_device_id
-            )
-        if db.scalars(identifier_statement).first() is not None:
-            raise ValueError("device_identifier_conflict")
-
-
-def _validate_device_numeric_fields(values: dict[str, Any]) -> None:
-    quantity = values.get("quantity")
-    if quantity is not None:
-        try:
-            parsed_quantity = int(quantity)
-        except (TypeError, ValueError):
-            raise ValueError("device_invalid_quantity")
-        if parsed_quantity < 0:
-            raise ValueError("device_invalid_quantity")
-
-    raw_cost = values.get("costo_unitario")
-    if raw_cost is not None:
-        try:
-            parsed_cost = _to_decimal(raw_cost)
-        except (ArithmeticError, TypeError, ValueError):
-            raise ValueError("device_invalid_cost")
-        if parsed_cost < 0:
-            raise ValueError("device_invalid_cost")
-
-
-def _ensure_unique_identifier_payload(
-    db: Session,
-    *,
-    imei_1: str | None,
-    imei_2: str | None,
-    numero_serie: str | None,
-    exclude_device_id: int | None = None,
-    exclude_identifier_id: int | None = None,
-) -> None:
-    imei_values = {value for value in (imei_1, imei_2) if value}
-    for imei in imei_values:
-        statement = select(models.Device).where(models.Device.imei == imei)
-        if exclude_device_id:
-            statement = statement.where(models.Device.id != exclude_device_id)
-        if db.scalars(statement).first() is not None:
-            raise ValueError("device_identifier_conflict")
-
-        identifier_statement = select(models.DeviceIdentifier).where(
-            or_(
-                models.DeviceIdentifier.imei_1 == imei,
-                models.DeviceIdentifier.imei_2 == imei,
-            )
-        )
-        if exclude_device_id:
-            identifier_statement = identifier_statement.where(
-                models.DeviceIdentifier.producto_id != exclude_device_id
-            )
-        if exclude_identifier_id:
-            identifier_statement = identifier_statement.where(
-                models.DeviceIdentifier.id != exclude_identifier_id
-            )
-        if db.scalars(identifier_statement).first() is not None:
-            raise ValueError("device_identifier_conflict")
-
-    if numero_serie:
-        statement = select(models.Device).where(
-            models.Device.serial == numero_serie)
-        if exclude_device_id:
-            statement = statement.where(models.Device.id != exclude_device_id)
-        if db.scalars(statement).first() is not None:
-            raise ValueError("device_identifier_conflict")
-
-        identifier_statement = select(models.DeviceIdentifier).where(
-            models.DeviceIdentifier.numero_serie == numero_serie
-        )
-        if exclude_device_id:
-            identifier_statement = identifier_statement.where(
-                models.DeviceIdentifier.producto_id != exclude_device_id
-            )
-        if exclude_identifier_id:
-            identifier_statement = identifier_statement.where(
-                models.DeviceIdentifier.id != exclude_identifier_id
-            )
-        if db.scalars(identifier_statement).first() is not None:
-            raise ValueError("device_identifier_conflict")
-
-
-def _to_decimal(value: Decimal | float | int | None) -> Decimal:
-    if value is None:
-        return Decimal("0")
-    if isinstance(value, Decimal):
-        return value
-    return Decimal(str(value))
-
-
-def _get_supplier_by_name(
-    db: Session, supplier_name: str | None
-) -> models.Supplier | None:
-    if not supplier_name:
-        return None
-    normalized = supplier_name.strip().lower()
-    if not normalized:
-        return None
-    statement = (
-        select(models.Supplier)
-        .where(func.lower(models.Supplier.name) == normalized)
-        .limit(1)
-    )
-    return db.scalars(statement).first()
-
-
-def _quantize_currency(value: Decimal) -> Decimal:
-    return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-
-def _quantize_points(value: Decimal) -> Decimal:
-    """Normaliza valores de puntos de lealtad con dos decimales."""
-
-    return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-
-def _quantize_rate(value: Decimal) -> Decimal:
-    """Normaliza tasas de acumulación y canje a cuatro decimales."""
-
-    return value.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
-
-
-def _format_currency(value: Decimal | float | int) -> str:
-    normalized = _quantize_currency(_to_decimal(value))
-    return f"{normalized:.2f}"
-
-
-def _calculate_weighted_average_cost(
-    current_quantity: int,
-    current_cost: Decimal,
-    incoming_quantity: int,
-    incoming_cost: Decimal,
-) -> Decimal:
-    if incoming_quantity <= 0:
-        return _to_decimal(current_cost)
-    existing_quantity = _to_decimal(current_quantity)
-    new_quantity = existing_quantity + _to_decimal(incoming_quantity)
-    if new_quantity <= Decimal("0"):
-        return Decimal("0")
-    existing_total = _to_decimal(current_cost) * existing_quantity
-    incoming_total = _to_decimal(incoming_cost) * \
-        _to_decimal(incoming_quantity)
-    return (existing_total + incoming_total) / new_quantity
-
-
-def _normalize_date_range(
-    date_from: date | datetime | None, date_to: date | datetime | None
-) -> tuple[datetime, datetime]:
-    now = datetime.utcnow()
-
-    if isinstance(date_from, datetime):
-        start_dt = date_from
-        if start_dt.time() == datetime.min.time():
-            start_dt = start_dt.replace(
-                hour=0, minute=0, second=0, microsecond=0)
-    elif isinstance(date_from, date):
-        start_dt = datetime.combine(date_from, datetime.min.time())
-    else:
-        start_dt = now - timedelta(days=30)
-
-    if isinstance(date_to, datetime):
-        end_dt = date_to
-        if end_dt.time() == datetime.min.time():
-            end_dt = end_dt.replace(
-                hour=23, minute=59, second=59, microsecond=999999)
-    elif isinstance(date_to, date):
-        end_dt = datetime.combine(date_to, datetime.max.time())
-    else:
-        end_dt = now
-
-    if start_dt > end_dt:
-        start_dt, end_dt = end_dt, start_dt
-
-    # Salvaguarda adicional: si tras reordenar el rango el extremo superior
-    # quedó en inicio de día (00:00:00), amplíalo al final del día para no
-    # perder movimientos registrados durante la jornada destino.
-    if end_dt.time() == datetime.min.time():
-        end_dt = end_dt.replace(
-            hour=23, minute=59, second=59, microsecond=999999)
-
-    return start_dt, end_dt
-
-
 _PERSISTENT_ALERTS_CACHE: TTLCache[list[dict[str, object]]] = TTLCache(
-    ttl_seconds=60.0)
+    ttl_seconds=300.0
+)
 
 
-def _persistent_alerts_cache_key(
+def persistent_alerts_cache_key(
     *,
     threshold_minutes: int,
     min_occurrences: int,
@@ -319,160 +171,7 @@ def _persistent_alerts_cache_key(
     return (threshold_minutes, min_occurrences, lookback_hours, limit)
 
 
-def invalidate_persistent_audit_alerts_cache() -> None:
-    """Limpia la cache en memoria de recordatorios críticos."""
-
-    _PERSISTENT_ALERTS_CACHE.clear()
-
-
-def _user_display_name(user: models.User | None) -> str | None:
-    if user is None:
-        return None
-    if user.full_name and user.full_name.strip():
-        return user.full_name.strip()
-    if user.username and user.username.strip():
-        return user.username.strip()
-    return None
-
-
-def _linear_regression(
-    points: Sequence[tuple[float, float]]
-) -> tuple[float, float, float]:
-    if not points:
-        return 0.0, 0.0, 0.0
-    if len(points) == 1:
-        return 0.0, points[0][1], 0.0
-
-    n = float(len(points))
-    sum_x = sum(point[0] for point in points)
-    sum_y = sum(point[1] for point in points)
-    sum_xy = sum(point[0] * point[1] for point in points)
-    sum_xx = sum(point[0] ** 2 for point in points)
-    sum_yy = sum(point[1] ** 2 for point in points)
-
-    denominator = (n * sum_xx) - (sum_x**2)
-    if math.isclose(denominator, 0.0):
-        slope = 0.0
-        intercept = sum_y / n if n else 0.0
-    else:
-        slope = ((n * sum_xy) - (sum_x * sum_y)) / denominator
-        intercept = (sum_y - (slope * sum_x)) / n
-
-    denominator_r = ((n * sum_xx) - (sum_x**2)) * ((n * sum_yy) - (sum_y**2))
-    if denominator_r <= 0 or math.isclose(denominator_r, 0.0):
-        r_squared = 0.0
-    else:
-        numerator = ((n * sum_xy) - (sum_x * sum_y)) ** 2
-        r_squared = numerator / denominator_r
-
-    return slope, intercept, r_squared
-
-
-def _project_linear_sum(
-    slope: float,
-    intercept: float,
-    start_index: int,
-    horizon: int,
-) -> float:
-    total = 0.0
-    for offset in range(horizon):
-        x_value = float(start_index + offset)
-        estimate = slope * x_value + intercept
-        total += max(0.0, estimate)
-    return total
-
-
-_OUTBOX_PRIORITY_MAP: dict[str, models.SyncOutboxPriority] = {
-    "sale": models.SyncOutboxPriority.HIGH,
-    "transfer_order": models.SyncOutboxPriority.HIGH,
-    "purchase_order": models.SyncOutboxPriority.NORMAL,
-    "repair_order": models.SyncOutboxPriority.NORMAL,
-    "customer": models.SyncOutboxPriority.NORMAL,
-    "customer_privacy_request": models.SyncOutboxPriority.LOW,
-    "customer_ledger_entry": models.SyncOutboxPriority.NORMAL,
-    "supplier_ledger_entry": models.SyncOutboxPriority.NORMAL,
-    "pos_config": models.SyncOutboxPriority.NORMAL,
-    "supplier": models.SyncOutboxPriority.NORMAL,
-    "cash_session": models.SyncOutboxPriority.NORMAL,
-    "device": models.SyncOutboxPriority.NORMAL,
-    "rma_request": models.SyncOutboxPriority.NORMAL,
-    "inventory": models.SyncOutboxPriority.HIGH,
-    "store": models.SyncOutboxPriority.LOW,
-    "global": models.SyncOutboxPriority.LOW,
-    "backup": models.SyncOutboxPriority.LOW,
-    "pos_draft": models.SyncOutboxPriority.LOW,
-}
-
-_OUTBOX_PRIORITY_ORDER: dict[models.SyncOutboxPriority, int] = {
-    models.SyncOutboxPriority.HIGH: 0,
-    models.SyncOutboxPriority.NORMAL: 1,
-    models.SyncOutboxPriority.LOW: 2,
-}
-
-_SYSTEM_MODULE_MAP: dict[str, str] = {
-    "sale": "ventas",
-    "pos": "ventas",
-    "purchase": "compras",
-    "inventory": "inventario",
-    "device": "inventario",
-    "supplier_batch": "inventario",
-    "inventory_adjustment": "ajustes",
-    "adjustment": "ajustes",
-    "backup": "respaldos",
-    "config_parameter": "configuracion",
-    "config_rate": "configuracion",
-    "config_template": "configuracion",
-    "config_sync": "configuracion",
-    "user": "usuarios",
-    "role": "usuarios",
-    "auth": "usuarios",
-    "sync_session": "sincronizacion",
-    "store": "inventario",
-    "pos_fiscal_print": "ventas",
-    "customer": "clientes",
-    "customer_privacy_request": "clientes",
-    "supplier_ledger_entry": "proveedores",
-    "supplier": "proveedores",
-    "transfer_order": "inventario",
-    "purchase_order": "compras",
-    "purchase_vendor": "compras",
-    "cash_session": "ventas",
-}
-
-
-def _resolve_outbox_priority(entity_type: str, priority: models.SyncOutboxPriority | None) -> models.SyncOutboxPriority:
-    if priority is not None:
-        return priority
-    normalized = (entity_type or "").lower()
-    return _OUTBOX_PRIORITY_MAP.get(normalized, models.SyncOutboxPriority.NORMAL)
-
-
-def _priority_weight(priority: models.SyncOutboxPriority | None) -> int:
-    if priority is None:
-        return _OUTBOX_PRIORITY_ORDER[models.SyncOutboxPriority.NORMAL]
-    return _OUTBOX_PRIORITY_ORDER.get(priority, 1)
-
-
-def _resolve_system_module(entity_type: str) -> str:
-    normalized = (entity_type or "").lower()
-    for prefix, module in sorted(
-        _SYSTEM_MODULE_MAP.items(), key=lambda item: len(item[0]), reverse=True
-    ):
-        if normalized.startswith(prefix):
-            return module
-    return "general"
-
-
-def _map_system_level(action: str, details: str | None) -> models.SystemLogLevel:
-    severity = audit_utils.classify_severity(action or "", details)
-    if severity == "critical":
-        return models.SystemLogLevel.CRITICAL
-    if severity == "warning":
-        return models.SystemLogLevel.WARNING
-    return models.SystemLogLevel.INFO
-
-
-def _create_system_log(
+def create_system_log(
     db: Session,
     *,
     audit_log: models.AuditLog | None,
@@ -490,7 +189,7 @@ def _create_system_log(
             modulo=normalized_module,
             accion=action,
             descripcion=description,
-            fecha=datetime.utcnow(),
+            fecha=datetime.now(timezone.utc),
             nivel=level,
             ip_origen=ip_address,
             audit_log=audit_log,
@@ -500,24 +199,9 @@ def _create_system_log(
     return entry
 
 
-def _recalculate_sale_price(device: models.Device) -> None:
-    base_cost = _to_decimal(device.costo_unitario)
-    margin = _to_decimal(device.margen_porcentaje)
-    sale_factor = Decimal("1") + (margin / Decimal("100"))
-    recalculated = (
-        base_cost * sale_factor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    device.unit_price = recalculated
-    device.precio_venta = recalculated
 
 
-def _normalize_store_ids(store_ids: Iterable[int] | None) -> set[int] | None:
-    if not store_ids:
-        return None
-    normalized = {int(store_id) for store_id in store_ids if int(store_id) > 0}
-    return normalized or None
-
-
-def _inventory_movements_report_cache_key(
+def inventory_movements_report_cache_key(
     store_filter: set[int] | None,
     start_dt: datetime,
     end_dt: datetime,
@@ -582,9 +266,9 @@ def log_audit_event(
             user = db.get(models.User, performed_by_id)
             if user is not None:
                 usuario = user.username
-        module = _resolve_system_module(entity_type)
-        level = _map_system_level(action, description_text)
-        _create_system_log(
+        module = resolve_system_module(entity_type)
+        level = map_system_level(action, description_text)
+        create_system_log(
             db,
             audit_log=log,
             usuario=usuario,
@@ -616,12 +300,12 @@ def register_system_error(
             mensaje=mensaje,
             stack_trace=stack_trace,
             modulo=normalized_module,
-            fecha=datetime.utcnow(),
+            fecha=datetime.now(timezone.utc),
             usuario=usuario,
         )
         db.add(error)
         flush_session(db)
-        _create_system_log(
+        create_system_log(
             db,
             audit_log=None,
             usuario=usuario,
@@ -690,74 +374,6 @@ def list_system_errors(
     if date_to:
         statement = statement.where(models.SystemError.fecha <= date_to)
     return list(db.scalars(statement))
-
-
-def _apply_system_log_filters(
-    statement,
-    *,
-    module: str | None,
-    severity: models.SystemLogLevel | None,
-    date_from: datetime | None,
-    date_to: datetime | None,
-):
-    if module:
-        statement = statement.where(models.SystemLog.modulo == module)
-    if severity:
-        statement = statement.where(models.SystemLog.nivel == severity)
-    if date_from:
-        statement = statement.where(models.SystemLog.fecha >= date_from)
-    if date_to:
-        statement = statement.where(models.SystemLog.fecha <= date_to)
-    return statement
-
-
-def _apply_system_error_filters(
-    statement,
-    *,
-    module: str | None,
-    date_from: datetime | None,
-    date_to: datetime | None,
-):
-    if module:
-        statement = statement.where(models.SystemError.modulo == module)
-    if date_from:
-        statement = statement.where(models.SystemError.fecha >= date_from)
-    if date_to:
-        statement = statement.where(models.SystemError.fecha <= date_to)
-    return statement
-
-
-def purge_system_logs(
-    db: Session,
-    *,
-    retention_days: int = 180,
-    keep_critical: bool = True,
-    reference: datetime | None = None,
-) -> int:
-    """Purga logs del sistema anteriores al cutoff de retención.
-
-    Preserva CRITICAL si keep_critical=True.
-    Devuelve cantidad eliminada.
-    """
-    now = reference or datetime.utcnow()
-    cutoff = now - timedelta(days=retention_days)
-    query = db.query(models.SystemLog).filter(models.SystemLog.fecha < cutoff)
-    if keep_critical:
-        query = query.filter(models.SystemLog.nivel !=
-                             models.SystemLogLevel.CRITICAL)
-    deleted = query.delete(synchronize_session=False)
-    db.commit()
-    return int(deleted or 0)
-
-
-def _severity_weight(level: models.SystemLogLevel) -> int:
-    if level == models.SystemLogLevel.CRITICAL:
-        return 3
-    if level == models.SystemLogLevel.ERROR:
-        return 2
-    if level == models.SystemLogLevel.WARNING:
-        return 1
-    return 0
 
 
 def build_global_report_overview(
@@ -944,7 +560,7 @@ def build_global_report_overview(
         existing = alerts_map.get(key)
         if existing:
             existing.count += 1
-            if _severity_weight(log.nivel) > _severity_weight(existing.level):
+            if severity_weight(log.nivel) > severity_weight(existing.level):
                 existing.level = log.nivel
             if existing.occurred_at is None or (log.fecha and log.fecha > existing.occurred_at):
                 existing.occurred_at = log.fecha
@@ -1019,7 +635,7 @@ def build_global_report_overview(
 
     alerts = sorted(
         alerts_map.values(),
-        key=lambda alert: (_severity_weight(alert.level),
+        key=lambda alert: (severity_weight(alert.level),
                            alert.occurred_at or datetime.min),
         reverse=True,
     )
@@ -1030,7 +646,7 @@ def build_global_report_overview(
         item) for item in errors]
 
     return schemas.GlobalReportOverview(
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         filters=filters,
         totals=totals,
         module_breakdown=module_breakdown,
@@ -1187,7 +803,7 @@ def build_global_report_dashboard(
     )
 
     return schemas.GlobalReportDashboard(
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         filters=filters,
         activity_series=activity_series,
         module_distribution=module_distribution,
@@ -1196,1075 +812,7 @@ def build_global_report_dashboard(
 
 
 # // [PACK29-*] Filtros comunes para reportes de ventas por rango y sucursal
-def _apply_sales_base_filters(
-    statement,
-    *,
-    date_from: datetime | None,
-    date_to: datetime | None,
-    store_id: int | None,
-):
-    statement = statement.where(func.upper(models.Sale.status) != "CANCELADA")
-    if store_id is not None:
-        statement = statement.where(models.Sale.store_id == store_id)
-    if date_from is not None:
-        statement = statement.where(models.Sale.created_at >= date_from)
-    if date_to is not None:
-        statement = statement.where(models.Sale.created_at < date_to)
-    return statement
-
-
-# // [PACK29-*] Totales de devoluciones para reutilizar en reportes de ventas
-def _sales_returns_totals(
-    db: Session,
-    *,
-    date_from: datetime | None,
-    date_to: datetime | None,
-    store_id: int | None,
-):
-    returns_stmt = (
-        select(
-            func.coalesce(
-                func.sum(
-                    (models.SaleItem.total_line /
-                     func.nullif(models.SaleItem.quantity, 0))
-                    * models.SaleReturn.quantity
-                ),
-                0,
-            ).label("refund_total"),
-            func.count(models.SaleReturn.id).label("return_count"),
-        )
-        .select_from(models.SaleReturn)
-        .join(models.Sale, models.Sale.id == models.SaleReturn.sale_id)
-        .join(
-            models.SaleItem,
-            and_(
-                models.SaleItem.sale_id == models.SaleReturn.sale_id,
-                models.SaleItem.device_id == models.SaleReturn.device_id,
-            ),
-        )
-        .where(func.upper(models.Sale.status) != "CANCELADA")
-    )
-    if store_id is not None:
-        returns_stmt = returns_stmt.where(models.Sale.store_id == store_id)
-    if date_from is not None:
-        returns_stmt = returns_stmt.where(
-            models.SaleReturn.created_at >= date_from)
-    if date_to is not None:
-        returns_stmt = returns_stmt.where(
-            models.SaleReturn.created_at < date_to)
-    row = db.execute(returns_stmt).first()
-    refund_total = _to_decimal(row.refund_total if row else Decimal("0"))
-    return_count = int(row.return_count or 0) if row else 0
-    return (
-        refund_total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
-        return_count,
-    )
-
-
-# // [PACK29-*] Índice sugerido: CREATE INDEX IF NOT EXISTS ix_ventas_store_created_at ON ventas (sucursal_id, fecha)
-def build_sales_summary_report(
-    db: Session,
-    *,
-    date_from: datetime | None = None,
-    date_to: datetime | None = None,
-    store_id: int | None = None,
-) -> schemas.SalesSummaryReport:
-    sales_stmt = (
-        select(
-            func.coalesce(func.sum(models.Sale.total_amount),
-                          0).label("total_sales"),
-            func.count(models.Sale.id).label("orders"),
-        )
-        .select_from(models.Sale)
-    )
-    sales_stmt = _apply_sales_base_filters(
-        sales_stmt,
-        date_from=date_from,
-        date_to=date_to,
-        store_id=store_id,
-    )
-    row = db.execute(sales_stmt).first()
-    total_sales = _to_decimal(row.total_sales if row else Decimal("0"))
-    total_sales = total_sales.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    total_orders = int(row.orders or 0) if row else 0
-    avg_ticket = Decimal("0")
-    if total_orders > 0:
-        avg_ticket = (total_sales / Decimal(total_orders)).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
-    refund_total, returns_count = _sales_returns_totals(
-        db,
-        date_from=date_from,
-        date_to=date_to,
-        store_id=store_id,
-    )
-    net_sales = (total_sales - refund_total).quantize(Decimal("0.01"),
-                                                      rounding=ROUND_HALF_UP)
-    return schemas.SalesSummaryReport(
-        total_sales=float(total_sales),
-        total_orders=total_orders,
-        avg_ticket=float(avg_ticket),
-        returns_count=returns_count,
-        net=float(net_sales),
-    )
-
-
-# // [PACK29-*] Índice sugerido: CREATE INDEX IF NOT EXISTS ix_detalle_ventas_store_fecha ON detalle_ventas (venta_id)
-def build_sales_by_product_report(
-    db: Session,
-    *,
-    date_from: datetime | None = None,
-    date_to: datetime | None = None,
-    store_id: int | None = None,
-    limit: int = 20,
-) -> list[schemas.SalesByProductItem]:
-    items_stmt = (
-        select(
-            models.Device.id.label("device_id"),
-            models.Device.sku,
-            models.Device.name,
-            func.coalesce(func.sum(models.SaleItem.quantity),
-                          0).label("quantity"),
-            func.coalesce(func.sum(models.SaleItem.total_line),
-                          0).label("gross"),
-        )
-        .select_from(models.SaleItem)
-        .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
-        .join(models.Device, models.Device.id == models.SaleItem.device_id)
-        .where(func.upper(models.Sale.status) != "CANCELADA")
-        .group_by(models.Device.id, models.Device.sku, models.Device.name)
-        .order_by(func.coalesce(func.sum(models.SaleItem.total_line), 0).desc())
-        .limit(limit)
-    )
-    if store_id is not None:
-        items_stmt = items_stmt.where(models.Sale.store_id == store_id)
-    if date_from is not None:
-        items_stmt = items_stmt.where(models.Sale.created_at >= date_from)
-    if date_to is not None:
-        items_stmt = items_stmt.where(models.Sale.created_at < date_to)
-    product_rows = db.execute(items_stmt).all()
-
-    returns_stmt = (
-        select(
-            models.SaleReturn.device_id,
-            func.coalesce(
-                func.sum(
-                    (models.SaleItem.total_line /
-                     func.nullif(models.SaleItem.quantity, 0))
-                    * models.SaleReturn.quantity
-                ),
-                0,
-            ).label("refund_total"),
-        )
-        .select_from(models.SaleReturn)
-        .join(models.Sale, models.Sale.id == models.SaleReturn.sale_id)
-        .join(
-            models.SaleItem,
-            and_(
-                models.SaleItem.sale_id == models.SaleReturn.sale_id,
-                models.SaleItem.device_id == models.SaleReturn.device_id,
-            ),
-        )
-        .where(func.upper(models.Sale.status) != "CANCELADA")
-        .group_by(models.SaleReturn.device_id)
-    )
-    if store_id is not None:
-        returns_stmt = returns_stmt.where(models.Sale.store_id == store_id)
-    if date_from is not None:
-        returns_stmt = returns_stmt.where(
-            models.SaleReturn.created_at >= date_from)
-    if date_to is not None:
-        returns_stmt = returns_stmt.where(
-            models.SaleReturn.created_at < date_to)
-    refund_rows = db.execute(returns_stmt).all()
-    refunds_by_device = {
-        row.device_id: _to_decimal(row.refund_total or Decimal("0")).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
-        for row in refund_rows
-    }
-
-    items: list[schemas.SalesByProductItem] = []
-    for row in product_rows:
-        gross_total = _to_decimal(row.gross or Decimal("0")).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
-        net_total = (gross_total - refunds_by_device.get(row.device_id, Decimal("0"))).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
-        quantity = int(row.quantity or 0)
-        items.append(
-            schemas.SalesByProductItem(
-                sku=row.sku,
-                name=row.name,
-                quantity=quantity,
-                gross=float(gross_total),
-                net=float(net_total),
-            )
-        )
-    return items
-
-
-# // [PACK29-*] Resumen sugerido para cierre de caja diario
-def build_cash_close_report(
-    db: Session,
-    *,
-    date_from: datetime,
-    date_to: datetime,
-    store_id: int | None = None,
-) -> schemas.CashCloseReport:
-    opening_stmt = select(
-        func.coalesce(
-            func.sum(models.CashRegisterSession.opening_amount), 0).label("opening")
-    ).where(
-        models.CashRegisterSession.opened_at >= date_from,
-        models.CashRegisterSession.opened_at < date_to,
-    )
-    if store_id is not None:
-        opening_stmt = opening_stmt.where(
-            models.CashRegisterSession.store_id == store_id)
-    opening_row = db.execute(opening_stmt).first()
-    opening_total = _to_decimal(opening_row.opening if opening_row else Decimal("0")).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-
-    sales_stmt = (
-        select(func.coalesce(
-            func.sum(models.Sale.total_amount), 0).label("total_sales"))
-        .select_from(models.Sale)
-    )
-    sales_stmt = _apply_sales_base_filters(
-        sales_stmt,
-        date_from=date_from,
-        date_to=date_to,
-        store_id=store_id,
-    )
-    sales_row = db.execute(sales_stmt).first()
-    sales_total = _to_decimal(sales_row.total_sales if sales_row else Decimal("0")).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-
-    refund_total, _ = _sales_returns_totals(
-        db,
-        date_from=date_from,
-        date_to=date_to,
-        store_id=store_id,
-    )
-
-    entries_stmt = (
-        select(
-            models.CashRegisterEntry.entry_type,
-            func.coalesce(func.sum(models.CashRegisterEntry.amount), 0),
-        )
-        .select_from(models.CashRegisterEntry)
-        .join(
-            models.CashRegisterSession,
-            models.CashRegisterEntry.session_id == models.CashRegisterSession.id,
-        )
-        .where(
-            models.CashRegisterEntry.created_at >= date_from,
-            models.CashRegisterEntry.created_at < date_to,
-        )
-    )
-    if store_id is not None:
-        entries_stmt = entries_stmt.where(
-            models.CashRegisterSession.store_id == store_id
-        )
-    entries_stmt = entries_stmt.group_by(models.CashRegisterEntry.entry_type)
-    incomes_total = Decimal("0.00")
-    expenses_total = Decimal("0.00")
-    for entry_type, total in db.execute(entries_stmt):
-        normalized_total = _to_decimal(total).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
-        if entry_type == models.CashEntryType.INGRESO:
-            incomes_total = normalized_total
-        elif entry_type == models.CashEntryType.EGRESO:
-            expenses_total = normalized_total
-
-    closing_suggested = (
-        opening_total + sales_total + incomes_total - refund_total - expenses_total
-    ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-    return schemas.CashCloseReport(
-        opening=float(opening_total),
-        sales_gross=float(sales_total),
-        refunds=float(refund_total),
-        incomes=float(incomes_total),
-        expenses=float(expenses_total),
-        closing_suggested=float(closing_suggested),
-    )
-
-
-def _device_value(device: models.Device) -> Decimal:
-    return Decimal(device.quantity) * (device.unit_price or Decimal("0"))
-
-
-def _movement_value(movement: models.InventoryMovement) -> Decimal:
-    """Calcula el valor monetario estimado de un movimiento."""
-
-    unit_cost: Decimal | None = movement.unit_cost
-    if unit_cost is None and movement.device is not None:
-        if getattr(movement.device, "costo_unitario", None):
-            unit_cost = movement.device.costo_unitario
-        elif movement.device.unit_price is not None:
-            unit_cost = movement.device.unit_price
-    base_cost = _to_decimal(unit_cost)
-    return (Decimal(movement.quantity) * base_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-
-def _recalculate_store_inventory_value(
-    db: Session, store: models.Store | int
-) -> Decimal:
-    if isinstance(store, models.Store):
-        store_obj = store
-    else:
-        store_obj = get_store(db, int(store))
-    flush_session(db)
-    total_value = db.scalar(
-        select(func.coalesce(
-            func.sum(models.Device.quantity * models.Device.unit_price), 0))
-        .where(models.Device.store_id == store_obj.id)
-    )
-    normalized_total = _to_decimal(total_value).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-    store_obj.inventory_value = normalized_total
-    db.add(store_obj)
-    flush_session(db)
-    return normalized_total
-
-
-def _device_category_expr() -> ColumnElement[str]:
-    return func.coalesce(
-        func.nullif(models.Device.modelo, ""),
-        func.nullif(models.Device.sku, ""),
-        func.nullif(models.Device.name, ""),
-    )
-
-
-def _customer_payload(customer: models.Customer) -> dict[str, object]:
-    return {
-        "id": customer.id,
-        "name": customer.name,
-        "contact_name": customer.contact_name,
-        "email": customer.email,
-        "phone": customer.phone,
-        "customer_type": customer.customer_type,
-        "status": customer.status,
-        "segment_category": customer.segment_category,
-        "tags": customer.tags,
-        "tax_id": customer.tax_id,
-        "credit_limit": float(customer.credit_limit or Decimal("0")),
-        "outstanding_debt": float(customer.outstanding_debt or Decimal("0")),
-        "last_interaction_at": customer.last_interaction_at.isoformat() if customer.last_interaction_at else None,
-        "privacy_consents": dict(customer.privacy_consents or {}),
-        "privacy_metadata": dict(customer.privacy_metadata or {}),
-        "privacy_last_request_at": customer.privacy_last_request_at.isoformat()
-        if customer.privacy_last_request_at
-        else None,
-        "updated_at": customer.updated_at.isoformat(),
-        "annual_purchase_amount": float(customer.annual_purchase_amount),
-        "orders_last_year": customer.orders_last_year,
-        "purchase_frequency": customer.purchase_frequency,
-        "segment_labels": list(customer.segment_labels),
-        "last_purchase_at": customer.last_purchase_at.isoformat()
-        if customer.last_purchase_at
-        else None,
-    }
-
-
-def _customer_privacy_request_payload(
-    request: models.CustomerPrivacyRequest,
-) -> dict[str, object]:
-    return {
-        "id": request.id,
-        "customer_id": request.customer_id,
-        "request_type": request.request_type.value,
-        "status": request.status.value,
-        "details": request.details,
-        "consent_snapshot": request.consent_snapshot,
-        "masked_fields": request.masked_fields,
-        "created_at": request.created_at.isoformat(),
-        "processed_at": request.processed_at.isoformat()
-        if request.processed_at
-        else None,
-        "processed_by_id": request.processed_by_id,
-    }
-
-
-def _device_sync_payload(device: models.Device) -> dict[str, object]:
-    """Construye el payload serializado de un dispositivo para sincronización."""
-
-    commercial_state = getattr(
-        device.estado_comercial, "value", device.estado_comercial)
-    updated_at = getattr(device, "updated_at", None)
-    store_name = device.store.name if getattr(device, "store", None) else None
-    return {
-        "id": device.id,
-        "store_id": device.store_id,
-        "store_name": store_name,
-        "warehouse_id": device.warehouse_id,
-        "warehouse_name": getattr(device.warehouse, "name", None),
-        "sku": device.sku,
-        "name": device.name,
-        "quantity": device.quantity,
-        "unit_price": float(_to_decimal(device.unit_price)),
-        "costo_unitario": float(_to_decimal(device.costo_unitario)),
-        "margen_porcentaje": float(_to_decimal(device.margen_porcentaje)),
-        "estado": device.estado,
-        "estado_comercial": commercial_state,
-        "minimum_stock": int(getattr(device, "minimum_stock", 0) or 0),
-        "reorder_point": int(getattr(device, "reorder_point", 0) or 0),
-        "imei": device.imei,
-        "serial": device.serial,
-        "marca": device.marca,
-        "modelo": device.modelo,
-        "color": device.color,
-        "capacidad_gb": device.capacidad_gb,
-        "garantia_meses": device.garantia_meses,
-        "proveedor": device.proveedor,
-        "lote": device.lote,
-        "fecha_compra": device.fecha_compra.isoformat() if device.fecha_compra else None,
-        "fecha_ingreso": device.fecha_ingreso.isoformat() if device.fecha_ingreso else None,
-        "updated_at": updated_at.isoformat() if isinstance(updated_at, datetime) else None,
-    }
-
-
-def _inventory_movement_payload(movement: models.InventoryMovement) -> dict[str, object]:
-    """Genera el payload de sincronización para un movimiento de inventario."""
-
-    store_name = movement.store.name if movement.store else None
-    source_name = movement.source_store.name if movement.source_store else None
-    warehouse_name = movement.warehouse.name if movement.warehouse else None
-    source_warehouse_name = (
-        movement.source_warehouse.name if movement.source_warehouse else None
-    )
-    device = movement.device
-    performed_by = _user_display_name(movement.performed_by)
-    created_at = movement.created_at.isoformat() if movement.created_at else None
-    reference_type = getattr(movement, "reference_type", None)
-    reference_id = getattr(movement, "reference_id", None)
-    return {
-        "id": movement.id,
-        "store_id": movement.store_id,
-        "store_name": store_name,
-        "source_store_id": movement.source_store_id,
-        "source_store_name": source_name,
-        "warehouse_id": movement.warehouse_id,
-        "warehouse_name": warehouse_name,
-        "source_warehouse_id": movement.source_warehouse_id,
-        "source_warehouse_name": source_warehouse_name,
-        "device_id": movement.device_id,
-        "device_sku": device.sku if device else None,
-        "movement_type": movement.movement_type.value,
-        "quantity": movement.quantity,
-        "comment": movement.comment,
-        "unit_cost": float(_to_decimal(movement.unit_cost)) if movement.unit_cost is not None else None,
-        "performed_by_id": movement.performed_by_id,
-        "performed_by_name": performed_by,
-        "reference_type": reference_type,
-        "reference_id": reference_id,
-        "created_at": created_at,
-    }
-
-
-def _normalize_optional_note(note: str | None) -> str | None:
-    if note is None:
-        return None
-    normalized = note.strip()
-    return normalized or None
-
-
-def _register_purchase_status_event(
-    db: Session,
-    order: models.PurchaseOrder,
-    *,
-    status: models.PurchaseStatus,
-    note: str | None = None,
-    created_by_id: int | None = None,
-) -> models.PurchaseOrderStatusEvent:
-    event = models.PurchaseOrderStatusEvent(
-        purchase_order_id=order.id,
-        status=status,
-        note=_normalize_optional_note(note),
-        created_by_id=created_by_id,
-    )
-    db.add(event)
-    flush_session(db)
-    db.refresh(event)
-    return event
-
-
-def _purchase_order_payload(order: models.PurchaseOrder) -> dict[str, object]:
-    """Serializa una orden de compra para la cola de sincronización."""
-
-    store_name = order.store.name if getattr(order, "store", None) else None
-    status_value = getattr(order.status, "value", order.status)
-    items_payload = [
-        {
-            "device_id": item.device_id,
-            "quantity_ordered": item.quantity_ordered,
-            "quantity_received": item.quantity_received,
-            "unit_cost": float(_to_decimal(item.unit_cost)),
-        }
-        for item in order.items
-    ]
-    return {
-        "id": order.id,
-        "store_id": order.store_id,
-        "store_name": store_name,
-        "supplier": order.supplier,
-        "status": status_value,
-        "notes": order.notes,
-        "created_at": order.created_at.isoformat() if order.created_at else None,
-        "updated_at": order.updated_at.isoformat() if order.updated_at else None,
-        "closed_at": order.closed_at.isoformat() if order.closed_at else None,
-        "requires_approval": getattr(order, "requires_approval", False),
-        "approved_by_id": getattr(order, "approved_by_id", None),
-        "items": items_payload,
-        "documents": [
-            {
-                "id": document.id,
-                "filename": document.filename,
-                "content_type": document.content_type,
-                "storage_backend": document.storage_backend,
-                "uploaded_at": document.uploaded_at.isoformat(),
-            }
-            for document in getattr(order, "documents", [])
-        ],
-        "status_history": [
-            {
-                "id": event.id,
-                "status": getattr(event.status, "value", event.status),
-                "note": event.note,
-                "created_at": event.created_at.isoformat(),
-                "created_by_id": event.created_by_id,
-            }
-            for event in getattr(order, "status_events", [])
-        ],
-    }
-
-
-def _transfer_order_payload(order: models.TransferOrder) -> dict[str, object]:
-    """Serializa una orden de transferencia para la cola híbrida."""
-
-    origin_store = getattr(order, "origin_store", None)
-    destination_store = getattr(order, "destination_store", None)
-    requested_by = getattr(order, "requested_by", None)
-    dispatched_by = getattr(order, "dispatched_by", None)
-    received_by = getattr(order, "received_by", None)
-    cancelled_by = getattr(order, "cancelled_by", None)
-    items_payload = []
-    for item in getattr(order, "items", []) or []:
-        device = getattr(item, "device", None)
-        items_payload.append(
-            {
-                "device_id": item.device_id,
-                "quantity": item.quantity,
-                "dispatched_quantity": item.dispatched_quantity,
-                "received_quantity": item.received_quantity,
-                "dispatched_unit_cost": float(item.dispatched_unit_cost)
-                if item.dispatched_unit_cost is not None
-                else None,
-                "sku": getattr(device, "sku", None),
-                "imei": getattr(device, "imei", None),
-                "serial": getattr(device, "serial", None),
-            }
-        )
-    status_value = getattr(order.status, "value", order.status)
-    return {
-        "id": order.id,
-        "origin_store_id": order.origin_store_id,
-        "origin_store_name": getattr(origin_store, "name", None),
-        "destination_store_id": order.destination_store_id,
-        "destination_store_name": getattr(destination_store, "name", None),
-        "status": status_value,
-        "reason": order.reason,
-        "requested_by_id": order.requested_by_id,
-        "requested_by_name": _user_display_name(requested_by),
-        "dispatched_by_id": order.dispatched_by_id,
-        "dispatched_by_name": _user_display_name(dispatched_by),
-        "received_by_id": order.received_by_id,
-        "received_by_name": _user_display_name(received_by),
-        "cancelled_by_id": order.cancelled_by_id,
-        "cancelled_by_name": _user_display_name(cancelled_by),
-        "created_at": order.created_at.isoformat() if order.created_at else None,
-        "updated_at": order.updated_at.isoformat() if order.updated_at else None,
-        "dispatched_at": order.dispatched_at.isoformat() if order.dispatched_at else None,
-        "received_at": order.received_at.isoformat() if order.received_at else None,
-        "cancelled_at": order.cancelled_at.isoformat() if order.cancelled_at else None,
-        "items": items_payload,
-    }
-
-
-def _hydrate_movement_references(
-    db: Session, movements: Sequence[models.InventoryMovement]
-) -> None:
-    """Asocia los metadatos de referencia a los movimientos recuperados."""
-
-    movement_ids = [
-        movement.id for movement in movements if movement.id is not None]
-    if not movement_ids:
-        return
-
-    str_ids = [str(movement_id) for movement_id in movement_ids]
-    statement = (
-        select(models.AuditLog)
-        .where(
-            models.AuditLog.entity_type == "inventory_movement",
-            models.AuditLog.action == "inventory_movement_reference",
-            models.AuditLog.entity_id.in_(str_ids),
-        )
-        .order_by(models.AuditLog.created_at.desc())
-    )
-    logs = list(db.scalars(statement))
-    reference_map: dict[str, tuple[str | None, str | None]] = {}
-    for log in logs:
-        if log.entity_id in reference_map:
-            continue
-        data: dict[str, object]
-        try:
-            data = json.loads(log.details or "{}")
-        except json.JSONDecodeError:
-            data = {}
-        reference_map[log.entity_id] = (
-            str(data.get("reference_type")) if data.get(
-                "reference_type") else None,
-            str(data.get("reference_id")) if data.get(
-                "reference_id") else None,
-        )
-
-    for movement in movements:
-        reference = reference_map.get(str(movement.id))
-        if not reference:
-            continue
-        reference_type, reference_id = reference
-        if reference_type:
-            setattr(movement, "reference_type", reference_type)
-        if reference_id:
-            setattr(movement, "reference_id", reference_id)
-
-
-def _repair_payload(order: models.RepairOrder) -> dict[str, object]:
-    return {
-        "id": order.id,
-        "store_id": order.store_id,
-        "status": order.status.value,
-        "technician_name": order.technician_name,
-        "customer_id": order.customer_id,
-        "customer_name": order.customer_name,
-        "customer_contact": order.customer_contact,
-        "damage_type": order.damage_type,
-        "diagnosis": order.diagnosis,
-        "device_model": order.device_model,
-        "imei": order.imei,
-        "labor_cost": float(order.labor_cost),
-        "parts_cost": float(order.parts_cost),
-        "total_cost": float(order.total_cost),
-        "updated_at": order.updated_at.isoformat(),
-        "parts_snapshot": order.parts_snapshot,
-    }
-
-
-def _merge_defaults(default: object, provided: object) -> object:
-    if isinstance(default, dict) and isinstance(provided, dict):
-        merged: dict[str, object] = {key: _merge_defaults(
-            value, provided.get(key)) for key, value in default.items()}
-        for key, value in provided.items():
-            if key not in merged:
-                merged[key] = value
-            elif isinstance(value, (dict, list)):
-                merged[key] = _merge_defaults(merged[key], value)
-            elif value is not None:
-                merged[key] = value
-        return merged
-    if isinstance(default, list) and isinstance(provided, list):
-        return provided or default
-    return provided if provided is not None else default
-
-
-def _normalize_hardware_settings(
-    raw: dict[str, object] | None,
-) -> dict[str, object]:
-    default_settings = schemas.POSHardwareSettings().model_dump()
-    if not raw:
-        return default_settings
-    return _merge_defaults(default_settings, raw)
-
-
-def _pos_config_payload(config: models.POSConfig) -> dict[str, object]:
-    return {
-        "store_id": config.store_id,
-        "tax_rate": float(config.tax_rate),
-        "invoice_prefix": config.invoice_prefix,
-        "printer_name": config.printer_name,
-        "printer_profile": config.printer_profile,
-        "quick_product_ids": config.quick_product_ids,
-        "promotions_config": config.promotions_config,
-        "hardware_settings": config.hardware_settings,
-        "updated_at": config.updated_at.isoformat(),
-    }
-
-
-def _build_pos_promotions_response(
-    config: models.POSConfig,
-) -> schemas.POSPromotionsResponse:
-    normalized = promotions.load_config(config.promotions_config)
-    return schemas.POSPromotionsResponse(
-        store_id=config.store_id,
-        feature_flags=normalized.feature_flags,
-        volume_promotions=normalized.volume_promotions,
-        combo_promotions=normalized.combo_promotions,
-        coupons=normalized.coupons,
-        updated_at=config.updated_at,
-    )
-
-
-def _pos_draft_payload(draft: models.POSDraftSale) -> dict[str, object]:
-    return {
-        "id": draft.id,
-        "store_id": draft.store_id,
-        "payload": draft.payload,
-        "updated_at": draft.updated_at.isoformat(),
-    }
-
-
-def _history_to_json(
-    entries: list[schemas.ContactHistoryEntry] | list[dict[str, object]] | None,
-) -> list[dict[str, object]]:
-    normalized: list[dict[str, object]] = []
-    if not entries:
-        return normalized
-    for entry in entries:
-        if isinstance(entry, schemas.ContactHistoryEntry):
-            timestamp = entry.timestamp
-            note = entry.note
-        else:
-            timestamp = entry.get("timestamp")  # type: ignore[assignment]
-            note = entry.get("note") if isinstance(entry, dict) else None
-        if isinstance(timestamp, str):
-            parsed_timestamp = timestamp
-        elif isinstance(timestamp, datetime):
-            parsed_timestamp = timestamp.isoformat()
-        else:
-            parsed_timestamp = datetime.utcnow().isoformat()
-        normalized.append({"timestamp": parsed_timestamp,
-                          "note": (note or "").strip()})
-    return normalized
-
-
-def _contacts_to_json(
-    contacts: list[schemas.SupplierContact] | list[dict[str, object]] | None,
-) -> list[dict[str, object]]:
-    normalized: list[dict[str, object]] = []
-    if not contacts:
-        return normalized
-    for contact in contacts:
-        if isinstance(contact, schemas.SupplierContact):
-            payload = contact.model_dump(exclude_none=True)
-        elif isinstance(contact, Mapping):
-            payload = {
-                key: value
-                for key, value in contact.items()
-                if isinstance(key, str)
-            }
-        else:
-            continue
-        record: dict[str, object] = {}
-        for key in ("name", "position", "email", "phone", "notes"):
-            value = payload.get(key)
-            if isinstance(value, str):
-                value = value.strip()
-            if value:
-                record[key] = value
-        if record:
-            normalized.append(record)
-    return normalized
-
-
-def _products_to_json(products: Sequence[str] | None) -> list[str]:
-    if not products:
-        return []
-    normalized: list[str] = []
-    for product in products:
-        text = (product or "").strip()
-        if not text:
-            continue
-        if text not in normalized:
-            normalized.append(text)
-    return normalized
-
-
-def _last_history_timestamp(history: list[dict[str, object]]) -> datetime | None:
-    timestamps = []
-    for entry in history:
-        raw_timestamp = entry.get("timestamp")
-        if isinstance(raw_timestamp, datetime):
-            timestamps.append(raw_timestamp)
-        elif isinstance(raw_timestamp, str):
-            try:
-                timestamps.append(datetime.fromisoformat(raw_timestamp))
-            except ValueError:
-                continue
-    if not timestamps:
-        return None
-    return max(timestamps)
-
-
-def _append_customer_history(customer: models.Customer, note: str) -> None:
-    history = list(customer.history or [])
-    history.append({"timestamp": datetime.utcnow().isoformat(), "note": note})
-    customer.history = history
-    customer.last_interaction_at = datetime.utcnow()
-
-
-def _mask_email(value: str) -> str:
-    email = (value or "").strip()
-    if "@" not in email:
-        return "***"
-    local, domain = email.split("@", 1)
-    local = local.strip()
-    domain = domain.strip() or "anon.invalid"
-    if not local:
-        return f"***@{domain}"
-    if len(local) == 1:
-        masked_local = "*"
-    elif len(local) == 2:
-        masked_local = f"{local[0]}*"
-    else:
-        masked_local = f"{local[0]}{'*' * (len(local) - 2)}{local[-1]}"
-    return f"{masked_local}@{domain}"
-
-
-def _mask_phone(value: str) -> str:
-    digits = re.sub(r"[^0-9]", "", value or "")
-    if not digits:
-        return "***"
-    if len(digits) <= 4:
-        visible = digits[-1:] if digits else ""
-        return f"{'*' * max(0, len(digits) - 1)}{visible}"
-    return f"{'*' * (len(digits) - 4)}{digits[-4:]}"
-
-
-def _mask_person_name(value: str) -> str:
-    text = (value or "").strip()
-    if not text:
-        return text
-    parts = text.split()
-    masked_parts = []
-    for part in parts:
-        if len(part) <= 2:
-            masked_parts.append(part[0] + "*")
-        else:
-            masked_parts.append(part[0] + "*" * (len(part) - 1))
-    return " ".join(masked_parts)
-
-
-def _mask_generic_text(value: str) -> str:
-    text = (value or "").strip()
-    if not text:
-        return text
-    if len(text) <= 4:
-        return "*" * len(text)
-    return f"{text[:2]}***{text[-2:]}"
-
-
-def _apply_customer_anonymization(
-    customer: models.Customer, fields: Sequence[str]
-) -> list[str]:
-    normalized: list[str] = []
-    for raw in fields or []:
-        text = str(raw or "").strip().lower()
-        if text and text not in normalized:
-            normalized.append(text)
-
-    masked: list[str] = []
-    for field in normalized:
-        if field == "name" and customer.name:
-            customer.name = _mask_person_name(customer.name)
-            masked.append("name")
-        elif field == "contact_name" and customer.contact_name:
-            customer.contact_name = _mask_person_name(customer.contact_name)
-            masked.append("contact_name")
-        elif field == "email" and customer.email:
-            customer.email = _mask_email(customer.email)
-            masked.append("email")
-        elif field == "phone" and customer.phone:
-            customer.phone = _mask_phone(customer.phone)
-            masked.append("phone")
-        elif field == "address" and customer.address:
-            customer.address = _mask_generic_text(customer.address)
-            masked.append("address")
-        elif field == "notes" and customer.notes:
-            customer.notes = _mask_generic_text(customer.notes)
-            masked.append("notes")
-        elif field == "tax_id" and customer.tax_id:
-            customer.tax_id = _mask_generic_text(customer.tax_id)
-            masked.append("tax_id")
-
-    if "history" in normalized and customer.history:
-        history_entries = list(customer.history or [])
-        customer.history = [
-            {
-                "timestamp": entry.get("timestamp"),
-                "note": "***",
-            }
-            for entry in history_entries
-        ]
-        masked.append("history")
-
-    return masked
-
-
-_ALLOWED_CUSTOMER_STATUSES = {
-    "activo", "inactivo", "moroso", "vip", "bloqueado"}
-_ALLOWED_CUSTOMER_TYPES = {"minorista", "mayorista", "corporativo"}
-
-
-def _normalize_customer_status(value: str | None) -> str:
-    normalized = (value or "activo").strip().lower()
-    if normalized not in _ALLOWED_CUSTOMER_STATUSES:
-        raise ValueError("invalid_customer_status")
-    return normalized
-
-
-def _normalize_customer_type(value: str | None) -> str:
-    normalized = (value or "minorista").strip().lower()
-    if normalized not in _ALLOWED_CUSTOMER_TYPES:
-        raise ValueError("invalid_customer_type")
-    return normalized
-
-
-def _normalize_customer_segment_category(value: str | None) -> str | None:
-    if value is None:
-        return None
-    normalized = value.strip().lower()
-    return normalized or None
-
-
-def _normalize_customer_tags(tags: Sequence[str] | None) -> list[str]:
-    if not tags:
-        return []
-    normalized: list[str] = []
-    for tag in tags:
-        if not isinstance(tag, str):
-            continue
-        cleaned = tag.strip().lower()
-        if cleaned and cleaned not in normalized:
-            normalized.append(cleaned)
-    return normalized
-
-
-_RTN_CANONICAL_TEMPLATE = "{0}-{1}-{2}"
-
-
-def _normalize_rtn(value: str | None, *, error_code: str) -> str:
-    digits = re.sub(r"[^0-9]", "", value or "")
-    if len(digits) != 14:
-        raise ValueError(error_code)
-    return _RTN_CANONICAL_TEMPLATE.format(digits[:4], digits[4:8], digits[8:])
-
-
-def _generate_customer_tax_id_placeholder() -> str:
-    placeholder = models.generate_customer_tax_id_placeholder()
-    return _normalize_rtn(placeholder, error_code="customer_tax_id_invalid")
-
-
-def _normalize_customer_tax_id(
-    value: str | None, *, allow_placeholder: bool = True
-) -> str:
-    cleaned = (value or "").strip()
-    if cleaned:
-        return _normalize_rtn(cleaned, error_code="customer_tax_id_invalid")
-    if allow_placeholder:
-        return _generate_customer_tax_id_placeholder()
-    raise ValueError("customer_tax_id_invalid")
-
-
-def _is_tax_id_integrity_error(error: IntegrityError) -> bool:
-    message = str(getattr(error, "orig", error)).lower()
-    return "rtn" in message or "tax_id" in message or "segmento_etiquetas" in message
-
-
-def _ensure_non_negative_decimal(value: Decimal, error_code: str) -> Decimal:
-    normalized = _to_decimal(value).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP)
-    if normalized < Decimal("0"):
-        raise ValueError(error_code)
-    return normalized
-
-
-def _ensure_positive_decimal(value: Decimal, error_code: str) -> Decimal:
-    normalized = _to_decimal(value).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-    if normalized <= Decimal("0"):
-        raise ValueError(error_code)
-    return normalized
-
-
-def _ensure_discount_percentage(
-    value: Decimal | None, error_code: str
-) -> Decimal | None:
-    if value is None:
-        return None
-    normalized = _to_decimal(value).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-    if normalized < Decimal("0") or normalized > Decimal("100"):
-        raise ValueError(error_code)
-    return normalized
-
-
-def _ensure_debt_respects_limit(credit_limit: Decimal, outstanding: Decimal) -> None:
-    """Valida que el saldo pendiente no supere el límite de crédito configurado."""
-
-    normalized_limit = _to_decimal(credit_limit).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-    normalized_outstanding = _to_decimal(outstanding).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-    if normalized_outstanding <= Decimal("0"):
-        return
-    if normalized_limit <= Decimal("0"):
-        raise ValueError("customer_outstanding_exceeds_limit")
-    if normalized_outstanding > normalized_limit:
-        raise ValueError("customer_outstanding_exceeds_limit")
-
-
-def _validate_customer_credit(customer: models.Customer, pending_charge: Decimal) -> None:
-    amount = _to_decimal(pending_charge)
-    if amount <= Decimal("0"):
-        return
-    limit = _to_decimal(customer.credit_limit)
-    if limit <= Decimal("0"):
-        raise ValueError("customer_credit_limit_exceeded")
-    projected = (_to_decimal(customer.outstanding_debt) + amount).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-    if projected > limit:
-        raise ValueError("customer_credit_limit_exceeded")
-
-
-def _customer_ledger_payload(entry: models.CustomerLedgerEntry) -> dict[str, object]:
-    return {
-        "id": entry.id,
-        "customer_id": entry.customer_id,
-        "entry_type": entry.entry_type.value,
-        "reference_type": entry.reference_type,
-        "reference_id": entry.reference_id,
-        "amount": float(entry.amount),
-        "balance_after": float(entry.balance_after),
-        "note": entry.note,
-        "details": entry.details,
-        "created_at": entry.created_at.isoformat(),
-        "created_by_id": entry.created_by_id,
-    }
-
-
-def _user_display_name(user: models.User | None) -> str | None:
+def user_display_name(user: models.User | None) -> str | None:
     if user is None:
         return None
     candidates = [
@@ -2282,165 +830,6 @@ def _user_display_name(user: models.User | None) -> str | None:
     if identifier is None:
         identifier = getattr(user, "id_usuario", None)
     return str(identifier) if identifier is not None else None
-
-
-def _supplier_ledger_payload(entry: models.SupplierLedgerEntry) -> dict[str, object]:
-    return {
-        "id": entry.id,
-        "supplier_id": entry.supplier_id,
-        "entry_type": entry.entry_type.value,
-        "reference_type": entry.reference_type,
-        "reference_id": entry.reference_id,
-        "amount": float(entry.amount),
-        "balance_after": float(entry.balance_after),
-        "note": entry.note,
-        "details": entry.details,
-        "created_at": entry.created_at.isoformat(),
-        "created_by_id": entry.created_by_id,
-    }
-
-
-def _create_customer_ledger_entry(
-    db: Session,
-    *,
-    customer: models.Customer,
-    entry_type: models.CustomerLedgerEntryType,
-    amount: Decimal,
-    note: str | None = None,
-    reference_type: str | None = None,
-    reference_id: str | None = None,
-    details: dict[str, object] | None = None,
-    created_by_id: int | None = None,
-) -> models.CustomerLedgerEntry:
-    entry = models.CustomerLedgerEntry(
-        customer_id=customer.id,
-        entry_type=entry_type,
-        reference_type=reference_type,
-        reference_id=reference_id,
-        amount=_to_decimal(amount).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP),
-        balance_after=_to_decimal(customer.outstanding_debt).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        ),
-        note=note,
-        details=details or {},
-        created_by_id=created_by_id,
-    )
-    db.add(entry)
-    flush_session(db)
-    return entry
-
-
-def _create_supplier_ledger_entry(
-    db: Session,
-    *,
-    supplier: models.Supplier,
-    entry_type: models.SupplierLedgerEntryType,
-    amount: Decimal,
-    note: str | None = None,
-    reference_type: str | None = None,
-    reference_id: str | None = None,
-    details: dict[str, object] | None = None,
-    created_by_id: int | None = None,
-) -> models.SupplierLedgerEntry:
-    entry = models.SupplierLedgerEntry(
-        supplier_id=supplier.id,
-        entry_type=entry_type,
-        reference_type=reference_type,
-        reference_id=reference_id,
-        amount=_to_decimal(amount).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP),
-        balance_after=_to_decimal(supplier.outstanding_debt).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        ),
-        note=note,
-        details=details or {},
-        created_by_id=created_by_id,
-    )
-    db.add(entry)
-    flush_session(db)
-    return entry
-
-
-def _store_credit_payload(credit: models.StoreCredit) -> dict[str, object]:
-    return {
-        "id": credit.id,
-        "customer_id": credit.customer_id,
-        "code": credit.code,
-        "issued_amount": float(_to_decimal(credit.issued_amount)),
-        "balance_amount": float(_to_decimal(credit.balance_amount)),
-        "status": credit.status.value,
-        "issued_at": credit.issued_at.isoformat(),
-        "redeemed_at": credit.redeemed_at.isoformat() if credit.redeemed_at else None,
-        "expires_at": credit.expires_at.isoformat() if credit.expires_at else None,
-        "context": credit.context or {},
-    }
-
-
-def _store_credit_redemption_payload(
-    redemption: models.StoreCreditRedemption,
-) -> dict[str, object]:
-    return {
-        "id": redemption.id,
-        "store_credit_id": redemption.store_credit_id,
-        "sale_id": redemption.sale_id,
-        "amount": float(_to_decimal(redemption.amount)),
-        "notes": redemption.notes,
-        "created_at": redemption.created_at.isoformat(),
-        "created_by_id": redemption.created_by_id,
-    }
-
-
-def _loyalty_account_payload(account: models.LoyaltyAccount) -> dict[str, object]:
-    return {
-        "id": account.id,
-        "customer_id": account.customer_id,
-        "accrual_rate": float(_to_decimal(account.accrual_rate)),
-        "redemption_rate": float(_to_decimal(account.redemption_rate)),
-        "expiration_days": account.expiration_days,
-        "is_active": account.is_active,
-        "rule_config": account.rule_config or {},
-        "balance_points": float(_to_decimal(account.balance_points)),
-        "lifetime_points_earned": float(_to_decimal(account.lifetime_points_earned)),
-        "lifetime_points_redeemed": float(_to_decimal(account.lifetime_points_redeemed)),
-        "expired_points_total": float(_to_decimal(account.expired_points_total)),
-        "last_accrual_at": account.last_accrual_at.isoformat() if account.last_accrual_at else None,
-        "last_redemption_at": account.last_redemption_at.isoformat() if account.last_redemption_at else None,
-        "last_expiration_at": account.last_expiration_at.isoformat() if account.last_expiration_at else None,
-        "created_at": account.created_at.isoformat(),
-        "updated_at": account.updated_at.isoformat(),
-    }
-
-
-def _loyalty_transaction_payload(
-    transaction: models.LoyaltyTransaction,
-) -> dict[str, object]:
-    return {
-        "id": transaction.id,
-        "account_id": transaction.account_id,
-        "sale_id": transaction.sale_id,
-        "transaction_type": transaction.transaction_type.value,
-        "points": float(_to_decimal(transaction.points)),
-        "balance_after": float(_to_decimal(transaction.balance_after)),
-        "currency_amount": float(_to_decimal(transaction.currency_amount)),
-        "description": transaction.description,
-        "details": transaction.details or {},
-        "registered_at": transaction.registered_at.isoformat(),
-        "expires_at": transaction.expires_at.isoformat() if transaction.expires_at else None,
-        "registered_by_id": transaction.registered_by_id,
-    }
-
-
-def _generate_store_credit_code(db: Session) -> str:
-    for _ in range(10):
-        candidate = f"NC-{uuid4().hex[:10].upper()}"
-        exists = db.scalar(
-            select(models.StoreCredit.id).where(
-                models.StoreCredit.code == candidate)
-        )
-        if not exists:
-            return candidate
-    raise RuntimeError("store_credit_code_generation_failed")
 
 
 def list_store_credits(db: Session, *, customer_id: int) -> list[models.StoreCredit]:
@@ -2466,9 +855,9 @@ def _apply_store_credit_redemption(
     notes: str | None,
     performed_by_id: int | None,
 ) -> models.StoreCreditRedemption:
-    amount_value = _ensure_positive_decimal(
+    amount_value = ensure_positive_decimal(
         amount, "store_credit_invalid_amount")
-    current_balance = _to_decimal(credit.balance_amount).quantize(
+    current_balance = to_decimal(credit.balance_amount).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
     if amount_value > current_balance:
@@ -2480,7 +869,7 @@ def _apply_store_credit_redemption(
     credit.balance_amount = new_balance
     if new_balance == Decimal("0"):
         credit.status = models.StoreCreditStatus.REDIMIDO
-        credit.redeemed_at = datetime.utcnow()
+        credit.redeemed_at = datetime.now(timezone.utc)
     else:
         credit.status = models.StoreCreditStatus.PARCIAL
 
@@ -2495,9 +884,9 @@ def _apply_store_credit_redemption(
 
     customer = credit.customer
     message = (
-        f"Aplicación de nota de crédito {credit.code} por ${_format_currency(amount_value)}"
+        f"Aplicación de nota de crédito {credit.code} por ${format_currency(amount_value)}"
     )
-    _append_customer_history(customer, message)
+    append_customer_history(customer, message)
     details = {
         "amount_applied": float(amount_value),
         "balance_after": float(new_balance),
@@ -2526,7 +915,7 @@ def issue_store_credit(
     reason: str | None = None,
 ) -> models.StoreCredit:
     customer = get_customer(db, payload.customer_id)
-    amount = _ensure_positive_decimal(
+    amount = ensure_positive_decimal(
         payload.amount, "store_credit_invalid_amount")
     code = (payload.code or "").strip().upper()
     if code:
@@ -2555,9 +944,9 @@ def issue_store_credit(
         db.refresh(credit)
 
         history_message = (
-            f"Nota de crédito {credit.code} emitida por ${_format_currency(amount)}"
+            f"Nota de crédito {credit.code} emitida por ${format_currency(amount)}"
         )
-        _append_customer_history(customer, history_message)
+        append_customer_history(customer, history_message)
         db.add(customer)
 
         details = {
@@ -2607,7 +996,7 @@ def issue_store_credit(
             entity_type="customer",
             entity_id=str(customer.id),
             operation="UPSERT",
-            payload=_customer_payload(customer),
+            payload=customer_payload(customer),
         )
 
     return credit
@@ -2644,7 +1033,7 @@ def redeem_store_credit(
         raise LookupError("store_credit_not_found")
     if credit.status == models.StoreCreditStatus.CANCELADO:
         raise ValueError("store_credit_cancelled")
-    if credit.expires_at and credit.expires_at <= datetime.utcnow():
+    if credit.expires_at and credit.expires_at <= datetime.now(timezone.utc):
         raise ValueError("store_credit_expired")
 
     with transactional_session(db):
@@ -2669,7 +1058,7 @@ def redeem_store_credit(
             performed_by_id=performed_by_id,
             details=json.dumps(
                 {
-                    "amount": float(_to_decimal(payload.amount)),
+                    "amount": float(to_decimal(payload.amount)),
                     "sale_id": payload.sale_id,
                     "reason": reason,
                 }
@@ -2688,7 +1077,7 @@ def redeem_store_credit(
             entity_type="customer",
             entity_id=str(credit.customer_id),
             operation="UPSERT",
-            payload=_customer_payload(credit.customer),
+            payload=customer_payload(credit.customer),
         )
         enqueue_sync_outbox(
             db,
@@ -2711,7 +1100,7 @@ def redeem_store_credit_for_customer(
     performed_by_id: int | None,
     reason: str | None = None,
 ) -> list[models.StoreCreditRedemption]:
-    total_requested = _ensure_positive_decimal(
+    total_requested = ensure_positive_decimal(
         amount, "store_credit_invalid_amount")
     statement = (
         select(models.StoreCredit)
@@ -2734,7 +1123,7 @@ def redeem_store_credit_for_customer(
         raise LookupError("store_credit_not_found")
 
     available_total = sum(
-        _to_decimal(credit.balance_amount).quantize(
+        to_decimal(credit.balance_amount).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP)
         for credit in credits
     )
@@ -2750,7 +1139,7 @@ def redeem_store_credit_for_customer(
         for credit in credits:
             if remaining <= Decimal("0"):
                 break
-            available = _to_decimal(credit.balance_amount).quantize(
+            available = to_decimal(credit.balance_amount).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
             if available <= Decimal("0"):
@@ -2778,7 +1167,7 @@ def redeem_store_credit_for_customer(
         flush_session(db)
         db.refresh(customer)
 
-        total_applied = float(_to_decimal(total_requested))
+        total_applied = float(to_decimal(total_requested))
         _log_action(
             db,
             action="store_credit_batch_redeemed",
@@ -2800,7 +1189,7 @@ def redeem_store_credit_for_customer(
             entity_type="customer",
             entity_id=str(customer.id),
             operation="UPSERT",
-            payload=_customer_payload(customer),
+            payload=customer_payload(customer),
         )
         for credit in credits:
             if credit.id in affected_credit_ids:
@@ -2866,11 +1255,11 @@ def ensure_loyalty_account(
         return account
 
     defaults = defaults or {}
-    accrual_rate = _quantize_rate(
-        _to_decimal(defaults.get("accrual_rate", Decimal("1")))
+    accrual_rate = quantize_rate(
+        to_decimal(defaults.get("accrual_rate", Decimal("1")))
     )
-    redemption_rate = _quantize_rate(
-        _to_decimal(defaults.get("redemption_rate", Decimal("1")))
+    redemption_rate = quantize_rate(
+        to_decimal(defaults.get("redemption_rate", Decimal("1")))
     )
     if redemption_rate <= Decimal("0"):
         redemption_rate = Decimal("1.0000")
@@ -2916,12 +1305,12 @@ def update_loyalty_account(
 
     with transactional_session(db):
         if payload.accrual_rate is not None:
-            account.accrual_rate = _quantize_rate(
-                _to_decimal(payload.accrual_rate)
+            account.accrual_rate = quantize_rate(
+                to_decimal(payload.accrual_rate)
             )
         if payload.redemption_rate is not None:
-            normalized_rate = _quantize_rate(
-                _to_decimal(payload.redemption_rate)
+            normalized_rate = quantize_rate(
+                to_decimal(payload.redemption_rate)
             )
             if normalized_rate <= Decimal("0"):
                 raise ValueError("loyalty_redemption_rate_invalid")
@@ -2944,9 +1333,9 @@ def update_loyalty_account(
             performed_by_id=performed_by_id,
             details=json.dumps(
                 {
-                    "accrual_rate": float(_to_decimal(account.accrual_rate)),
+                    "accrual_rate": float(to_decimal(account.accrual_rate)),
                     "redemption_rate": float(
-                        _to_decimal(account.redemption_rate)
+                        to_decimal(account.redemption_rate)
                     ),
                     "expiration_days": account.expiration_days,
                     "reason": reason,
@@ -2986,7 +1375,7 @@ def _expire_loyalty_account_if_needed(
     if reference_date <= deadline:
         return None
 
-    current_balance = _quantize_points(_to_decimal(account.balance_points))
+    current_balance = quantize_points(to_decimal(account.balance_points))
     if current_balance <= Decimal("0"):
         account.last_expiration_at = reference_date
         db.add(account)
@@ -3004,8 +1393,8 @@ def _expire_loyalty_account_if_needed(
         registered_by_id=performed_by_id,
     )
     account.balance_points = Decimal("0")
-    account.expired_points_total = _quantize_points(
-        _to_decimal(account.expired_points_total) + current_balance
+    account.expired_points_total = quantize_points(
+        to_decimal(account.expired_points_total) + current_balance
     )
     account.last_expiration_at = reference_date
     db.add(expiration_tx)
@@ -3032,12 +1421,12 @@ def _record_loyalty_transaction(
         account_id=account.id,
         sale_id=sale_id,
         transaction_type=transaction_type,
-        points=_quantize_points(points),
-        balance_after=_quantize_points(balance_after),
-        currency_amount=_quantize_currency(currency_amount),
+        points=quantize_points(points),
+        balance_after=quantize_points(balance_after),
+        currency_amount=quantize_currency(currency_amount),
         description=description,
         details=details or {},
-        registered_at=datetime.utcnow(),
+        registered_at=datetime.now(timezone.utc),
         registered_by_id=performed_by_id,
         expires_at=expires_at,
     )
@@ -3062,14 +1451,14 @@ def apply_loyalty_for_sale(
     performed_by_id: int | None = None,
     reason: str | None = None,
 ) -> schemas.POSLoyaltySaleSummary | None:
-    amount_currency = _quantize_currency(_to_decimal(points_payment_amount))
+    amount_currency = quantize_currency(to_decimal(points_payment_amount))
     if sale.customer_id is None:
         if amount_currency > Decimal("0"):
             raise ValueError("loyalty_requires_customer")
         return None
 
     account = ensure_loyalty_account(db, sale.customer_id)
-    now = sale.created_at or datetime.utcnow()
+    now = sale.created_at or datetime.now(timezone.utc)
 
     expiration_tx = _expire_loyalty_account_if_needed(
         db,
@@ -3080,18 +1469,18 @@ def apply_loyalty_for_sale(
 
     redeemed_points = Decimal("0")
     if amount_currency > Decimal("0"):
-        redemption_rate = _to_decimal(account.redemption_rate)
+        redemption_rate = to_decimal(account.redemption_rate)
         if redemption_rate <= Decimal("0"):
             raise ValueError("loyalty_redemption_disabled")
-        required_points = _quantize_points(amount_currency / redemption_rate)
+        required_points = quantize_points(amount_currency / redemption_rate)
         if required_points <= Decimal("0"):
             raise ValueError("loyalty_invalid_redeem_amount")
-        available = _quantize_points(_to_decimal(account.balance_points))
+        available = quantize_points(to_decimal(account.balance_points))
         if required_points > available:
             raise ValueError("loyalty_insufficient_points")
-        account.balance_points = _quantize_points(available - required_points)
-        account.lifetime_points_redeemed = _quantize_points(
-            _to_decimal(account.lifetime_points_redeemed) + required_points
+        account.balance_points = quantize_points(available - required_points)
+        account.lifetime_points_redeemed = quantize_points(
+            to_decimal(account.lifetime_points_redeemed) + required_points
         )
         account.last_redemption_at = now
         redeemed_points = required_points
@@ -3111,17 +1500,17 @@ def apply_loyalty_for_sale(
 
     earned_points = Decimal("0")
     if account.is_active:
-        accrual_rate = _to_decimal(account.accrual_rate)
+        accrual_rate = to_decimal(account.accrual_rate)
         if accrual_rate > Decimal("0"):
-            earned_points = _quantize_points(
-                _to_decimal(sale.total_amount) * accrual_rate
+            earned_points = quantize_points(
+                to_decimal(sale.total_amount) * accrual_rate
             )
     if earned_points > Decimal("0"):
-        account.balance_points = _quantize_points(
-            _to_decimal(account.balance_points) + earned_points
+        account.balance_points = quantize_points(
+            to_decimal(account.balance_points) + earned_points
         )
-        account.lifetime_points_earned = _quantize_points(
-            _to_decimal(account.lifetime_points_earned) + earned_points
+        account.lifetime_points_earned = quantize_points(
+            to_decimal(account.lifetime_points_earned) + earned_points
         )
         account.last_accrual_at = now
         sale.loyalty_points_earned = earned_points
@@ -3135,7 +1524,7 @@ def apply_loyalty_for_sale(
             transaction_type=models.LoyaltyTransactionType.EARN,
             points=earned_points,
             balance_after=account.balance_points,
-            currency_amount=_to_decimal(sale.total_amount),
+            currency_amount=to_decimal(sale.total_amount),
             description=f"Puntos acumulados en venta #{sale.id}",
             performed_by_id=performed_by_id,
             expires_at=expires_at,
@@ -3158,7 +1547,7 @@ def apply_loyalty_for_sale(
         account_id=account.id,
         earned_points=earned_points,
         redeemed_points=redeemed_points,
-        balance_points=_quantize_points(_to_decimal(account.balance_points)),
+        balance_points=quantize_points(to_decimal(account.balance_points)),
         redemption_amount=amount_currency,
         expiration_days=account.expiration_days if account.expiration_days > 0 else None,
         expires_at=(
@@ -3254,10 +1643,10 @@ def get_loyalty_summary(db: Session) -> schemas.LoyaltyReportSummary:
                 func.sum(models.LoyaltyAccount.expired_points_total), 0),
         )
     ).one()
-    balance_sum = _quantize_points(_to_decimal(totals[0]))
-    earned_sum = _quantize_points(_to_decimal(totals[1]))
-    redeemed_sum = _quantize_points(_to_decimal(totals[2]))
-    expired_sum = _quantize_points(_to_decimal(totals[3]))
+    balance_sum = quantize_points(to_decimal(totals[0]))
+    earned_sum = quantize_points(to_decimal(totals[1]))
+    redeemed_sum = quantize_points(to_decimal(totals[2]))
+    expired_sum = quantize_points(to_decimal(totals[3]))
 
     last_activity = db.scalar(
         select(models.LoyaltyTransaction.registered_at)
@@ -3302,80 +1691,6 @@ def get_last_audit_entries(
         if log.entity_id not in latest:
             latest[log.entity_id] = log
     return latest
-
-
-def _attach_last_audit_trails(
-    db: Session,
-    *,
-    entity_type: str,
-    records: Iterable[object],
-) -> None:
-    """Enriquece los registros indicados con la última acción de auditoría."""
-
-    record_list = list(records)
-    if not record_list:
-        return
-
-    record_ids = [
-        getattr(record, "id", None)
-        for record in record_list
-        if getattr(record, "id", None) is not None
-    ]
-
-    audit_trails: dict[str, schemas.AuditTrailInfo] = {}
-    if record_ids:
-        audit_logs = get_last_audit_entries(
-            db,
-            entity_type=entity_type,
-            entity_ids=record_ids,
-        )
-        audit_trails = {
-            key: audit_trail_utils.to_audit_trail(log)
-            for key, log in audit_logs.items()
-        }
-
-    for record in record_list:
-        record_id = getattr(record, "id", None)
-        audit_entry = (
-            audit_trails.get(str(record_id)) if record_id is not None else None
-        )
-        setattr(record, "ultima_accion", audit_entry)
-
-
-def _sync_customer_ledger_entry(db: Session, entry: models.CustomerLedgerEntry) -> None:
-    with transactional_session(db):
-        db.refresh(entry)
-        db.refresh(entry, attribute_names=["created_by"])
-        enqueue_sync_outbox(
-            db,
-            entity_type="customer_ledger_entry",
-            entity_id=str(entry.id),
-            operation="UPSERT",
-            payload=_customer_ledger_payload(entry),
-        )
-
-
-def _sync_supplier_ledger_entry(db: Session, entry: models.SupplierLedgerEntry) -> None:
-    with transactional_session(db):
-        db.refresh(entry)
-        db.refresh(entry, attribute_names=["created_by"])
-        enqueue_sync_outbox(
-            db,
-            entity_type="supplier_ledger_entry",
-            entity_id=str(entry.id),
-            operation="UPSERT",
-            payload=_supplier_ledger_payload(entry),
-        )
-
-
-def _resolve_part_unit_cost(device: models.Device, provided: Decimal | float | int | None) -> Decimal:
-    candidate = _to_decimal(provided)
-    if candidate <= Decimal("0"):
-        if device.costo_unitario and device.costo_unitario > 0:
-            candidate = _to_decimal(device.costo_unitario)
-        else:
-            candidate = _to_decimal(device.unit_price)
-    return candidate.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def list_audit_logs(
@@ -3432,7 +1747,7 @@ def list_audit_logs(
             statement = statement.where(
                 ~critical_condition, ~warning_condition)
     if date_from is not None or date_to is not None:
-        start_dt, end_dt = _normalize_date_range(date_from, date_to)
+        start_dt, end_dt = normalize_date_range(date_from, date_to)
         statement = statement.where(
             models.AuditLog.created_at >= start_dt, models.AuditLog.created_at <= end_dt
         )
@@ -3491,7 +1806,7 @@ def count_audit_logs(
             statement = statement.where(
                 ~critical_condition, ~warning_condition)
     if date_from is not None or date_to is not None:
-        start_dt, end_dt = _normalize_date_range(date_from, date_to)
+        start_dt, end_dt = normalize_date_range(date_from, date_to)
         statement = statement.where(
             models.AuditLog.created_at >= start_dt,
             models.AuditLog.created_at <= end_dt,
@@ -3597,7 +1912,7 @@ def export_audit_logs_csv(
         acknowledgement_text = ""
         acknowledgement_note = ""
         if acknowledgement and acknowledgement.acknowledged_at >= log.created_at:
-            display_name = _user_display_name(acknowledgement.acknowledged_by)
+            display_name = user_display_name(acknowledgement.acknowledged_by)
             status = "Atendida"
             acknowledgement_text = acknowledgement.acknowledged_at.strftime(
                 "%Y-%m-%dT%H:%M:%S")
@@ -3666,7 +1981,7 @@ def acknowledge_audit_alert(
         .where(models.AuditAlertAcknowledgement.entity_id == normalized_id)
     )
     acknowledgement = db.scalars(statement).first()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     if (
         acknowledgement is not None
@@ -3740,7 +2055,7 @@ def get_persistent_audit_alerts(
 
     fetch_limit = limit + offset
 
-    cache_key = _persistent_alerts_cache_key(
+    cache_key = persistent_alerts_cache_key(
         threshold_minutes=threshold_minutes,
         min_occurrences=min_occurrences,
         lookback_hours=lookback_hours,
@@ -3750,7 +2065,7 @@ def get_persistent_audit_alerts(
     if cached is not None:
         return copy.deepcopy(cached)[offset: offset + limit]
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     lookback_start = now - timedelta(hours=lookback_hours)
 
     statement = (
@@ -3948,7 +2263,7 @@ ROLE_PRIORITY: dict[str, int] = {
 }
 
 
-def _select_primary_role(role_names: Iterable[str]) -> str:
+def select_primary_role(role_names: Iterable[str]) -> str:
     """Determina el rol primario a persistir en la tabla de usuarios."""
 
     ordered_roles = [role for role in role_names if role in ROLE_PRIORITY]
@@ -3957,23 +2272,9 @@ def _select_primary_role(role_names: Iterable[str]) -> str:
     return min(ordered_roles, key=ROLE_PRIORITY.__getitem__)
 
 
-def _normalize_role_names(role_names: Iterable[str]) -> list[str]:
-    """Normaliza la colección de roles removiendo duplicados y espacios."""
-
-    unique_roles: list[str] = []
-    seen: set[str] = set()
-    for role_name in role_names:
-        if not isinstance(role_name, str):
-            continue
-        normalized = role_name.strip().upper()
-        if not normalized or normalized in seen:
-            continue
-        seen.add(normalized)
-        unique_roles.append(normalized)
-    return unique_roles
 
 
-def _build_role_assignments(
+def build_role_assignments(
     db: Session, role_names: Iterable[str]
 ) -> list[models.UserRole]:
     """Crea las asociaciones de roles a partir de los nombres únicos provistos."""
@@ -3998,8 +2299,8 @@ def create_user(
     performed_by_id: int | None = None,
     reason: str | None = None,
 ) -> models.User:
-    normalized_roles = _normalize_role_names(role_names)
-    primary_role = _select_primary_role(normalized_roles)
+    normalized_roles = normalize_role_names(role_names)
+    primary_role = select_primary_role(normalized_roles)
     if primary_role not in normalized_roles:
         normalized_roles.append(primary_role)
     store_id: int | None = None
@@ -4025,7 +2326,7 @@ def create_user(
         except IntegrityError as exc:
             raise ValueError("user_already_exists") from exc
 
-        assignments = _build_role_assignments(db, normalized_roles)
+        assignments = build_role_assignments(db, normalized_roles)
         user.roles.extend(assignments)
 
         log_details: dict[str, object] = {
@@ -4177,8 +2478,8 @@ def set_user_roles(
     performed_by_id: int | None = None,
     reason: str | None = None,
 ) -> models.User:
-    normalized_roles = _normalize_role_names(role_names)
-    primary_role = _select_primary_role(normalized_roles)
+    normalized_roles = normalize_role_names(role_names)
+    primary_role = select_primary_role(normalized_roles)
     if primary_role not in normalized_roles:
         normalized_roles.append(primary_role)
     log_payload: dict[str, object] = {"roles": sorted(normalized_roles)}
@@ -4188,7 +2489,7 @@ def set_user_roles(
     with transactional_session(db):
         user.roles.clear()
         flush_session(db)
-        assignments = _build_role_assignments(db, normalized_roles)
+        assignments = build_role_assignments(db, normalized_roles)
         user.roles.extend(assignments)
 
         user.rol = primary_role
@@ -4445,7 +2746,7 @@ def _user_is_locked(user: models.User) -> bool:
     if locked_until is None:
         return False
     if locked_until.tzinfo is None:
-        return locked_until > datetime.utcnow()
+        return locked_until > datetime.now(timezone.utc)
     return locked_until > datetime.now(timezone.utc)
 
 
@@ -4502,7 +2803,7 @@ def build_user_directory(
     ]
 
     report = schemas.UserDirectoryReport(
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         filters=schemas.UserDirectoryFilters(
             search=search,
             role=role,
@@ -4581,7 +2882,7 @@ def get_user_dashboard_metrics(
             target_user_id = int(log.entity_id)
             target = user_lookup.get(target_user_id)
             if target is not None:
-                target_username = _user_display_name(target)
+                target_username = user_display_name(target)
 
         recent_activity.append(
             schemas.UserDashboardActivity(
@@ -4591,7 +2892,7 @@ def get_user_dashboard_metrics(
                 severity=audit_utils.classify_severity(
                     log.action or "", log.details),
                 performed_by_id=log.performed_by_id,
-                performed_by_name=_user_display_name(log.performed_by),
+                performed_by_name=user_display_name(log.performed_by),
                 target_user_id=target_user_id,
                 target_username=target_username,
                 details=details,
@@ -4610,7 +2911,7 @@ def get_user_dashboard_metrics(
             schemas.UserSessionSummary(
                 session_id=session.id,
                 user_id=session.user_id,
-                username=_user_display_name(
+                username=user_display_name(
                     session.user) or f"Usuario {session.user_id}",
                 created_at=session.created_at,
                 last_used_at=session.last_used_at,
@@ -4706,7 +3007,7 @@ def get_user_dashboard_metrics(
     )
 
     return schemas.UserDashboardMetrics(
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         totals=directory.totals,
         recent_activity=recent_activity,
         active_sessions=session_entries,
@@ -4768,7 +3069,7 @@ def activate_totp_secret(
         if record is None:
             raise LookupError("totp_not_provisioned")
         record.is_active = True
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         record.activated_at = now
         record.last_verified_at = now
         flush_session(db)
@@ -4814,12 +3115,12 @@ def update_totp_last_verified(db: Session, user_id: int) -> None:
         record = get_totp_secret(db, user_id)
         if record is None:
             return
-        record.last_verified_at = datetime.utcnow()
+        record.last_verified_at = datetime.now(timezone.utc)
         flush_session(db)
 
 
 def clear_login_lock(db: Session, user: models.User) -> models.User:
-    if user.locked_until and user.locked_until <= datetime.utcnow():
+    if user.locked_until and user.locked_until <= datetime.now(timezone.utc):
         with transactional_session(db):
             user.locked_until = None
             user.failed_login_attempts = 0
@@ -4833,7 +3134,7 @@ def register_failed_login(
 ) -> models.User:
     locked_until: datetime | None = None
     with transactional_session(db):
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         user.failed_login_attempts += 1
         user.last_login_attempt_at = now
         if user.failed_login_attempts >= settings.max_failed_login_attempts:
@@ -4866,7 +3167,7 @@ def register_successful_login(
     with transactional_session(db):
         user.failed_login_attempts = 0
         user.locked_until = None
-        user.last_login_attempt_at = datetime.utcnow()
+        user.last_login_attempt_at = datetime.now(timezone.utc)
         details_payload = (
             {"session_hint": session_token[-6:]} if session_token else None
         )
@@ -4902,7 +3203,7 @@ def create_password_reset_token(
     db: Session, user_id: int, *, expires_minutes: int
 ) -> models.PasswordResetToken:
     token = secrets.token_urlsafe(48)
-    expires_at = datetime.utcnow() + timedelta(minutes=expires_minutes)
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)
     protected_token = token_protection.protect_token(token)
     record = models.PasswordResetToken(
         user_id=user_id,
@@ -4941,7 +3242,7 @@ def mark_password_reset_token_used(
     db: Session, token_record: models.PasswordResetToken
 ) -> models.PasswordResetToken:
     with transactional_session(db):
-        token_record.used_at = datetime.utcnow()
+        token_record.used_at = datetime.now(timezone.utc)
         flush_session(db)
     db.refresh(token_record)
     return token_record
@@ -4958,7 +3259,7 @@ def reset_user_password(
         user.password_hash = password_hash
         user.failed_login_attempts = 0
         user.locked_until = None
-        user.last_login_attempt_at = datetime.utcnow()
+        user.last_login_attempt_at = datetime.now(timezone.utc)
         flush_session(db)
         _log_action(
             db,
@@ -4975,7 +3276,7 @@ def is_session_expired(expires_at: datetime | None) -> bool:
     if expires_at is None:
         return False
     if expires_at.tzinfo is None:
-        return expires_at <= datetime.utcnow()
+        return expires_at <= datetime.now(timezone.utc)
     return expires_at <= datetime.now(timezone.utc)
 
 
@@ -5023,7 +3324,7 @@ def mark_session_used(db: Session, session_token: str) -> models.ActiveSession |
             db.refresh(session)
         return None
     with transactional_session(db):
-        session.last_used_at = datetime.utcnow()
+        session.last_used_at = datetime.now(timezone.utc)
         flush_session(db)
     db.refresh(session)
     return session
@@ -5099,7 +3400,7 @@ def revoke_session(
     if session.revoked_at is not None:
         return session
     with transactional_session(db):
-        session.revoked_at = datetime.utcnow()
+        session.revoked_at = datetime.now(timezone.utc)
         session.revoked_by_id = revoked_by_id
         session.revoke_reason = reason
         flush_session(db)
@@ -5107,18 +3408,8 @@ def revoke_session(
     return session
 
 
-def _normalize_store_status(value: str | None) -> str:
-    if value is None:
-        return "activa"
-    normalized = value.strip().lower()
-    return normalized or "activa"
 
 
-def _normalize_store_code(value: str | None) -> str | None:
-    if value is None:
-        return None
-    normalized = value.strip().upper()
-    return normalized or None
 
 
 def _generate_store_code(db: Session) -> str:
@@ -5136,8 +3427,8 @@ def _generate_store_code(db: Session) -> str:
 
 def create_store(db: Session, payload: schemas.StoreCreate, *, performed_by_id: int | None = None) -> models.Store:
     with transactional_session(db):
-        status = _normalize_store_status(payload.status)
-        code = _normalize_store_code(payload.code)
+        status = normalize_store_status(payload.status)
+        code = normalize_store_code(payload.code)
         timezone = (payload.timezone or "UTC").strip()
         store = models.Store(
             name=payload.name.strip(),
@@ -5195,13 +3486,13 @@ def update_store(
             store.location = normalized_location
 
     if payload.status is not None:
-        normalized_status = _normalize_store_status(payload.status)
+        normalized_status = normalize_store_status(payload.status)
         if normalized_status != store.status:
             changes.append(f"status:{store.status}->{normalized_status}")
             store.status = normalized_status
 
     if payload.code is not None:
-        normalized_code = _normalize_store_code(payload.code)
+        normalized_code = normalize_store_code(payload.code)
         if normalized_code != store.code and normalized_code is not None:
             changes.append(f"code:{store.code}->{normalized_code}")
             store.code = normalized_code
@@ -5287,21 +3578,21 @@ def list_customers(
         .limit(limit)
     )
     if status:
-        normalized_status = _normalize_customer_status(status)
+        normalized_status = normalize_customer_status(status)
         statement = statement.where(
             models.Customer.status == normalized_status)
     if customer_type:
-        normalized_type = _normalize_customer_type(customer_type)
+        normalized_type = normalize_customer_type(customer_type)
         statement = statement.where(
             models.Customer.customer_type == normalized_type)
     if segment_category:
-        normalized_category = _normalize_customer_segment_category(
+        normalized_category = normalize_customer_segment_category(
             segment_category)
         if normalized_category:
             statement = statement.where(
                 models.Customer.segment_category == normalized_category
             )
-    normalized_tags = _normalize_customer_tags(tags)
+    normalized_tags = normalize_customer_tags(tags)
     if normalized_tags:
         tags_column = func.lower(cast(models.Customer.tags, String))
         for tag in normalized_tags:
@@ -5357,18 +3648,18 @@ def create_customer(
     performed_by_id: int | None = None,
 ) -> models.Customer:
     with transactional_session(db):
-        history = _history_to_json(payload.history)
-        customer_type = _normalize_customer_type(payload.customer_type)
-        status = _normalize_customer_status(payload.status)
-        segment_category = _normalize_customer_segment_category(
+        history = history_to_json(payload.history)
+        customer_type = normalize_customer_type(payload.customer_type)
+        status = normalize_customer_status(payload.status)
+        segment_category = normalize_customer_segment_category(
             payload.segment_category
         )
-        tags = _normalize_customer_tags(payload.tags)
-        tax_id = _normalize_customer_tax_id(payload.tax_id)
-        credit_limit = _ensure_non_negative_decimal(
+        tags = normalize_customer_tags(payload.tags)
+        tax_id = normalize_customer_tax_id(payload.tax_id)
+        credit_limit = ensure_non_negative_decimal(
             payload.credit_limit, "customer_credit_limit_negative"
         )
-        outstanding_debt = _ensure_non_negative_decimal(
+        outstanding_debt = ensure_non_negative_decimal(
             payload.outstanding_debt, "customer_outstanding_debt_negative"
         )
         _ensure_debt_respects_limit(credit_limit, outstanding_debt)
@@ -5387,13 +3678,13 @@ def create_customer(
             notes=payload.notes,
             history=history,
             outstanding_debt=outstanding_debt,
-            last_interaction_at=_last_history_timestamp(history),
+            last_interaction_at=last_history_timestamp(history),
         )
         db.add(customer)
         try:
             flush_session(db)
         except IntegrityError as exc:
-            if _is_tax_id_integrity_error(exc):
+            if is_tax_id_integrity_error(exc):
                 raise ValueError("customer_tax_id_duplicate") from exc
             raise ValueError("customer_already_exists") from exc
         db.refresh(customer)
@@ -5418,7 +3709,7 @@ def create_customer(
             entity_type="customer",
             entity_id=str(customer.id),
             operation="UPSERT",
-            payload=_customer_payload(customer),
+            payload=customer_payload(customer),
         )
     return customer
 
@@ -5432,7 +3723,7 @@ def update_customer(
 ) -> models.Customer:
     customer = get_customer(db, customer_id)
     with transactional_session(db):
-        previous_outstanding = _to_decimal(customer.outstanding_debt).quantize(
+        previous_outstanding = to_decimal(customer.outstanding_debt).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
         updated_fields: dict[str, object] = {}
@@ -5457,31 +3748,31 @@ def update_customer(
             customer.address = payload.address
             updated_fields["address"] = payload.address
         if payload.customer_type is not None:
-            normalized_type = _normalize_customer_type(payload.customer_type)
+            normalized_type = normalize_customer_type(payload.customer_type)
             customer.customer_type = normalized_type
             updated_fields["customer_type"] = normalized_type
         if payload.status is not None:
-            normalized_status = _normalize_customer_status(payload.status)
+            normalized_status = normalize_customer_status(payload.status)
             customer.status = normalized_status
             updated_fields["status"] = normalized_status
         if payload.tax_id is not None:
-            normalized_tax_id = _normalize_customer_tax_id(
+            normalized_tax_id = normalize_customer_tax_id(
                 payload.tax_id, allow_placeholder=False
             )
             customer.tax_id = normalized_tax_id
             updated_fields["tax_id"] = normalized_tax_id
         if payload.segment_category is not None:
-            normalized_category = _normalize_customer_segment_category(
+            normalized_category = normalize_customer_segment_category(
                 payload.segment_category
             )
             customer.segment_category = normalized_category
             updated_fields["segment_category"] = normalized_category
         if payload.tags is not None:
-            normalized_tags = _normalize_customer_tags(payload.tags)
+            normalized_tags = normalize_customer_tags(payload.tags)
             customer.tags = normalized_tags
             updated_fields["tags"] = normalized_tags
         if payload.credit_limit is not None:
-            customer.credit_limit = _ensure_non_negative_decimal(
+            customer.credit_limit = ensure_non_negative_decimal(
                 payload.credit_limit, "customer_credit_limit_negative"
             )
             updated_fields["credit_limit"] = float(customer.credit_limit)
@@ -5489,7 +3780,7 @@ def update_customer(
             customer.notes = payload.notes
             updated_fields["notes"] = payload.notes
         if payload.outstanding_debt is not None:
-            new_outstanding = _ensure_non_negative_decimal(
+            new_outstanding = ensure_non_negative_decimal(
                 payload.outstanding_debt, "customer_outstanding_debt_negative"
             )
             difference = (new_outstanding - previous_outstanding).quantize(
@@ -5520,14 +3811,14 @@ def update_customer(
                 }
             previous_outstanding = new_outstanding
         if payload.history is not None:
-            history = _history_to_json(payload.history)
+            history = history_to_json(payload.history)
             customer.history = history
-            customer.last_interaction_at = _last_history_timestamp(history)
+            customer.last_interaction_at = last_history_timestamp(history)
             updated_fields["history"] = history
         _ensure_debt_respects_limit(
             customer.credit_limit, customer.outstanding_debt)
         if pending_history_note:
-            _append_customer_history(customer, pending_history_note)
+            append_customer_history(customer, pending_history_note)
             updated_fields.setdefault("history_note", pending_history_note)
         if pending_ledger_entry_kwargs is not None:
             ledger_entry = _create_customer_ledger_entry(
@@ -5539,7 +3830,7 @@ def update_customer(
         try:
             flush_session(db)
         except IntegrityError as exc:
-            if _is_tax_id_integrity_error(exc):
+            if is_tax_id_integrity_error(exc):
                 raise ValueError("customer_tax_id_duplicate") from exc
             raise
         db.refresh(customer)
@@ -5563,7 +3854,7 @@ def update_customer(
             entity_type="customer",
             entity_id=str(customer.id),
             operation="UPSERT",
-            payload=_customer_payload(customer),
+            payload=customer_payload(customer),
         )
     return customer
 
@@ -5608,9 +3899,9 @@ def delete_customer(
             )
             return
 
-        customer.status = _normalize_customer_status("inactivo")
+        customer.status = normalize_customer_status("inactivo")
         customer.is_deleted = True
-        customer.deleted_at = datetime.utcnow()
+        customer.deleted_at = datetime.now(timezone.utc)
         flush_session(db)
         _log_action(
             db,
@@ -5705,7 +3996,7 @@ def append_customer_note(
 ) -> models.Customer:
     customer = get_customer(db, customer_id)
     with transactional_session(db):
-        _append_customer_history(customer, payload.note)
+        append_customer_history(customer, payload.note)
         db.add(customer)
 
         ledger_entry = _create_customer_ledger_entry(
@@ -5737,7 +4028,7 @@ def append_customer_note(
             entity_type="customer",
             entity_id=str(customer.id),
             operation="UPSERT",
-            payload=_customer_payload(customer),
+            payload=customer_payload(customer),
         )
         _sync_customer_ledger_entry(db, ledger_entry)
     return customer
@@ -5760,7 +4051,7 @@ def register_customer_payment(
     performed_by_id: int | None = None,
 ) -> CustomerPaymentOutcome:
     customer = get_customer(db, customer_id)
-    current_debt = _to_decimal(customer.outstanding_debt).quantize(
+    current_debt = to_decimal(customer.outstanding_debt).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
     sale = None
@@ -5772,7 +4063,7 @@ def register_customer_payment(
     if current_debt <= Decimal("0") and sale is None:
         raise ValueError("customer_payment_no_debt")
 
-    amount = _to_decimal(payload.amount).quantize(
+    amount = to_decimal(payload.amount).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
     if amount <= Decimal("0"):
@@ -5785,9 +4076,9 @@ def register_customer_payment(
     customer.outstanding_debt = (current_debt - applied_amount).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
-    _append_customer_history(
+    append_customer_history(
         customer,
-        f"Pago registrado por ${_format_currency(applied_amount)}",
+        f"Pago registrado por ${format_currency(applied_amount)}",
     )
     db.add(customer)
 
@@ -5828,7 +4119,7 @@ def register_customer_payment(
             performed_by_id=performed_by_id,
             details=json.dumps(
                 {
-                    "applied_amount": _format_currency(applied_amount),
+                    "applied_amount": format_currency(applied_amount),
                     "method": payload.method,
                     "reference": payload.reference,
                     "sale_id": sale.id if sale is not None else None,
@@ -5844,7 +4135,7 @@ def register_customer_payment(
             entity_type="customer",
             entity_id=str(customer.id),
             operation="UPSERT",
-            payload=_customer_payload(customer),
+            payload=customer_payload(customer),
         )
         _sync_customer_ledger_entry(db, ledger_entry)
 
@@ -5978,7 +4269,7 @@ def get_payment_center_summary(
     *,
     reference: datetime | None = None,
 ) -> schemas.PaymentCenterSummary:
-    reference = reference or datetime.utcnow()
+    reference = reference or datetime.now(timezone.utc)
     tzinfo = reference.tzinfo
     today_start = datetime(reference.year, reference.month,
                            reference.day, tzinfo=tzinfo)
@@ -6042,7 +4333,7 @@ def get_payment_center_summary(
                     details_payload = {}
         event_name = str(details_payload.get("event", "")).strip()
         if event_name in {"sale_return", "manual_refund"}:
-            refunds_month_total += -_to_decimal(amount_value)
+            refunds_month_total += -to_decimal(amount_value)
     refunds_month_total = refunds_month_total.quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP)
     pending_balance = db.scalar(pending_balance_stmt) or Decimal("0")
@@ -6062,7 +4353,7 @@ def register_payment_center_refund(
     performed_by_id: int | None = None,
 ) -> models.CustomerLedgerEntry:
     customer = get_customer(db, payload.customer_id)
-    amount = _to_decimal(payload.amount).quantize(
+    amount = to_decimal(payload.amount).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
     if amount <= Decimal("0"):
@@ -6073,7 +4364,7 @@ def register_payment_center_refund(
         normalized_note = f"Reembolso {payload.reason}"
 
     with transactional_session(db):
-        current_debt = _to_decimal(customer.outstanding_debt).quantize(
+        current_debt = to_decimal(customer.outstanding_debt).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
         new_debt = (current_debt - amount).quantize(
@@ -6082,9 +4373,9 @@ def register_payment_center_refund(
         if new_debt < Decimal("0"):
             new_debt = Decimal("0")
         customer.outstanding_debt = new_debt
-        _append_customer_history(
+        append_customer_history(
             customer,
-            f"Reembolso registrado por ${_format_currency(amount)}",
+            f"Reembolso registrado por ${format_currency(amount)}",
         )
         db.add(customer)
 
@@ -6092,7 +4383,7 @@ def register_payment_center_refund(
             "event": "manual_refund",
             "method": payload.method,
             "reason": payload.reason,
-            "amount": _format_currency(amount),
+            "amount": format_currency(amount),
         }
         if payload.sale_id is not None:
             details["sale_id"] = payload.sale_id
@@ -6118,7 +4409,7 @@ def register_payment_center_refund(
             performed_by_id=performed_by_id,
             details=json.dumps(
                 {
-                    "amount": _format_currency(amount),
+                    "amount": format_currency(amount),
                     "method": payload.method,
                     "reason": payload.reason,
                     "sale_id": payload.sale_id,
@@ -6131,7 +4422,7 @@ def register_payment_center_refund(
             entity_type="customer",
             entity_id=str(customer.id),
             operation="UPSERT",
-            payload=_customer_payload(customer),
+            payload=customer_payload(customer),
         )
         _sync_customer_ledger_entry(db, ledger_entry)
     return ledger_entry
@@ -6144,7 +4435,7 @@ def register_payment_center_credit_note(
     performed_by_id: int | None = None,
 ) -> models.CustomerLedgerEntry:
     customer = get_customer(db, payload.customer_id)
-    amount = _to_decimal(payload.total).quantize(
+    amount = to_decimal(payload.total).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
     if amount <= Decimal("0"):
@@ -6160,7 +4451,7 @@ def register_payment_center_credit_note(
             {
                 "description": line.description,
                 "quantity": line.quantity,
-                "amount": _format_currency(line.amount),
+                "amount": format_currency(line.amount),
             }
             for line in payload.lines
         ],
@@ -6169,7 +4460,7 @@ def register_payment_center_credit_note(
         details["sale_id"] = payload.sale_id
 
     with transactional_session(db):
-        current_debt = _to_decimal(customer.outstanding_debt).quantize(
+        current_debt = to_decimal(customer.outstanding_debt).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
         new_debt = (current_debt - amount).quantize(
@@ -6178,9 +4469,9 @@ def register_payment_center_credit_note(
         if new_debt < Decimal("0"):
             new_debt = Decimal("0")
         customer.outstanding_debt = new_debt
-        _append_customer_history(
+        append_customer_history(
             customer,
-            f"Nota de crédito registrada por ${_format_currency(amount)}",
+            f"Nota de crédito registrada por ${format_currency(amount)}",
         )
         db.add(customer)
 
@@ -6205,7 +4496,7 @@ def register_payment_center_credit_note(
             performed_by_id=performed_by_id,
             details=json.dumps(
                 {
-                    "amount": _format_currency(amount),
+                    "amount": format_currency(amount),
                     "sale_id": payload.sale_id,
                     "lines": details["lines"],
                 }
@@ -6217,7 +4508,7 @@ def register_payment_center_credit_note(
             entity_type="customer",
             entity_id=str(customer.id),
             operation="UPSERT",
-            payload=_customer_payload(customer),
+            payload=customer_payload(customer),
         )
         _sync_customer_ledger_entry(db, ledger_entry)
     return ledger_entry
@@ -6302,29 +4593,29 @@ def get_customer_summary(
         for sale in sales
     ]
 
-    credit_limit = _to_decimal(customer.credit_limit).quantize(
+    credit_limit = to_decimal(customer.credit_limit).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
-    outstanding = _to_decimal(customer.outstanding_debt).quantize(
+    outstanding = to_decimal(customer.outstanding_debt).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
     available_credit = (credit_limit - outstanding).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
     total_sales_credit = sum(
-        float(_to_decimal(sale.total_amount))
+        float(to_decimal(sale.total_amount))
         for sale in sales
         if sale.payment_method == models.PaymentMethod.CREDITO
         and (sale.status or "").upper() != "CANCELADA"
     )
     total_payments = sum(float(abs(entry.amount)) for entry in payments)
     total_store_credit_issued = sum(
-        (_to_decimal(credit.issued_amount) for credit in store_credits),
+        (to_decimal(credit.issued_amount) for credit in store_credits),
         Decimal("0"),
     ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     total_store_credit_available = sum(
         (
-            _to_decimal(credit.balance_amount)
+            to_decimal(credit.balance_amount)
             for credit in store_credits
             if credit.status
             in {models.StoreCreditStatus.ACTIVO, models.StoreCreditStatus.PARCIAL}
@@ -6381,7 +4672,7 @@ def create_customer_privacy_request(
 ) -> tuple[models.Customer, models.CustomerPrivacyRequest]:
     customer = get_customer(db, customer_id)
     request_type = models.PrivacyRequestType(payload.request_type)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     consent_snapshot = dict(customer.privacy_consents or {})
     masked_fields: list[str] = []
 
@@ -6401,15 +4692,15 @@ def create_customer_privacy_request(
                 if summary
                 else "Consentimientos actualizados."
             )
-            _append_customer_history(customer, history_note)
+            append_customer_history(customer, history_note)
         else:
-            masked_fields = _apply_customer_anonymization(
+            masked_fields = apply_customer_anonymization(
                 customer, payload.mask_fields
             )
             consent_snapshot = dict(customer.privacy_consents or {})
             summary = ", ".join(
                 masked_fields) if masked_fields else "sin cambios"
-            _append_customer_history(
+            append_customer_history(
                 customer, f"Anonimización parcial aplicada ({summary})."
             )
 
@@ -6445,14 +4736,14 @@ def create_customer_privacy_request(
             entity_type="customer",
             entity_id=str(customer.id),
             operation="UPSERT",
-            payload=_customer_payload(customer),
+            payload=customer_payload(customer),
         )
         enqueue_sync_outbox(
             db,
             entity_type="customer_privacy_request",
             entity_id=str(request.id),
             operation="UPSERT",
-            payload=_customer_privacy_request_payload(request),
+            payload=customer_privacy_request_payload(request),
         )
 
         _log_action(
@@ -6546,7 +4837,7 @@ def get_customer_accounts_receivable(
     charges: list[dict[str, object]] = []
     last_payment_at: datetime | None = None
     for entry in ledger_entries:
-        amount = _to_decimal(entry.amount).quantize(
+        amount = to_decimal(entry.amount).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
         if amount > Decimal("0"):
@@ -6572,13 +4863,13 @@ def get_customer_accounts_receivable(
                 last_payment_at = entry.created_at
 
     outstanding_total = sum(
-        _to_decimal(charge["remaining"])  # type: ignore[index]
+        to_decimal(charge["remaining"])  # type: ignore[index]
         for charge in charges
     ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     if outstanding_total < Decimal("0"):
         outstanding_total = Decimal("0.00")
 
-    credit_limit = _to_decimal(customer.credit_limit).quantize(
+    credit_limit = to_decimal(customer.credit_limit).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
     available_credit = (credit_limit - outstanding_total).quantize(
@@ -6612,7 +4903,7 @@ def get_customer_accounts_receivable(
         for label, start, end in bucket_defs
     ]
 
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
     weighted_days = Decimal("0.00")
     open_entries: list[schemas.AccountsReceivableEntry] = []
     for charge in charges:
@@ -6638,7 +4929,7 @@ def get_customer_accounts_receivable(
             elif idx == len(bucket_defs) - 1:
                 bucket_index = idx
         bucket = bucket_totals[bucket_index]
-        bucket["amount"] = _to_decimal(
+        bucket["amount"] = to_decimal(
             bucket["amount"]) + remaining  # type: ignore[index]
         bucket["count"] = int(bucket["count"]) + 1  # type: ignore[index]
 
@@ -6674,7 +4965,7 @@ def get_customer_accounts_receivable(
 
     aging = []
     for bucket, (label, start, end) in zip(bucket_totals, bucket_defs):
-        amount_decimal = _to_decimal(bucket["amount"])  # type: ignore[index]
+        amount_decimal = to_decimal(bucket["amount"])  # type: ignore[index]
         percentage = (
             float(
                 (amount_decimal / outstanding_total * Decimal("100"))
@@ -6707,7 +4998,7 @@ def get_customer_accounts_receivable(
     if outstanding_total > Decimal("0"):
         base_date = None
         for charge in reversed(charges):
-            if _to_decimal(charge["remaining"]) > Decimal("0"):  # type: ignore[index]
+            if to_decimal(charge["remaining"]) > Decimal("0"):  # type: ignore[index]
                 # type: ignore[index]
                 entry: models.CustomerLedgerEntry = charge["entry"]
                 base_date = entry.created_at
@@ -6742,7 +5033,7 @@ def get_customer_accounts_receivable(
                 "note": entry.note,
                 "details": entry.details,
                 "created_at": entry.created_at,
-                "created_by": _user_display_name(entry.created_by),
+                "created_by": user_display_name(entry.created_by),
             }
         )
         for entry in recent_entries
@@ -6760,7 +5051,7 @@ def get_customer_accounts_receivable(
     )
 
     customer_schema = schemas.CustomerResponse.model_validate(customer)
-    generated_at = datetime.utcnow()
+    generated_at = datetime.now(timezone.utc)
     return schemas.CustomerAccountsReceivableResponse(
         customer=customer_schema,
         summary=summary,
@@ -6809,10 +5100,10 @@ def build_customer_statement_report(
                 if entry.reference_type
                 else entry.reference_id
             )
-        amount_value = _to_decimal(entry.amount).quantize(
+        amount_value = to_decimal(entry.amount).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
-        balance_after = _to_decimal(entry.balance_after).quantize(
+        balance_after = to_decimal(entry.balance_after).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
         lines.append(
@@ -6830,7 +5121,7 @@ def build_customer_statement_report(
         customer=receivable.customer,
         summary=receivable.summary,
         lines=lines,
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
     )
 
 
@@ -6953,7 +5244,7 @@ def build_customer_portfolio(
     )
 
     return schemas.CustomerPortfolioReport(
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         category=category,
         filters=filters,
         items=items,
@@ -6968,7 +5259,7 @@ def get_customer_dashboard_metrics(
     top_limit: int = 5,
 ) -> schemas.CustomerDashboardMetrics:
     months = max(1, min(months, 24))
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
     current_month = date(today.year, today.month, 1)
     months_sequence: list[date] = []
     for _ in range(months):
@@ -7048,7 +5339,7 @@ def get_customer_dashboard_metrics(
     )
 
     return schemas.CustomerDashboardMetrics(
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         months=months,
         new_customers_per_month=new_customers_chart,
         top_customers=top_customers,
@@ -7113,8 +5404,8 @@ def list_purchase_vendors(
                 tipo=vendor.tipo,
                 notas=vendor.notas,
                 estado=vendor.estado,
-                total_compras=_to_decimal(total or 0),
-                total_impuesto=_to_decimal(tax or 0),
+                total_compras=to_decimal(total or 0),
+                total_impuesto=to_decimal(tax or 0),
                 compras_registradas=int(count or 0),
                 ultima_compra=last_date,
             )
@@ -7241,7 +5532,7 @@ def compute_purchase_suggestions(
     settings_alerts = inventory_alert_settings
     threshold = settings_alerts.clamp_threshold(minimum_stock)
 
-    since = datetime.utcnow() - timedelta(days=normalized_lookback)
+    since = datetime.now(timezone.utc) - timedelta(days=normalized_lookback)
 
     device_stmt = (
         select(
@@ -7263,7 +5554,7 @@ def compute_purchase_suggestions(
     device_rows = list(db.execute(device_stmt))
     if not device_rows:
         return schemas.PurchaseSuggestionsResponse(
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(timezone.utc),
             lookback_days=normalized_lookback,
             planning_horizon_days=normalized_horizon,
             minimum_stock=threshold,
@@ -7339,7 +5630,7 @@ def compute_purchase_suggestions(
     for row in device_rows:
         device_id = int(row.id)
         quantity = int(row.quantity or 0)
-        unit_cost = _to_decimal(
+        unit_cost = to_decimal(
             getattr(row, "costo_unitario", None) or Decimal("0"))
         supplier_name = (row.proveedor or "").strip() or None
 
@@ -7421,7 +5712,7 @@ def compute_purchase_suggestions(
     stores.sort(key=lambda store: (-store.total_value, store.store_name))
 
     return schemas.PurchaseSuggestionsResponse(
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         lookback_days=normalized_lookback,
         planning_horizon_days=normalized_horizon,
         minimum_stock=threshold,
@@ -7533,7 +5824,7 @@ def soft_delete_store(
 
     with transactional_session(db):
         store.is_deleted = True
-        store.deleted_at = datetime.utcnow()
+        store.deleted_at = datetime.now(timezone.utc)
         db.add(store)
 
         details = {
@@ -7588,8 +5879,8 @@ def create_device(
     provided_fields = payload.model_fields_set
     imei = payload_data.get("imei")
     serial = payload_data.get("serial")
-    _ensure_unique_identifiers(db, imei=imei, serial=serial)
-    _validate_device_numeric_fields(payload_data)
+    ensure_unique_identifiers(db, imei=imei, serial=serial)
+    validate_device_numeric_fields(payload_data)
     minimum_stock = int(payload_data.get("minimum_stock", 0) or 0)
     reorder_point = int(payload_data.get("reorder_point", 0) or 0)
     if reorder_point < minimum_stock:
@@ -7605,7 +5896,7 @@ def create_device(
         payload_data.setdefault("unit_price", Decimal("0"))
         payload_data["precio_venta"] = payload_data["unit_price"]
     else:
-        payload_data["unit_price"] = _to_decimal(unit_price)
+        payload_data["unit_price"] = to_decimal(unit_price)
         payload_data["precio_venta"] = payload_data["unit_price"]
     if payload_data.get("costo_unitario") is None:
         payload_data["costo_unitario"] = Decimal("0")
@@ -7628,7 +5919,7 @@ def create_device(
     with transactional_session(db):
         device = models.Device(store_id=store_id, **payload_data)
         if unit_price is None:
-            _recalculate_sale_price(device)
+            recalculate_sale_price(device)
         else:
             device.unit_price = unit_price
             device.precio_venta = unit_price
@@ -7649,13 +5940,13 @@ def create_device(
         )
         flush_session(db)
         db.refresh(device)
-        _recalculate_store_inventory_value(db, store_id)
+        recalculate_store_inventory_value(db, store_id)
         enqueue_sync_outbox(
             db,
             entity_type="device",
             entity_id=str(device.id),
             operation="UPSERT",
-            payload=_device_sync_payload(device),
+            payload=device_sync_payload(device),
         )
     return device
 
@@ -7749,7 +6040,7 @@ def create_product_variant(
     device = get_device_global(db, device_id)
     payload_data = payload.model_dump()
     if payload_data.get("unit_price_override") is not None:
-        payload_data["unit_price_override"] = _to_decimal(
+        payload_data["unit_price_override"] = to_decimal(
             payload_data["unit_price_override"]
         )
     with transactional_session(db):
@@ -7792,7 +6083,7 @@ def update_product_variant(
     sanitized: dict[str, Any] = {}
     for field, value in updates.items():
         if field == "unit_price_override" and value is not None:
-            sanitized[field] = _to_decimal(value)
+            sanitized[field] = to_decimal(value)
         else:
             sanitized[field] = value
     if not sanitized:
@@ -7942,7 +6233,7 @@ def create_product_bundle(
     if payload.store_id is not None:
         get_store(db, payload.store_id)
     data = payload.model_dump(exclude={"items"})
-    data["base_price"] = _to_decimal(data.get("base_price"))
+    data["base_price"] = to_decimal(data.get("base_price"))
     with transactional_session(db):
         bundle = models.ProductBundle(**data)
         db.add(bundle)
@@ -7983,7 +6274,7 @@ def update_product_bundle(
     updates = payload.model_dump(exclude_unset=True, exclude={"items"})
     items = payload.items
     if "base_price" in updates and updates["base_price"] is not None:
-        updates["base_price"] = _to_decimal(updates["base_price"])
+        updates["base_price"] = to_decimal(updates["base_price"])
     if not updates and items is None:
         return bundle
 
@@ -8236,7 +6527,7 @@ def delete_price_list(
 
         price_list.is_active = False
         price_list.is_deleted = True
-        price_list.deleted_at = datetime.utcnow()
+        price_list.deleted_at = datetime.now(timezone.utc)
         flush_session(db)
         _log_action(
             db,
@@ -8271,9 +6562,9 @@ def create_price_list_item(
     device = get_device_global(db, payload.device_id)
     if price_list.store_id is not None and device.store_id != price_list.store_id:
         raise ValueError("price_list_item_invalid_store")
-    price = _ensure_positive_decimal(
+    price = ensure_positive_decimal(
         payload.price, "price_list_item_price_invalid")
-    discount = _ensure_discount_percentage(
+    discount = ensure_discount_percentage(
         payload.discount_percentage, "price_list_item_discount_invalid"
     )
     with transactional_session(db):
@@ -8319,11 +6610,11 @@ def update_price_list_item(
     item = get_price_list_item(db, item_id)
     updates = payload.model_dump(exclude_unset=True)
     if "price" in updates and updates["price"] is not None:
-        updates["price"] = _ensure_positive_decimal(
+        updates["price"] = ensure_positive_decimal(
             updates["price"], "price_list_item_price_invalid"
         )
     if "discount_percentage" in updates:
-        updates["discount_percentage"] = _ensure_discount_percentage(
+        updates["discount_percentage"] = ensure_discount_percentage(
             updates["discount_percentage"], "price_list_item_discount_invalid"
         )
     if not updates:
@@ -8386,7 +6677,7 @@ def delete_price_list_item(
             return
 
         item.is_deleted = True
-        item.deleted_at = datetime.utcnow()
+        item.deleted_at = datetime.now(timezone.utc)
         flush_session(db)
         _log_action(
             db,
@@ -8636,13 +6927,13 @@ def update_device(
         manual_price = updated_fields.pop("precio_venta")
     imei = updated_fields.get("imei")
     serial = updated_fields.get("serial")
-    _ensure_unique_identifiers(
+    ensure_unique_identifiers(
         db,
         imei=imei,
         serial=serial,
         exclude_device_id=device.id,
     )
-    _validate_device_numeric_fields(updated_fields)
+    validate_device_numeric_fields(updated_fields)
     new_minimum_stock = updated_fields.get("minimum_stock")
     new_reorder_point = updated_fields.get("reorder_point")
     current_minimum = int(getattr(device, "minimum_stock", 0) or 0)
@@ -8681,7 +6972,7 @@ def update_device(
             device.unit_price = manual_price
             device.precio_venta = manual_price
         elif {"costo_unitario", "margen_porcentaje"}.intersection(updated_fields):
-            _recalculate_sale_price(device)
+            recalculate_sale_price(device)
         flush_session(db)
         db.refresh(device)
 
@@ -8711,13 +7002,13 @@ def update_device(
             )
             flush_session(db)
             db.refresh(device)
-        _recalculate_store_inventory_value(db, store_id)
+        recalculate_store_inventory_value(db, store_id)
         enqueue_sync_outbox(
             db,
             entity_type="device",
             entity_id=str(device.id),
             operation="UPSERT",
-            payload=_device_sync_payload(device),
+            payload=device_sync_payload(device),
         )
     return device
 
@@ -9069,7 +7360,7 @@ def assign_device_to_bin(
                 # Ya asignado al mismo bin, no duplicar
                 return prev
             prev.active = False
-            prev.unassigned_at = datetime.utcnow()
+            prev.unassigned_at = datetime.now(timezone.utc)
             db.add(prev)
             moved = True
 
@@ -9077,7 +7368,7 @@ def assign_device_to_bin(
             device_id=device.id,
             bin_id=bin_obj.id,
             active=True,
-            assigned_at=datetime.utcnow(),
+            assigned_at=datetime.now(timezone.utc),
         )
         db.add(assignment)
         flush_session(db)
@@ -9181,7 +7472,7 @@ def list_devices(
         statement = statement.where(
             models.Device.proveedor.ilike(f"%{proveedor}%"))
     if fecha_ingreso_desde or fecha_ingreso_hasta:
-        start, end = _normalize_date_range(
+        start, end = normalize_date_range(
             fecha_ingreso_desde, fecha_ingreso_hasta)
         statement = statement.where(
             models.Device.fecha_ingreso >= start.date(
@@ -9253,7 +7544,7 @@ def count_store_devices(
         statement = statement.where(
             models.Device.proveedor.ilike(f"%{proveedor}%"))
     if fecha_ingreso_desde or fecha_ingreso_hasta:
-        start, end = _normalize_date_range(
+        start, end = normalize_date_range(
             fecha_ingreso_desde, fecha_ingreso_hasta)
         statement = statement.where(
             models.Device.fecha_ingreso >= start.date(
@@ -9320,7 +7611,7 @@ def _apply_device_search_filters(
         statement = statement.where(
             models.Device.proveedor.ilike(f"%{filters.proveedor}%"))
     if filters.fecha_ingreso_desde or filters.fecha_ingreso_hasta:
-        start, end = _normalize_date_range(
+        start, end = normalize_date_range(
             filters.fecha_ingreso_desde, filters.fecha_ingreso_hasta
         )
         statement = statement.where(
@@ -9410,16 +7701,6 @@ def _ensure_adjustment_authorized(db: Session, performed_by_id: int | None) -> N
         raise PermissionError("movement_adjust_requires_authorized_user")
 
 
-def _normalize_movement_comment(comment: str | None) -> str:
-    if comment is None:
-        normalized = "Movimiento inventario"
-    else:
-        normalized = comment.strip() or "Movimiento inventario"
-    if len(normalized) < 5:
-        normalized = f"{normalized} Kardex".strip()
-    if len(normalized) < 5:
-        normalized = "Movimiento inventario"
-    return normalized[:255]
 
 
 def _record_inventory_movement_reference(
@@ -9477,7 +7758,7 @@ def _register_inventory_movement(
     reference_type: str | None = None,
     reference_id: str | None = None,
 ) -> models.InventoryMovement:
-    normalized_comment = _normalize_movement_comment(comment)
+    normalized_comment = normalize_movement_comment(comment)
     movement_payload = schemas.MovementCreate(
         producto_id=device_id,
         tipo_movimiento=movement_type,
@@ -9572,7 +7853,7 @@ def create_inventory_movement(
             db.refresh(device)
 
         previous_quantity = device.quantity
-        previous_cost = _to_decimal(device.costo_unitario)
+        previous_cost = to_decimal(device.costo_unitario)
         previous_sale_price = device.unit_price
 
         if (
@@ -9591,32 +7872,32 @@ def create_inventory_movement(
 
         if payload.tipo_movimiento == models.MovementType.IN:
             if payload.unit_cost is not None:
-                incoming_cost = _to_decimal(payload.unit_cost)
+                incoming_cost = to_decimal(payload.unit_cost)
             elif previous_cost > Decimal("0"):
                 incoming_cost = previous_cost
             elif device.unit_price is not None and device.unit_price > Decimal("0"):
-                incoming_cost = _to_decimal(device.unit_price)
+                incoming_cost = to_decimal(device.unit_price)
             else:
                 incoming_cost = previous_cost
             device.quantity += payload.cantidad
-            average_cost = _calculate_weighted_average_cost(
+            average_cost = calculate_weighted_average_cost(
                 previous_quantity,
                 previous_cost,
                 payload.cantidad,
                 incoming_cost,
             )
-            device.costo_unitario = _quantize_currency(average_cost)
-            movement_unit_cost = _quantize_currency(incoming_cost)
-            _recalculate_sale_price(device)
+            device.costo_unitario = quantize_currency(average_cost)
+            movement_unit_cost = quantize_currency(incoming_cost)
+            recalculate_sale_price(device)
             if (
                 payload.unit_cost is None
                 and previous_sale_price is not None
                 and previous_sale_price > Decimal("0")
             ):
-                device.unit_price = _to_decimal(previous_sale_price)
+                device.unit_price = to_decimal(previous_sale_price)
                 device.precio_venta = device.unit_price
             stock_move_type = models.StockMoveType.IN  # // [PACK30-31-BACKEND]
-            stock_move_quantity = _to_decimal(payload.cantidad)
+            stock_move_quantity = to_decimal(payload.cantidad)
             stock_move_branch_id = store_id
         elif payload.tipo_movimiento == models.MovementType.OUT:
             branch_for_cost = source_store_id or store_id
@@ -9626,16 +7907,16 @@ def create_inventory_movement(
                 branch_id=branch_for_cost,
                 quantity_out=payload.cantidad,
             )
-            movement_unit_cost = _quantize_currency(computed_cost)
+            movement_unit_cost = quantize_currency(computed_cost)
             device.quantity -= payload.cantidad
             if source_store_id is None:
                 source_store_id = store_id
             if device.quantity <= 0:
                 device.costo_unitario = Decimal("0.00")
             stock_move_type = models.StockMoveType.OUT
-            stock_move_quantity = _to_decimal(payload.cantidad)
+            stock_move_quantity = to_decimal(payload.cantidad)
             stock_move_branch_id = branch_for_cost
-            ledger_quantity = _to_decimal(payload.cantidad)
+            ledger_quantity = to_decimal(payload.cantidad)
             ledger_branch_id = branch_for_cost
             ledger_unit_cost = movement_unit_cost
         elif payload.tipo_movimiento == models.MovementType.ADJUST:
@@ -9643,7 +7924,7 @@ def create_inventory_movement(
             if source_store_id is None:
                 source_store_id = store_id
             adjustment_difference = payload.cantidad - previous_quantity
-            adjustment_decimal = _to_decimal(adjustment_difference)
+            adjustment_decimal = to_decimal(adjustment_difference)
             branch_for_cost = store_id
             if (device.imei or device.serial) and (
                 device.estado and device.estado.lower() == "vendido"
@@ -9659,40 +7940,40 @@ def create_inventory_movement(
                     branch_id=branch_for_cost,
                     quantity_out=removal_qty,
                 )
-                movement_unit_cost = _quantize_currency(computed_cost)
-                ledger_quantity = _to_decimal(removal_qty)
+                movement_unit_cost = quantize_currency(computed_cost)
+                ledger_quantity = to_decimal(removal_qty)
                 ledger_branch_id = branch_for_cost
                 ledger_unit_cost = movement_unit_cost
             elif adjustment_difference > 0:
                 if payload.unit_cost is not None:
-                    incoming_cost = _to_decimal(payload.unit_cost)
+                    incoming_cost = to_decimal(payload.unit_cost)
                 elif previous_cost > Decimal("0"):
                     incoming_cost = previous_cost
                 elif (
                     device.unit_price is not None
                     and device.unit_price > Decimal("0")
                 ):
-                    incoming_cost = _to_decimal(device.unit_price)
+                    incoming_cost = to_decimal(device.unit_price)
                 else:
                     incoming_cost = previous_cost
 
-                average_cost = _calculate_weighted_average_cost(
+                average_cost = calculate_weighted_average_cost(
                     previous_quantity,
                     previous_cost,
                     adjustment_difference,
                     incoming_cost,
                 )
-                device.costo_unitario = _quantize_currency(average_cost)
-                movement_unit_cost = _quantize_currency(incoming_cost)
-                _recalculate_sale_price(device)
+                device.costo_unitario = quantize_currency(average_cost)
+                movement_unit_cost = quantize_currency(incoming_cost)
+                recalculate_sale_price(device)
             elif payload.unit_cost is not None and payload.cantidad > 0:
-                updated_cost = _to_decimal(payload.unit_cost)
-                device.costo_unitario = _quantize_currency(updated_cost)
-                movement_unit_cost = _quantize_currency(updated_cost)
-                _recalculate_sale_price(device)
+                updated_cost = to_decimal(payload.unit_cost)
+                device.costo_unitario = quantize_currency(updated_cost)
+                movement_unit_cost = quantize_currency(updated_cost)
+                recalculate_sale_price(device)
             else:
                 movement_unit_cost = (
-                    _quantize_currency(previous_cost)
+                    quantize_currency(previous_cost)
                     if previous_cost > Decimal("0")
                     else Decimal("0.00")
                 )
@@ -9766,9 +8047,9 @@ def create_inventory_movement(
                 product_id=device.id,
                 move_id=stock_move_record.id,
                 branch_id=ledger_branch_id or stock_move_branch_id,
-                quantity=_to_decimal(ledger_quantity).quantize(
+                quantity=to_decimal(ledger_quantity).quantize(
                     Decimal("0.0001")),
-                unit_cost=_to_decimal(
+                unit_cost=to_decimal(
                     ledger_unit_cost).quantize(Decimal("0.01")),
                 method=models.CostingMethod(settings.cost_method),
             )
@@ -9849,14 +8130,14 @@ def create_inventory_movement(
             reference_id=reference_id,
             performed_by_id=performed_by_id,
         )
-        total_value = _recalculate_store_inventory_value(db, store_id)
+        total_value = recalculate_store_inventory_value(db, store_id)
         setattr(movement, "store_inventory_value", total_value)
         enqueue_sync_outbox(
             db,
             entity_type="inventory",
             entity_id=str(movement.id),
             operation="UPSERT",
-            payload=_inventory_movement_payload(movement),
+            payload=inventory_movement_payload(movement),
         )
         if movement.device is not None:
             enqueue_sync_outbox(
@@ -9864,7 +8145,7 @@ def create_inventory_movement(
                 entity_type="device",
                 entity_id=str(movement.device.id),
                 operation="UPSERT",
-                payload=_device_sync_payload(movement.device),
+                payload=device_sync_payload(movement.device),
             )
     if movement.id is not None:
         last_logs = get_last_audit_entries(
@@ -10000,7 +8281,7 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
     for store in stores:
         device_count = len(store.devices)
         store_units = sum(device.quantity for device in store.devices)
-        store_value = sum(_device_value(device) for device in store.devices)
+        store_value = sum(device_value(device) for device in store.devices)
 
         total_devices += device_count
         total_units += store_units
@@ -10029,7 +8310,7 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
                         "unit_price": device.unit_price or Decimal("0"),
                         "minimum_stock": getattr(device, "minimum_stock", 0) or 0,
                         "reorder_point": getattr(device, "reorder_point", 0) or 0,
-                        "inventory_value": _device_value(device),
+                        "inventory_value": device_value(device),
                     }
                 )
 
@@ -10060,7 +8341,7 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
     credit_total = Decimal("0")
     cash_total = Decimal("0")
 
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
     window_days = [today - timedelta(days=delta) for delta in range(6, -1, -1)]
     window_set = set(window_days)
 
@@ -10068,7 +8349,7 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
         total_sales_amount += sale.total_amount
         sale_cost = Decimal("0")
         for item in sale.items:
-            device_cost = _to_decimal(
+            device_cost = to_decimal(
                 getattr(item.device, "costo_unitario", None) or item.unit_price)
             sale_cost += (device_cost * item.quantity).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -10421,7 +8702,7 @@ def get_inventory_current_report(
     db: Session, *, store_ids: Iterable[int] | None = None
 ) -> schemas.InventoryCurrentReport:
     stores = list_inventory_summary(db)
-    store_filter = _normalize_store_ids(store_ids)
+    store_filter = normalize_store_ids(store_ids)
 
     report_stores: list[schemas.InventoryCurrentStore] = []
     total_devices = 0
@@ -10433,7 +8714,7 @@ def get_inventory_current_report(
             continue
         device_count = len(store.devices)
         store_units = sum(device.quantity for device in store.devices)
-        store_value = sum(_device_value(device) for device in store.devices)
+        store_value = sum(device_value(device) for device in store.devices)
 
         report_stores.append(
             schemas.InventoryCurrentStore(
@@ -10469,10 +8750,10 @@ def get_inventory_movements_report(
     limit: int | None = None,
     offset: int = 0,
 ) -> schemas.InventoryMovementsReport:
-    store_filter = _normalize_store_ids(store_ids)
-    start_dt, end_dt = _normalize_date_range(date_from, date_to)
+    store_filter = normalize_store_ids(store_ids)
+    start_dt, end_dt = normalize_date_range(date_from, date_to)
 
-    cache_key = _inventory_movements_report_cache_key(
+    cache_key = inventory_movements_report_cache_key(
         store_filter, start_dt, end_dt, movement_type, limit, offset
     )
     cached_report = _INVENTORY_MOVEMENTS_CACHE.get(cache_key)
@@ -10534,7 +8815,7 @@ def get_inventory_movements_report(
     report_entries: list[schemas.MovementReportEntry] = []
 
     for movement in movements:
-        value = _movement_value(movement)
+        value = movement_value(movement)
         total_units += movement.quantity
         total_value += value
 
@@ -10543,7 +8824,7 @@ def get_inventory_movements_report(
             {"quantity": 0, "value": Decimal("0")},
         )
         type_data["quantity"] = int(type_data["quantity"]) + movement.quantity
-        type_data["value"] = _to_decimal(type_data["value"]) + value
+        type_data["value"] = to_decimal(type_data["value"]) + value
 
         period_key = (movement.created_at.date(), movement.movement_type)
         period_data = period_map.setdefault(
@@ -10552,7 +8833,7 @@ def get_inventory_movements_report(
         )
         period_data["quantity"] = int(
             period_data["quantity"]) + movement.quantity
-        period_data["value"] = _to_decimal(period_data["value"]) + value
+        period_data["value"] = to_decimal(period_data["value"]) + value
 
         report_entries.append(
             schemas.MovementReportEntry(
@@ -10578,7 +8859,7 @@ def get_inventory_movements_report(
             periodo=period,
             tipo_movimiento=movement_type,
             total_cantidad=int(data["quantity"]),
-            total_valor=_to_decimal(data["value"]),
+            total_valor=to_decimal(data["value"]),
         )
         for (period, movement_type), data in sorted(period_map.items())
     ]
@@ -10588,7 +8869,7 @@ def get_inventory_movements_report(
             tipo_movimiento=movement_enum,
             total_cantidad=int(totals_by_type.get(
                 movement_enum, {}).get("quantity", 0)),
-            total_valor=_to_decimal(totals_by_type.get(
+            total_valor=to_decimal(totals_by_type.get(
                 movement_enum, {}).get("value", 0)),
         )
         for movement_enum in models.MovementType
@@ -10619,8 +8900,8 @@ def get_top_selling_products(
     limit: int = 50,
     offset: int = 0,
 ) -> schemas.TopProductsReport:
-    store_filter = _normalize_store_ids(store_ids)
-    start_dt, end_dt = _normalize_date_range(date_from, date_to)
+    store_filter = normalize_store_ids(store_ids)
+    start_dt, end_dt = normalize_date_range(date_from, date_to)
 
     sold_units = func.sum(models.SaleItem.quantity).label("sold_units")
     total_revenue = func.sum(models.SaleItem.total_line).label("total_revenue")
@@ -10668,8 +8949,8 @@ def get_top_selling_products(
 
     for row in rows:
         units = int(row["sold_units"] or 0)
-        income = _to_decimal(row["total_revenue"])
-        cost = _to_decimal(row["total_cost"])
+        income = to_decimal(row["total_revenue"])
+        cost = to_decimal(row["total_cost"])
         margin = income - cost
 
         items.append(
@@ -10717,24 +8998,24 @@ def get_inventory_value_report(
                 "margen_total": Decimal("0"),
             },
         )
-        store_entry["valor_total"] = _to_decimal(store_entry["valor_total"]) + _to_decimal(
+        store_entry["valor_total"] = to_decimal(store_entry["valor_total"]) + to_decimal(
             entry.valor_total_producto
         )
-        store_entry["valor_costo"] = _to_decimal(store_entry["valor_costo"]) + _to_decimal(
+        store_entry["valor_costo"] = to_decimal(store_entry["valor_costo"]) + to_decimal(
             entry.valor_costo_producto
         )
-        store_entry["margen_total"] = _to_decimal(store_entry["margen_total"]) + (
-            _to_decimal(entry.valor_total_producto) -
-            _to_decimal(entry.valor_costo_producto)
+        store_entry["margen_total"] = to_decimal(store_entry["margen_total"]) + (
+            to_decimal(entry.valor_total_producto) -
+            to_decimal(entry.valor_costo_producto)
         )
 
     stores = [
         schemas.InventoryValueStore(
             store_id=store_id,
             store_name=data["store_name"],
-            valor_total=_to_decimal(data["valor_total"]),
-            valor_costo=_to_decimal(data["valor_costo"]),
-            margen_total=_to_decimal(data["margen_total"]),
+            valor_total=to_decimal(data["valor_total"]),
+            valor_costo=to_decimal(data["valor_costo"]),
+            margen_total=to_decimal(data["margen_total"]),
         )
         for store_id, data in sorted(store_map.items(), key=lambda item: item[1]["store_name"])
     ]
@@ -10793,23 +9074,23 @@ def get_inactive_products_report(
             device_name=entry.device_name,
             categoria=entry.categoria,
             quantity=entry.quantity,
-            valor_total_producto=_to_decimal(entry.valor_total_producto),
+            valor_total_producto=to_decimal(entry.valor_total_producto),
             ultima_venta=entry.ultima_venta,
             ultima_compra=entry.ultima_compra,
             ultimo_movimiento=entry.ultimo_movimiento,
             dias_sin_movimiento=entry.dias_sin_movimiento,
             ventas_30_dias=entry.ventas_30_dias,
             ventas_90_dias=entry.ventas_90_dias,
-            rotacion_30_dias=_to_decimal(entry.rotacion_30_dias),
-            rotacion_90_dias=_to_decimal(entry.rotacion_90_dias),
-            rotacion_total=_to_decimal(entry.rotacion_total),
+            rotacion_30_dias=to_decimal(entry.rotacion_30_dias),
+            rotacion_90_dias=to_decimal(entry.rotacion_90_dias),
+            rotacion_total=to_decimal(entry.rotacion_total),
         )
         for entry in paginated
     ]
 
     total_units = sum((entry.quantity for entry in filtered), 0)
     total_value = sum(
-        (_to_decimal(entry.valor_total_producto) for entry in filtered),
+        (to_decimal(entry.valor_total_producto) for entry in filtered),
         Decimal("0"),
     )
     days_values = [
@@ -10841,7 +9122,7 @@ def get_inactive_products_report(
     )
 
     return schemas.InactiveProductReport(
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         filters=filters,
         totals=totals,
         items=items,
@@ -10859,9 +9140,9 @@ def calculate_rotation_analytics(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
-    store_filter = _normalize_store_ids(store_ids)
-    start_dt, end_dt = _normalize_date_range(date_from, date_to)
-    category_expr = _device_category_expr()
+    store_filter = normalize_store_ids(store_ids)
+    start_dt, end_dt = normalize_date_range(date_from, date_to)
+    category_expr = device_category_expr()
 
     device_stmt = (
         select(
@@ -10987,9 +9268,9 @@ def calculate_aging_analytics(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
-    store_filter = _normalize_store_ids(store_ids)
-    now_date = datetime.utcnow().date()
-    category_expr = _device_category_expr()
+    store_filter = normalize_store_ids(store_ids)
+    now_date = datetime.now(timezone.utc).date()
+    category_expr = device_category_expr()
     device_stmt = (
         select(
             models.Device.id,
@@ -11058,9 +9339,9 @@ def calculate_stockout_forecast(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
-    store_filter = _normalize_store_ids(store_ids)
-    start_dt, end_dt = _normalize_date_range(date_from, date_to)
-    category_expr = _device_category_expr()
+    store_filter = normalize_store_ids(store_ids)
+    start_dt, end_dt = normalize_date_range(date_from, date_to)
+    category_expr = device_category_expr()
 
     device_stmt = (
         select(
@@ -11183,7 +9464,7 @@ def calculate_stockout_forecast(
         )
         points = [(float(index), value)
                   for index, (_, value) in enumerate(daily_points_raw)]
-        slope, intercept, r_squared = _linear_regression(points)
+        slope, intercept, r_squared = linear_regression(points)
         historical_avg = (
             sum(value for _, value in daily_points_raw) / len(daily_points_raw)
             if daily_points_raw
@@ -11256,9 +9537,9 @@ def calculate_store_comparatives(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
-    store_filter = _normalize_store_ids(store_ids)
-    start_dt, end_dt = _normalize_date_range(date_from, date_to)
-    category_expr = _device_category_expr()
+    store_filter = normalize_store_ids(store_ids)
+    start_dt, end_dt = normalize_date_range(date_from, date_to)
+    category_expr = device_category_expr()
 
     inventory_stmt = (
         select(
@@ -11344,7 +9625,7 @@ def calculate_store_comparatives(
         for store_id, (total, count) in aging_totals.items()
     }
 
-    window_start = start_dt or (datetime.utcnow() - timedelta(days=30))
+    window_start = start_dt or (datetime.now(timezone.utc) - timedelta(days=30))
     sales_stmt = (
         select(
             models.Sale.store_id,
@@ -11408,9 +9689,9 @@ def calculate_profit_margin(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
-    store_filter = _normalize_store_ids(store_ids)
-    start_dt, end_dt = _normalize_date_range(date_from, date_to)
-    category_expr = _device_category_expr()
+    store_filter = normalize_store_ids(store_ids)
+    start_dt, end_dt = normalize_date_range(date_from, date_to)
+    category_expr = device_category_expr()
     revenue_expr = func.coalesce(func.sum(models.SaleItem.total_line), 0)
     cost_expr = func.coalesce(
         func.sum(models.SaleItem.quantity * models.Device.costo_unitario),
@@ -11477,9 +9758,9 @@ def calculate_sales_by_store(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
-    store_filter = _normalize_store_ids(store_ids)
-    start_dt, end_dt = _normalize_date_range(date_from, date_to)
-    category_expr = _device_category_expr()
+    store_filter = normalize_store_ids(store_ids)
+    start_dt, end_dt = normalize_date_range(date_from, date_to)
+    category_expr = device_category_expr()
     stmt = (
         select(
             models.Store.id.label("store_id"),
@@ -11536,9 +9817,9 @@ def calculate_sales_by_category(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
-    store_filter = _normalize_store_ids(store_ids)
-    start_dt, end_dt = _normalize_date_range(date_from, date_to)
-    category_expr = _device_category_expr()
+    store_filter = normalize_store_ids(store_ids)
+    start_dt, end_dt = normalize_date_range(date_from, date_to)
+    category_expr = device_category_expr()
     stmt = (
         select(
             category_expr.label("category"),
@@ -11592,9 +9873,9 @@ def calculate_sales_timeseries(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
-    store_filter = _normalize_store_ids(store_ids)
-    start_dt, end_dt = _normalize_date_range(date_from, date_to)
-    category_expr = _device_category_expr()
+    store_filter = normalize_store_ids(store_ids)
+    start_dt, end_dt = normalize_date_range(date_from, date_to)
+    category_expr = device_category_expr()
     stmt = (
         select(
             func.date(models.Sale.created_at).label("sale_date"),
@@ -11649,11 +9930,11 @@ def calculate_sales_projection(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
-    store_filter = _normalize_store_ids(store_ids)
-    start_dt, end_dt = _normalize_date_range(date_from, date_to)
-    category_expr = _device_category_expr()
+    store_filter = normalize_store_ids(store_ids)
+    start_dt, end_dt = normalize_date_range(date_from, date_to)
+    category_expr = device_category_expr()
     lookback_days = max(horizon_days, 30)
-    since = start_dt or (datetime.utcnow() - timedelta(days=lookback_days))
+    since = start_dt or (datetime.now(timezone.utc) - timedelta(days=lookback_days))
 
     store_stmt = select(models.Store.id, models.Store.name).order_by(
         models.Store.name.asc())
@@ -11746,9 +10027,9 @@ def calculate_sales_projection(
             (float(index), item["revenue"])
             for index, item in enumerate(daily_points)
         ]
-        slope_units, intercept_units, r2_units = _linear_regression(
+        slope_units, intercept_units, r2_units = linear_regression(
             unit_points)
-        slope_revenue, intercept_revenue, r2_revenue = _linear_regression(
+        slope_revenue, intercept_revenue, r2_revenue = linear_regression(
             revenue_points
         )
         historical_avg_units = (
@@ -11760,10 +10041,10 @@ def calculate_sales_projection(
             else 0.0
         )
         average_daily_units = max(historical_avg_units, predicted_next_units)
-        projected_units = _project_linear_sum(
+        projected_units = project_linear_sum(
             slope_units, intercept_units, len(unit_points), horizon_days
         )
-        projected_revenue = _project_linear_sum(
+        projected_revenue = project_linear_sum(
             slope_revenue, intercept_revenue, len(revenue_points), horizon_days
         )
         average_ticket = (
@@ -11808,7 +10089,7 @@ def calculate_sales_projection(
 def list_analytics_categories(
     db: Session, *, limit: int | None = None, offset: int = 0
 ) -> list[str]:
-    category_expr = _device_category_expr()
+    category_expr = device_category_expr()
     stmt = (
         select(func.distinct(category_expr).label("category"))
         .where(category_expr.is_not(None))
@@ -12056,8 +10337,8 @@ def detect_return_anomalies(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
-    store_filter = _normalize_store_ids(store_ids)
-    start_dt, end_dt = _normalize_date_range(date_from, date_to)
+    store_filter = normalize_store_ids(store_ids)
+    start_dt, end_dt = normalize_date_range(date_from, date_to)
 
     stmt = (
         select(
@@ -12110,7 +10391,7 @@ def detect_return_anomalies(
         anomalies.append(
             {
                 "user_id": int(row.user_id),
-                "user_name": _user_display_name(row) or row.username,
+                "user_name": user_display_name(row) or row.username,
                 "return_count": count_value,
                 "total_units": total_units,
                 "last_return": row.last_return,
@@ -12135,9 +10416,9 @@ def calculate_realtime_store_widget(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
-    store_filter = _normalize_store_ids(store_ids)
-    category_expr = _device_category_expr()
-    today_start = datetime.utcnow().replace(
+    store_filter = normalize_store_ids(store_ids)
+    category_expr = device_category_expr()
+    today_start = datetime.now(timezone.utc).replace(
         hour=0, minute=0, second=0, microsecond=0)
 
     stores_stmt = select(models.Store.id, models.Store.name,
@@ -12289,9 +10570,9 @@ def calculate_purchase_supplier_metrics(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
-    store_filter = _normalize_store_ids(store_ids)
-    start_dt, end_dt = _normalize_date_range(date_from, date_to)
-    category_expr = _device_category_expr()
+    store_filter = normalize_store_ids(store_ids)
+    start_dt, end_dt = normalize_date_range(date_from, date_to)
+    category_expr = device_category_expr()
     supplier_expr = func.coalesce(
         models.PurchaseOrder.supplier,
         models.Device.proveedor,
@@ -12501,8 +10782,8 @@ def record_sync_session(
         store_id=store_id,
         mode=mode,
         status=status,
-        started_at=datetime.utcnow(),
-        finished_at=datetime.utcnow(),
+        started_at=datetime.now(timezone.utc),
+        finished_at=datetime.now(timezone.utc),
         error_message=error_message,
         triggered_by_id=triggered_by_id,
     )
@@ -12585,7 +10866,7 @@ def mark_outbox_entries_sent(
     if not entries:
         return []
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     with transactional_session(db):
         for entry in entries:
             entry.status = models.SyncOutboxStatus.SENT
@@ -12625,7 +10906,7 @@ def mark_outbox_entry_failed(
     if entry is None:
         return None
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     with transactional_session(db):
         entry.status = models.SyncOutboxStatus.FAILED
         entry.last_attempt_at = now
@@ -12786,7 +11067,7 @@ def enqueue_sync_outbox(
         normalized_payload = json.loads(
             json.dumps(payload or {}, ensure_ascii=False, default=str)
         )
-        resolved_priority = _resolve_outbox_priority(entity_type, priority)
+        resolved_priority = resolve_outbox_priority(entity_type, priority)
         statement = select(models.SyncOutbox).where(
             models.SyncOutbox.entity_type == entity_type,
             models.SyncOutbox.entity_id == entity_id,
@@ -12822,7 +11103,7 @@ def enqueue_sync_outbox(
             entry.attempt_count = 0
             entry.error_message = None
             entry.last_attempt_at = None
-            if _priority_weight(resolved_priority) < _priority_weight(entry.priority):
+            if priority_weight(resolved_priority) < priority_weight(entry.priority):
                 entry.priority = resolved_priority
             # Si hay conflicto, marcar y aumentar la versión.
             if conflict_flag:
@@ -12878,7 +11159,7 @@ def enqueue_sync_queue_events(
     if not events:
         return queued, reused
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     with transactional_session(db):
         for event in events:
             existing: models.SyncQueue | None = None
@@ -12995,7 +11276,7 @@ def update_sync_queue_entry(
             entry.attempts += 1
         entry.status = status
         entry.last_error = error_message
-        entry.updated_at = datetime.utcnow()
+        entry.updated_at = datetime.now(timezone.utc)
         flush_session(db)
         db.refresh(entry)
     return entry
@@ -13009,7 +11290,7 @@ def resolve_sync_queue_entry(
     with transactional_session(db):
         entry.status = models.SyncQueueStatus.SENT
         entry.last_error = None
-        entry.updated_at = datetime.utcnow()
+        entry.updated_at = datetime.now(timezone.utc)
         flush_session(db)
         db.refresh(entry)
     return entry
@@ -13307,7 +11588,7 @@ def reset_outbox_entries(
     if not entries:
         return []
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     with transactional_session(db):
         for entry in entries:
             entry.status = models.SyncOutboxStatus.PENDING
@@ -13356,7 +11637,7 @@ def update_outbox_priority(
 
     with transactional_session(db):
         entry.priority = priority
-        entry.updated_at = datetime.utcnow()
+        entry.updated_at = datetime.now(timezone.utc)
         flush_session(db)
         db.refresh(entry)
         details_payload = {"priority": priority.value,
@@ -13467,7 +11748,7 @@ def get_sync_outbox_statistics(
                 "last_conflict_at": row.last_conflict_at,
             }
         )
-    results.sort(key=lambda item: (_priority_weight(
+    results.sort(key=lambda item: (priority_weight(
         item["priority"]), item["entity_type"]))
     if limit is None:
         return results[offset:]
@@ -13493,7 +11774,7 @@ def resolve_outbox_conflicts(
     if not entries:
         return []
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     with transactional_session(db):
         for entry in entries:
             previous_version = int(entry.version or 1)
@@ -13645,7 +11926,7 @@ def get_store_sync_overview(
                 conflict_counts[candidate_id] += 1
 
     results: list[dict[str, object]] = []
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     stale_threshold = timedelta(hours=12)
     for row in store_rows:
         key = int(row.id)
@@ -13912,7 +12193,7 @@ def get_sync_discrepancies_report(
     )
 
     return schemas.SyncDiscrepancyReport(
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         filters=filters,
         totals=totals,
         items=conflicts,
@@ -14072,7 +12353,7 @@ def create_transfer_order(
                     raise ValueError("reservation_not_active")
                 if reservation.quantity != item.quantity:
                     raise ValueError("reservation_quantity_mismatch")
-                if reservation.expires_at <= datetime.utcnow():
+                if reservation.expires_at <= datetime.now(timezone.utc):
                     raise ValueError("reservation_expired")
             order_item = models.TransferOrderItem(
                 transfer_order=order,
@@ -14102,7 +12383,7 @@ def create_transfer_order(
         entity_type="transfer_order",
         entity_id=str(order.id),
         operation="UPSERT",
-        payload=_transfer_order_payload(order),
+        payload=transfer_order_payload(order),
         priority=models.SyncOutboxPriority.HIGH,
     )
     return order
@@ -14177,7 +12458,7 @@ def _apply_transfer_dispatch(
             raise ValueError("reservation_not_active")
         if reservation.quantity != item.quantity:
             raise ValueError("reservation_quantity_mismatch")
-        if reservation.expires_at <= datetime.utcnow():
+        if reservation.expires_at <= datetime.now(timezone.utc):
             raise ValueError("reservation_expired")
         reservation_map[item.reservation_id] = reservation
         reserved_allowances[item.device_id] = reserved_allowances.get(
@@ -14216,15 +12497,15 @@ def _apply_transfer_dispatch(
             blocked_map[device.id] = max(
                 active_reserved - reservation.quantity, 0)
 
-        origin_unit_cost = _quantize_currency(
-            _to_decimal(device.costo_unitario))
+        origin_unit_cost = quantize_currency(
+            to_decimal(device.costo_unitario))
         movement = _register_inventory_movement(
             db,
             store_id=order.origin_store_id,
             device_id=device.id,
             movement_type=models.MovementType.OUT,
             quantity=item.quantity,
-            comment=_build_transfer_movement_comment(
+            comment=build_transfer_movement_comment(
                 order, device, "OUT", order.reason),
             performed_by_id=performed_by_id,
             source_store_id=order.origin_store_id,
@@ -14234,7 +12515,7 @@ def _apply_transfer_dispatch(
         dispatch_unit_cost = movement.unit_cost or origin_unit_cost
         item.dispatched_quantity = item.quantity
         item.dispatched_unit_cost = (
-            _quantize_currency(_to_decimal(dispatch_unit_cost))
+            quantize_currency(to_decimal(dispatch_unit_cost))
             if dispatch_unit_cost is not None
             else None
         )
@@ -14291,11 +12572,11 @@ def _apply_transfer_dispatch(
                 flush_session(db)
 
     order.dispatched_by_id = order.dispatched_by_id or performed_by_id
-    order.dispatched_at = order.dispatched_at or datetime.utcnow()
+    order.dispatched_at = order.dispatched_at or datetime.now(timezone.utc)
     if reason:
         order.reason = reason
 
-    _recalculate_store_inventory_value(db, order.origin_store_id)
+    recalculate_store_inventory_value(db, order.origin_store_id)
 
 
 def dispatch_transfer_order(
@@ -14322,7 +12603,7 @@ def dispatch_transfer_order(
         )
         order.status = models.TransferStatus.EN_TRANSITO
         order.dispatched_by_id = performed_by_id
-        order.dispatched_at = datetime.utcnow()
+        order.dispatched_at = datetime.now(timezone.utc)
         order.reason = reason or order.reason
 
         flush_session(db)
@@ -14344,34 +12625,12 @@ def dispatch_transfer_order(
         entity_type="transfer_order",
         entity_id=str(order.id),
         operation="UPSERT",
-        payload=_transfer_order_payload(order),
+        payload=transfer_order_payload(order),
         priority=models.SyncOutboxPriority.HIGH,
     )
     return order
 
 
-def _build_transfer_movement_comment(
-    order: models.TransferOrder,
-    device: models.Device,
-    direction: Literal["OUT", "IN"],
-    reason: str | None,
-) -> str:
-    segments = [f"Transferencia #{order.id}"]
-    if direction == "OUT":
-        segments.append("Salida")
-        target = order.destination_store.name if order.destination_store else None
-        if target:
-            segments.append(f"Destino: {target}")
-    else:
-        segments.append("Entrada")
-        origin = order.origin_store.name if order.origin_store else None
-        if origin:
-            segments.append(f"Origen: {origin}")
-    if device.sku:
-        segments.append(f"SKU {device.sku}")
-    if reason:
-        segments.append(reason)
-    return " — ".join(segments)[:255]
 
 
 def _apply_transfer_reception(
@@ -14414,8 +12673,8 @@ def _apply_transfer_reception(
         if shipped_quantity <= 0:
             raise ValueError("transfer_missing_dispatch")
 
-        origin_unit_cost = _quantize_currency(
-            _to_decimal(item.dispatched_unit_cost or device.costo_unitario)
+        origin_unit_cost = quantize_currency(
+            to_decimal(item.dispatched_unit_cost or device.costo_unitario)
         )
 
         destination_device: models.Device | None = None
@@ -14451,8 +12710,8 @@ def _apply_transfer_reception(
             blocked_map[device.id] = max(
                 active_reserved - reservation.quantity, 0)
 
-        origin_cost = _to_decimal(device.costo_unitario)
-        origin_unit_cost = _quantize_currency(origin_cost)
+        origin_cost = to_decimal(device.costo_unitario)
+        origin_unit_cost = quantize_currency(origin_cost)
         origin_device = device
 
         if not item.dispatched_quantity:
@@ -14462,7 +12721,7 @@ def _apply_transfer_reception(
                 device_id=device.id,
                 movement_type=models.MovementType.OUT,
                 quantity=item.quantity,
-                comment=_build_transfer_movement_comment(
+                comment=build_transfer_movement_comment(
                     order, device, "OUT", order.reason
                 ),
                 performed_by_id=performed_by_id,
@@ -14474,7 +12733,7 @@ def _apply_transfer_reception(
             dispatch_unit_cost = outgoing_movement.unit_cost or origin_unit_cost
             item.dispatched_quantity = item.quantity
             item.dispatched_unit_cost = (
-                _quantize_currency(_to_decimal(dispatch_unit_cost))
+                quantize_currency(to_decimal(dispatch_unit_cost))
                 if dispatch_unit_cost is not None
                 else None
             )
@@ -14536,7 +12795,7 @@ def _apply_transfer_reception(
                     device_id=destination_device.id,
                     movement_type=models.MovementType.IN,
                     quantity=accepted_quantity,
-                    comment=_build_transfer_movement_comment(
+                    comment=build_transfer_movement_comment(
                         order, destination_device, "IN", order.reason
                     ),
                     performed_by_id=performed_by_id,
@@ -14556,7 +12815,7 @@ def _apply_transfer_reception(
                 device_id=device.id,
                 movement_type=models.MovementType.IN,
                 quantity=pending_return,
-                comment=_build_transfer_movement_comment(
+                comment=build_transfer_movement_comment(
                     order, device, "IN", "Reverso por faltante/rechazo"
                 ),
                 performed_by_id=performed_by_id,
@@ -14571,8 +12830,8 @@ def _apply_transfer_reception(
 
         item.received_quantity = accepted_quantity
 
-    _recalculate_store_inventory_value(db, order.origin_store_id)
-    _recalculate_store_inventory_value(db, order.destination_store_id)
+    recalculate_store_inventory_value(db, order.origin_store_id)
+    recalculate_store_inventory_value(db, order.destination_store_id)
 
 
 def receive_transfer_order(
@@ -14608,7 +12867,7 @@ def receive_transfer_order(
 
         order.status = models.TransferStatus.RECIBIDA
         order.received_by_id = performed_by_id
-        order.received_at = datetime.utcnow()
+        order.received_at = datetime.now(timezone.utc)
         order.reason = reason or order.reason
 
         flush_session(db)
@@ -14637,7 +12896,7 @@ def receive_transfer_order(
         entity_type="transfer_order",
         entity_id=str(processed_order.id),
         operation="UPSERT",
-        payload=_transfer_order_payload(processed_order),
+        payload=transfer_order_payload(processed_order),
         priority=models.SyncOutboxPriority.HIGH,
     )
     return processed_order
@@ -14689,7 +12948,7 @@ def reject_transfer_order(
 
         order.status = models.TransferStatus.RECHAZADA
         order.received_by_id = performed_by_id
-        order.received_at = datetime.utcnow()
+        order.received_at = datetime.now(timezone.utc)
         order.reason = reason or order.reason
 
         flush_session(db)
@@ -14711,7 +12970,7 @@ def reject_transfer_order(
         entity_type="transfer_order",
         entity_id=str(order.id),
         operation="UPSERT",
-        payload=_transfer_order_payload(order),
+        payload=transfer_order_payload(order),
         priority=models.SyncOutboxPriority.HIGH,
     )
     return order
@@ -14738,7 +12997,7 @@ def cancel_transfer_order(
     with transactional_session(db):
         order.status = models.TransferStatus.CANCELADA
         order.cancelled_by_id = performed_by_id
-        order.cancelled_at = datetime.utcnow()
+        order.cancelled_at = datetime.now(timezone.utc)
         order.reason = reason or order.reason
 
         flush_session(db)
@@ -14760,7 +13019,7 @@ def cancel_transfer_order(
         entity_type="transfer_order",
         entity_id=str(order.id),
         operation="UPSERT",
-        payload=_transfer_order_payload(order),
+        payload=transfer_order_payload(order),
         priority=models.SyncOutboxPriority.HIGH,
     )
     return order
@@ -15093,7 +13352,7 @@ def create_purchase_record(
     purchase = models.Compra(
         proveedor_id=vendor.id_proveedor,
         usuario_id=performed_by_id,
-        fecha=payload.fecha or datetime.utcnow(),
+        fecha=payload.fecha or datetime.now(timezone.utc),
         total=Decimal("0"),
         impuesto=Decimal("0"),
         forma_pago=payload.forma_pago,
@@ -15110,10 +13369,10 @@ def create_purchase_record(
                 raise ValueError("purchase_record_invalid_cost")
 
             device = get_device_global(db, item.producto_id)
-            unit_cost = _to_decimal(item.costo_unitario).quantize(
+            unit_cost = to_decimal(item.costo_unitario).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP)
             subtotal = (
-                unit_cost * _to_decimal(item.cantidad)
+                unit_cost * to_decimal(item.cantidad)
             ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
             db.add(
@@ -15127,7 +13386,7 @@ def create_purchase_record(
             )
             subtotal_total += subtotal
 
-        tax_rate = _to_decimal(payload.impuesto_tasa)
+        tax_rate = to_decimal(payload.impuesto_tasa)
         impuesto = (subtotal_total *
                     tax_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         total = (subtotal_total + impuesto).quantize(Decimal("0.01"),
@@ -15219,8 +13478,8 @@ def list_vendor_purchase_history(
         tipo=vendor.tipo,
         notas=vendor.notas,
         estado=vendor.estado,
-        total_compras=_to_decimal(total_value or 0),
-        total_impuesto=_to_decimal(tax_value or 0),
+        total_compras=to_decimal(total_value or 0),
+        total_impuesto=to_decimal(tax_value or 0),
         compras_registradas=int(count_value or 0),
         ultima_compra=last_purchase,
     )
@@ -15228,8 +13487,8 @@ def list_vendor_purchase_history(
     return schemas.PurchaseVendorHistory(
         proveedor=vendor_response,
         compras=records,
-        total=_to_decimal(total_value or 0),
-        impuesto=_to_decimal(tax_value or 0),
+        total=to_decimal(total_value or 0),
+        impuesto=to_decimal(tax_value or 0),
         registros=int(count_value or 0),
     )
 
@@ -15309,7 +13568,7 @@ def get_purchase_statistics(
         schemas.PurchaseVendorRanking(
             vendor_id=row.id_proveedor,
             vendor_name=row.nombre,
-            total=_to_decimal(row.total),
+            total=to_decimal(row.total),
             orders=int(row.ordenes or 0),
         )
         for row in vendor_rows
@@ -15340,17 +13599,17 @@ def get_purchase_statistics(
         schemas.PurchaseUserRanking(
             user_id=row.id,
             user_name=row.nombre,
-            total=_to_decimal(row.total),
+            total=to_decimal(row.total),
             orders=int(row.ordenes or 0),
         )
         for row in user_rows
     ]
 
     return schemas.PurchaseStatistics(
-        updated_at=datetime.utcnow(),
+        updated_at=datetime.now(timezone.utc),
         compras_registradas=int(total_count or 0),
-        total=_to_decimal(total_amount or 0),
-        impuesto=_to_decimal(total_tax or 0),
+        total=to_decimal(total_amount or 0),
+        impuesto=to_decimal(total_tax or 0),
         monthly_totals=monthly_totals,
         top_vendors=top_vendors,
         top_users=top_users,
@@ -15422,8 +13681,8 @@ def create_purchase_order(
     total_amount = Decimal("0")
     for item in payload.items:
         total_amount += Decimal(item.quantity_ordered) * \
-            _to_decimal(item.unit_cost)
-    approval_threshold = _to_decimal(
+            to_decimal(item.unit_cost)
+    approval_threshold = to_decimal(
         getattr(settings, "purchases_large_order_threshold", Decimal("0"))
     )
     requires_approval = approval_threshold > 0 and total_amount >= approval_threshold
@@ -15450,7 +13709,7 @@ def create_purchase_order(
                 purchase_order_id=order.id,
                 device_id=device.id,
                 quantity_ordered=item.quantity_ordered,
-                unit_cost=_to_decimal(item.unit_cost).quantize(
+                unit_cost=to_decimal(item.unit_cost).quantize(
                     Decimal("0.01"), rounding=ROUND_HALF_UP),
             )
             db.add(order_item)
@@ -15482,7 +13741,7 @@ def create_purchase_order(
             entity_type="purchase_order",
             entity_id=str(order.id),
             operation="UPSERT",
-            payload=_purchase_order_payload(order),
+            payload=purchase_order_payload(order),
         )
     db.refresh(order)
     return order
@@ -15527,26 +13786,6 @@ def create_purchase_order_from_suggestion(
     return order
 
 
-def _build_purchase_movement_comment(
-    action: str,
-    order: models.PurchaseOrder,
-    device: models.Device,
-    reason: str | None,
-) -> str:
-    """Genera una descripción legible para los movimientos de compras."""
-
-    parts: list[str] = [
-        action, f"OC #{order.id}", f"Proveedor: {order.supplier}"]
-    if device.imei:
-        parts.append(f"IMEI: {device.imei}")
-    if device.serial:
-        parts.append(f"Serie: {device.serial}")
-    if reason:
-        normalized_reason = reason.strip()
-        if normalized_reason:
-            parts.append(normalized_reason)
-    comment = " | ".join(part for part in parts if part)
-    return comment[:255]
 
 
 def receive_purchase_order(
@@ -15589,14 +13828,14 @@ def receive_purchase_order(
             device_id=device.id,
             movement_type=models.MovementType.IN,
             quantity=receive_item.quantity,
-            comment=_build_purchase_movement_comment(
+            comment=build_purchase_movement_comment(
                 "Recepción OC",
                 order,
                 device,
                 reason,
             ),
             performed_by_id=received_by_id,
-            unit_cost=_to_decimal(order_item.unit_cost),
+            unit_cost=to_decimal(order_item.unit_cost),
             reference_type="purchase_order",
             reference_id=str(order.id),
         )
@@ -15613,8 +13852,8 @@ def receive_purchase_order(
                 device=movement_device,
                 batch_code=batch_code,
                 quantity=receive_item.quantity,
-                unit_cost=_to_decimal(order_item.unit_cost),
-                purchase_date=datetime.utcnow().date(),
+                unit_cost=to_decimal(order_item.unit_cost),
+                purchase_date=datetime.now(timezone.utc).date(),
             )
             movement_device.lote = batch.batch_code
             movement_device.fecha_compra = batch.purchase_date
@@ -15629,7 +13868,7 @@ def receive_purchase_order(
     with transactional_session(db):
         if all(item.quantity_received == item.quantity_ordered for item in order.items):
             order.status = models.PurchaseStatus.COMPLETADA
-            order.closed_at = datetime.utcnow()
+            order.closed_at = datetime.now(timezone.utc)
         else:
             order.status = models.PurchaseStatus.PARCIAL
 
@@ -15643,7 +13882,7 @@ def receive_purchase_order(
             note=reason,
         )
         db.refresh(order)
-        _recalculate_store_inventory_value(db, order.store_id)
+        recalculate_store_inventory_value(db, order.store_id)
 
         _log_action(
             db,
@@ -15666,7 +13905,7 @@ def receive_purchase_order(
             entity_type="purchase_order",
             entity_id=str(order.id),
             operation="UPSERT",
-            payload=_purchase_order_payload(order),
+            payload=purchase_order_payload(order),
         )
     return order
 
@@ -15698,7 +13937,7 @@ def _revert_purchase_inventory(
             device_id=device.id,
             movement_type=models.MovementType.OUT,
             quantity=received_qty,
-            comment=_build_purchase_movement_comment(
+            comment=build_purchase_movement_comment(
                 "Reversión OC",
                 order,
                 device,
@@ -15706,7 +13945,7 @@ def _revert_purchase_inventory(
             ),
             performed_by_id=cancelled_by_id,
             source_store_id=order.store_id,
-            unit_cost=_to_decimal(order_item.unit_cost),
+            unit_cost=to_decimal(order_item.unit_cost),
             reference_type="purchase_order",
             reference_id=str(order.id),
         )
@@ -15716,7 +13955,7 @@ def _revert_purchase_inventory(
         adjustments_performed = True
 
     if adjustments_performed:
-        _recalculate_store_inventory_value(db, order.store_id)
+        recalculate_store_inventory_value(db, order.store_id)
 
     return reversal_details
 
@@ -15741,7 +13980,7 @@ def cancel_purchase_order(
         )
 
         order.status = models.PurchaseStatus.CANCELADA
-        order.closed_at = datetime.utcnow()
+        order.closed_at = datetime.now(timezone.utc)
         if reason:
             order.notes = (order.notes or "") + \
                 f" | Cancelación: {reason}" if order.notes else reason
@@ -15777,7 +14016,7 @@ def cancel_purchase_order(
             entity_type="purchase_order",
             entity_id=str(order.id),
             operation="UPSERT",
-            payload=_purchase_order_payload(order),
+            payload=purchase_order_payload(order),
         )
     return order
 
@@ -15791,17 +14030,17 @@ def _register_supplier_credit_note(
     corporate_reason: str | None,
     processed_by_id: int | None,
 ) -> models.SupplierLedgerEntry | None:
-    supplier = _get_supplier_by_name(db, supplier_name)
+    supplier = get_supplier_by_name(db, supplier_name)
     if supplier is None:
         return None
 
-    normalized_amount = _to_decimal(credit_amount).quantize(
+    normalized_amount = to_decimal(credit_amount).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
     if normalized_amount <= Decimal("0"):
         return None
 
-    current_debt = _to_decimal(supplier.outstanding_debt).quantize(
+    current_debt = to_decimal(supplier.outstanding_debt).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
     new_debt = (current_debt - normalized_amount).quantize(
@@ -15871,9 +14110,9 @@ def register_purchase_return(
             raise ValueError("purchase_return_invalid_warehouse")
     if device.quantity < payload.quantity:
         raise ValueError("purchase_return_insufficient_stock")
-    unit_cost = _to_decimal(order_item.unit_cost)
+    unit_cost = to_decimal(order_item.unit_cost)
     credit_note_amount = (
-        unit_cost * _to_decimal(payload.quantity)
+        unit_cost * to_decimal(payload.quantity)
     ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     corporate_reason = reason if isinstance(reason, str) else None
     # Restaurar acentos comunes perdidos en entornos que normalizan encabezados.
@@ -15904,7 +14143,7 @@ def register_purchase_return(
             device_id=device.id,
             movement_type=models.MovementType.OUT,
             quantity=payload.quantity,
-            comment=_build_purchase_movement_comment(
+            comment=build_purchase_movement_comment(
                 "Devolución proveedor",
                 order,
                 device,
@@ -15914,7 +14153,7 @@ def register_purchase_return(
             source_store_id=order.store_id,
             source_warehouse_id=device.warehouse_id,
             warehouse_id=warehouse.id if warehouse else device.warehouse_id,
-            unit_cost=_to_decimal(order_item.unit_cost),
+            unit_cost=to_decimal(order_item.unit_cost),
             reference_type="purchase_return",
             reference_id=str(order.id),
         )
@@ -15967,7 +14206,7 @@ def register_purchase_return(
             entity_type="purchase_order",
             entity_id=str(order.id),
             operation="UPSERT",
-            payload=_purchase_order_payload(order),
+            payload=purchase_order_payload(order),
         )
     return purchase_return
 
@@ -16027,7 +14266,7 @@ def add_purchase_order_document(
             entity_type="purchase_order",
             entity_id=str(order.id),
             operation="UPSERT",
-            payload=_purchase_order_payload(order),
+            payload=purchase_order_payload(order),
         )
 
     return document
@@ -16087,7 +14326,7 @@ def transition_purchase_order_status(
             models.PurchaseStatus.PENDIENTE,
         }:
             order.approved_by_id = None
-        order.updated_at = datetime.utcnow()
+        order.updated_at = datetime.now(timezone.utc)
         flush_session(db)
         db.refresh(order)
         _register_purchase_status_event(
@@ -16107,7 +14346,7 @@ def transition_purchase_order_status(
             details=json.dumps(
                 {
                     "status": status.value,
-                    "note": _normalize_optional_note(note),
+                    "note": normalize_optional_note(note),
                 }
             ),
         )
@@ -16117,7 +14356,7 @@ def transition_purchase_order_status(
             entity_type="purchase_order",
             entity_id=str(order.id),
             operation="UPSERT",
-            payload=_purchase_order_payload(order),
+            payload=purchase_order_payload(order),
         )
 
     return order
@@ -16144,7 +14383,7 @@ def send_purchase_order_email(
     purchase_documents.send_purchase_order_email(
         order=order,
         recipients=normalized_recipients,
-        message=_normalize_optional_note(message),
+        message=normalize_optional_note(message),
         include_documents=include_documents,
     )
 
@@ -16225,7 +14464,7 @@ def import_purchase_orders_from_csv(
             continue
 
         try:
-            unit_cost_value = _to_decimal(normalized.get("unit_cost"))
+            unit_cost_value = to_decimal(normalized.get("unit_cost"))
         except Exception:  # pragma: no cover - validaciones de Decimal
             errors.append(f"Fila {line_number}: costo unitario inválido")
             continue
@@ -16409,7 +14648,7 @@ def execute_recurring_order(
     reason: str | None = None,
 ) -> schemas.RecurringOrderExecutionResult:
     template = get_recurring_order(db, template_id)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     if template.order_type is models.RecurringOrderType.PURCHASE:
         purchase_payload = schemas.PurchaseOrderCreate.model_validate(
@@ -16497,7 +14736,7 @@ def list_repair_orders(
     if status is not None:
         statement = statement.where(models.RepairOrder.status == status)
     if date_from is not None or date_to is not None:
-        start_dt, end_dt = _normalize_date_range(date_from, date_to)
+        start_dt, end_dt = normalize_date_range(date_from, date_to)
         statement = statement.where(
             models.RepairOrder.opened_at >= start_dt,
             models.RepairOrder.opened_at <= end_dt,
@@ -16577,7 +14816,7 @@ def _apply_repair_parts(  # // [PACK37-backend]
             raise ValueError("repair_part_device_required")
         if source == models.RepairPartSource.EXTERNAL and not part_name:
             raise ValueError("repair_part_name_required")
-        unit_cost = _to_decimal(normalized.unit_cost or 0).quantize(
+        unit_cost = to_decimal(normalized.unit_cost or 0).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
         key = _part_key(device_id, part_name, source)
@@ -16607,7 +14846,7 @@ def _apply_repair_parts(  # // [PACK37-backend]
         part_name = data.get("part_name")
         source = data["source"]
         quantity = int(data["quantity"])
-        unit_cost = _to_decimal(data["unit_cost"]).quantize(
+        unit_cost = to_decimal(data["unit_cost"]).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
 
@@ -16697,7 +14936,7 @@ def _apply_repair_parts(  # // [PACK37-backend]
         Decimal("0.01"), rounding=ROUND_HALF_UP)
     order.parts_snapshot = snapshot
     order.inventory_adjusted = bool(processed_devices)
-    _recalculate_store_inventory_value(db, order.store_id)
+    recalculate_store_inventory_value(db, order.store_id)
     return order.parts_cost
 
 
@@ -16712,7 +14951,7 @@ def create_repair_order(
     customer = None
     if payload.customer_id:
         customer = get_customer(db, payload.customer_id)
-    labor_cost = _to_decimal(payload.labor_cost).quantize(
+    labor_cost = to_decimal(payload.labor_cost).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP)
     customer_name = payload.customer_name or (
         customer.name if customer else None)
@@ -16748,7 +14987,7 @@ def create_repair_order(
         db.add(order)
 
         if customer:
-            _append_customer_history(
+            append_customer_history(
                 customer, f"Orden de reparación #{order.id} creada")
             db.add(customer)
 
@@ -16797,7 +15036,7 @@ def update_repair_order(
             customer = get_customer(db, payload.customer_id)
             order.customer_id = customer.id
             order.customer_name = customer.name
-            _append_customer_history(
+            append_customer_history(
                 customer, f"Orden de reparación #{order.id} actualizada")
             db.add(customer)
             updated_fields["customer_id"] = customer.id
@@ -16838,11 +15077,11 @@ def update_repair_order(
             models.RepairStatus.ENTREGADO,
             models.RepairStatus.CANCELADO,
         }:  # // [PACK37-backend]
-            order.delivered_at = datetime.utcnow()
+            order.delivered_at = datetime.now(timezone.utc)
         elif payload.status in {models.RepairStatus.PENDIENTE, models.RepairStatus.EN_PROCESO}:
             order.delivered_at = None
     if payload.labor_cost is not None:
-        order.labor_cost = _to_decimal(payload.labor_cost).quantize(
+        order.labor_cost = to_decimal(payload.labor_cost).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP)
         updated_fields["labor_cost"] = float(order.labor_cost)
     if payload.parts is not None:
@@ -17028,7 +15267,7 @@ def delete_repair_order(
                 reference_type="repair_order",
                 reference_id=str(order.id),
             )
-        _recalculate_store_inventory_value(db, order.store_id)
+        recalculate_store_inventory_value(db, order.store_id)
         db.delete(order)
         flush_session(db)
 
@@ -17225,7 +15464,7 @@ def update_warranty_claim_status(
             models.WarrantyClaimStatus.RESUELTO,
             models.WarrantyClaimStatus.CANCELADO,
         }:
-            claim.resolved_at = datetime.utcnow()
+            claim.resolved_at = datetime.now(timezone.utc)
         assignment = claim.assignment
         if assignment:
             if new_status == models.WarrantyClaimStatus.RESUELTO:
@@ -17240,7 +15479,7 @@ def update_warranty_claim_status(
                 assignment.status = models.WarrantyStatus.RECLAMO
                 if assignment.sale_item:
                     assignment.sale_item.warranty_status = models.WarrantyStatus.RECLAMO
-            assignment.updated_at = datetime.utcnow()
+            assignment.updated_at = datetime.now(timezone.utc)
             db.add(assignment)
         claim.performed_by_id = performed_by_id or claim.performed_by_id
         db.add(claim)
@@ -17305,7 +15544,7 @@ def get_warranty_metrics(
         claims_resolved=claims_resolved,
         expiring_soon=expiring,
         average_coverage_days=round(average_days, 2),
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
     )
 
 
@@ -17345,7 +15584,7 @@ def list_sales(
         statement = statement.where(
             models.Sale.performed_by_id == performed_by_id)
     if date_from is not None or date_to is not None:
-        start, end = _normalize_date_range(date_from, date_to)
+        start, end = normalize_date_range(date_from, date_to)
         statement = statement.where(
             models.Sale.created_at >= start, models.Sale.created_at <= end
         )
@@ -17554,11 +15793,6 @@ def search_sales_history(
     )
 
 
-def _normalize_reservation_reason(reason: str | None) -> str:
-    normalized = (reason or "").strip()
-    if len(normalized) < 5:
-        raise ValueError("reservation_reason_required")
-    return normalized[:255]
 
 
 def _active_reservations_by_device(
@@ -17568,7 +15802,7 @@ def _active_reservations_by_device(
     device_ids: Iterable[int] | None = None,
 ) -> dict[int, int]:
     ids = set(device_ids or [])
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     statement = (
         select(
             models.InventoryReservation.device_id,
@@ -17599,7 +15833,7 @@ def expire_reservations(
     store_id: int | None = None,
     device_ids: Iterable[int] | None = None,
 ) -> int:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     ids = set(device_ids or [])
     statement = select(models.InventoryReservation).where(
         models.InventoryReservation.status == models.InventoryState.RESERVADO,
@@ -17651,7 +15885,7 @@ def list_inventory_reservations(
         )
         .order_by(models.InventoryReservation.created_at.desc())
     )
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     if store_id is not None:
         statement = statement.where(
             models.InventoryReservation.store_id == store_id)
@@ -17683,10 +15917,10 @@ def create_reservation(
 ) -> models.InventoryReservation:
     if quantity <= 0:
         raise ValueError("reservation_invalid_quantity")
-    if expires_at <= datetime.utcnow():
+    if expires_at <= datetime.now(timezone.utc):
         raise ValueError("reservation_invalid_expiration")
 
-    normalized_reason = _normalize_reservation_reason(reason)
+    normalized_reason = normalize_reservation_reason(reason)
     store = get_store(db, store_id)
     device = get_device(db, store_id, device_id)
 
@@ -17750,14 +15984,14 @@ def renew_reservation(
     reservation = get_inventory_reservation(db, reservation_id)
     if reservation.status != models.InventoryState.RESERVADO:
         raise ValueError("reservation_not_active")
-    if expires_at <= datetime.utcnow():
+    if expires_at <= datetime.now(timezone.utc):
         raise ValueError("reservation_invalid_expiration")
 
-    _ = _normalize_reservation_reason(reason)
+    _ = normalize_reservation_reason(reason)
 
     with transactional_session(db):
         reservation.expires_at = expires_at
-        reservation.updated_at = datetime.utcnow()
+        reservation.updated_at = datetime.now(timezone.utc)
         flush_session(db)
         details = json.dumps(
             {
@@ -17798,7 +16032,7 @@ def release_reservation(
         raise ValueError("reservation_not_active")
 
     normalized_reason = (reason or "").strip() or None
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     with transactional_session(db):
         reservation.status = target_state
@@ -17916,20 +16150,20 @@ def _preview_sale_totals(
         # // [PACK34-pricing]
         override_price = getattr(item, "unit_price_override", None)
         if override_price is not None:
-            line_unit_price = _to_decimal(override_price).quantize(
+            line_unit_price = to_decimal(override_price).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
         else:
-            line_unit_price = _to_decimal(device.unit_price).quantize(
+            line_unit_price = to_decimal(device.unit_price).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
-        quantity_decimal = _to_decimal(item.quantity)
+        quantity_decimal = to_decimal(item.quantity)
         line_total = (line_unit_price * quantity_decimal).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
         gross_total += line_total
 
-        line_discount_percent = _to_decimal(
+        line_discount_percent = to_decimal(
             getattr(item, "discount_percent", None))
         if line_discount_percent == Decimal("0"):
             line_discount_percent = sale_discount_percent
@@ -17942,35 +16176,8 @@ def _preview_sale_totals(
     return gross_total, total_discount
 
 
-def _build_sale_movement_comment(
-    sale: models.Sale, device: models.Device, reason: str | None
-) -> str:
-    segments = [f"Venta #{sale.id}"]
-    if device.sku:
-        segments.append(f"SKU {device.sku}")
-    if reason:
-        segments.append(reason)
-    return " — ".join(segments)[:255]
 
 
-def _build_sale_return_comment(
-    sale: models.Sale,
-    device: models.Device,
-    reason: str | None,
-    *,
-    disposition: schemas.ReturnDisposition | None = None,
-    warehouse_name: str | None = None,
-) -> str:
-    segments = [f"Devolución venta #{sale.id}"]
-    if device.sku:
-        segments.append(f"SKU {device.sku}")
-    if reason:
-        segments.append(reason)
-    if disposition is not None:
-        segments.append(f"estado={disposition.value}")
-    if warehouse_name:
-        segments.append(f"almacen={warehouse_name}")
-    return " — ".join(segments)[:255]
 
 
 def _apply_sale_items(
@@ -18014,20 +16221,20 @@ def _apply_sale_items(
         # // [PACK34-pricing]
         override_price = getattr(item, "unit_price_override", None)
         if override_price is not None:
-            line_unit_price = _to_decimal(override_price).quantize(
+            line_unit_price = to_decimal(override_price).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
         else:
-            line_unit_price = _to_decimal(device.unit_price).quantize(
+            line_unit_price = to_decimal(device.unit_price).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
-        quantity_decimal = _to_decimal(item.quantity)
+        quantity_decimal = to_decimal(item.quantity)
         line_total = (line_unit_price * quantity_decimal).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
         gross_total += line_total
 
-        line_discount_percent = _to_decimal(
+        line_discount_percent = to_decimal(
             getattr(item, "discount_percent", None))
         if line_discount_percent == Decimal("0"):
             line_discount_percent = sale_discount_percent
@@ -18053,7 +16260,7 @@ def _apply_sale_items(
         sale.items.append(sale_item)
 
         batch_code = getattr(item, "batch_code", None)
-        movement_comment = _build_sale_movement_comment(sale, device, reason)
+        movement_comment = build_sale_movement_comment(sale, device, reason)
         if batch_code:
             batch_comment = batch_code.strip()
             if batch_comment:
@@ -18129,7 +16336,7 @@ def _resolve_warranty_serial(device: models.Device) -> str | None:
 def _create_warranty_assignments(
     db: Session, sale: models.Sale
 ) -> list[models.WarrantyAssignment]:
-    activation_dt = sale.created_at or datetime.utcnow()
+    activation_dt = sale.created_at or datetime.now(timezone.utc)
     activation_date = activation_dt.date()
     assignments: list[models.WarrantyAssignment] = []
 
@@ -18177,7 +16384,7 @@ def create_sale(
         customer = get_customer(db, payload.customer_id)
         customer_name = customer_name or customer.name
 
-    sale_discount_percent = _to_decimal(payload.discount_percent or 0)
+    sale_discount_percent = to_decimal(payload.discount_percent or 0)
     sale_status = (payload.status or "COMPLETADA").strip() or "COMPLETADA"
     normalized_status = sale_status.upper()
     sale = models.Sale(
@@ -18213,7 +16420,7 @@ def create_sale(
                 raise ValueError("reservation_not_active")
             if reservation.quantity != item.quantity:
                 raise ValueError("reservation_quantity_mismatch")
-            if reservation.expires_at <= datetime.utcnow():
+            if reservation.expires_at <= datetime.now(timezone.utc):
                 raise ValueError("reservation_expired")
             reservation_map[reservation.id] = reservation
             reserved_allowances[item.device_id] = reserved_allowances.get(
@@ -18229,7 +16436,7 @@ def create_sale(
             allowance = reserved_allowances.get(device_id, 0)
             blocked_map[device_id] = max(active_total - allowance, 0)
 
-        tax_value = _to_decimal(tax_rate)
+        tax_value = to_decimal(tax_rate)
         if tax_value < Decimal("0"):
             tax_value = Decimal("0")
         tax_fraction = tax_value / \
@@ -18290,12 +16497,12 @@ def create_sale(
         flush_session(db)
         _create_warranty_assignments(db, sale)
 
-        _recalculate_store_inventory_value(db, sale.store_id)
+        recalculate_store_inventory_value(db, sale.store_id)
 
         if customer:
             if sale.payment_method == models.PaymentMethod.CREDITO:
                 customer.outstanding_debt = (
-                    _to_decimal(customer.outstanding_debt) + sale.total_amount
+                    to_decimal(customer.outstanding_debt) + sale.total_amount
                 ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
                 ledger_entry = _create_customer_ledger_entry(
                     db,
@@ -18312,7 +16519,7 @@ def create_sale(
                     },
                     created_by_id=performed_by_id,
                 )
-            _append_customer_history(
+            append_customer_history(
                 customer,
                 f"Venta #{sale.id} registrada ({sale.payment_method.value})",
             )
@@ -18330,7 +16537,7 @@ def create_sale(
                 entity_type="customer",
                 entity_id=str(customer_to_sync.id),
                 operation="UPSERT",
-                payload=_customer_payload(customer_to_sync),
+                payload=customer_payload(customer_to_sync),
             )
         if ledger_entry:
             _sync_customer_ledger_entry(db, ledger_entry)
@@ -18410,7 +16617,7 @@ def update_sale(
 
     previous_customer = sale.customer
     previous_payment_method = sale.payment_method
-    previous_total_amount = _to_decimal(sale.total_amount)
+    previous_total_amount = to_decimal(sale.total_amount)
     reserved_quantities: dict[int, int] = {}
     for existing_item in sale.items:
         reserved_quantities[existing_item.device_id] = (
@@ -18424,7 +16631,7 @@ def update_sale(
     store = get_store(db, sale.store_id)
 
     with transactional_session(db):
-        sale_discount_percent = _to_decimal(payload.discount_percent or 0)
+        sale_discount_percent = to_decimal(payload.discount_percent or 0)
         new_payment_method = models.PaymentMethod(payload.payment_method)
         sale_status = (
             payload.status or sale.status or "COMPLETADA").strip() or "COMPLETADA"
@@ -18454,7 +16661,7 @@ def update_sale(
                 raise ValueError("reservation_not_active")
             if reservation.quantity != item.quantity:
                 raise ValueError("reservation_quantity_mismatch")
-            if reservation.expires_at <= datetime.utcnow():
+            if reservation.expires_at <= datetime.now(timezone.utc):
                 raise ValueError("reservation_expired")
             reservation_map[reservation.id] = reservation
             reserved_allowances[item.device_id] = reserved_allowances.get(
@@ -18486,7 +16693,7 @@ def update_sale(
         preview_subtotal = (preview_gross_total - preview_discount).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
-        tax_value = _to_decimal(None)
+        tax_value = to_decimal(None)
         tax_fraction = tax_value / \
             Decimal("100") if tax_value else Decimal("0")
         preview_tax_amount = (preview_subtotal * tax_fraction).quantize(
@@ -18534,7 +16741,7 @@ def update_sale(
             and previous_total_amount > Decimal("0")
         ):
             updated_debt = (
-                _to_decimal(previous_customer.outstanding_debt) -
+                to_decimal(previous_customer.outstanding_debt) -
                 previous_total_amount
             ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             if updated_debt < Decimal("0"):
@@ -18587,7 +16794,7 @@ def update_sale(
         if target_customer:
             if sale.payment_method == models.PaymentMethod.CREDITO:
                 target_customer.outstanding_debt = (
-                    _to_decimal(target_customer.outstanding_debt) +
+                    to_decimal(target_customer.outstanding_debt) +
                     sale.total_amount
                 ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
                 customers_to_sync[target_customer.id] = target_customer
@@ -18606,13 +16813,13 @@ def update_sale(
                     },
                     created_by_id=performed_by_id,
                 )
-            _append_customer_history(
+            append_customer_history(
                 target_customer,
                 f"Venta #{sale.id} actualizada ({sale.payment_method.value})",
             )
             db.add(target_customer)
 
-        _recalculate_store_inventory_value(db, sale.store_id)
+        recalculate_store_inventory_value(db, sale.store_id)
 
         flush_session(db)
         db.refresh(sale)
@@ -18623,7 +16830,7 @@ def update_sale(
                 entity_type="customer",
                 entity_id=str(customer_to_sync.id),
                 operation="UPSERT",
-                payload=_customer_payload(customer_to_sync),
+                payload=customer_payload(customer_to_sync),
             )
         if ledger_reversal:
             _sync_customer_ledger_entry(db, ledger_reversal)
@@ -18713,13 +16920,13 @@ def cancel_sale(
 
         if sale.customer and sale.payment_method == models.PaymentMethod.CREDITO and sale.total_amount > Decimal("0"):
             updated_debt = (
-                _to_decimal(sale.customer.outstanding_debt) -
-                _to_decimal(sale.total_amount)
+                to_decimal(sale.customer.outstanding_debt) -
+                to_decimal(sale.total_amount)
             ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             if updated_debt < Decimal("0"):
                 updated_debt = Decimal("0")
             sale.customer.outstanding_debt = updated_debt
-            _append_customer_history(
+            append_customer_history(
                 sale.customer,
                 f"Venta #{sale.id} anulada",
             )
@@ -18729,7 +16936,7 @@ def cancel_sale(
                 db,
                 customer=sale.customer,
                 entry_type=models.CustomerLedgerEntryType.ADJUSTMENT,
-                amount=-_to_decimal(sale.total_amount),
+                amount=-to_decimal(sale.total_amount),
                 note=f"Venta #{sale.id} anulada",
                 reference_type="sale",
                 reference_id=str(sale.id),
@@ -18744,7 +16951,7 @@ def cancel_sale(
             invoice_number = f"{config.invoice_prefix}-{sale.id:06d}"
             credit_request = schemas.StoreCreditIssueRequest(
                 customer_id=sale.customer_id,
-                amount=float(_to_decimal(sale.total_amount)),
+                amount=float(to_decimal(sale.total_amount)),
                 notes=f"Nota de crédito por anulación de la factura {invoice_number}",
                 context={
                     "origin": "sale_cancellation",
@@ -18759,11 +16966,11 @@ def cancel_sale(
                 reason=cancel_reason,
             )
             sale.invoice_reported = False
-            sale.invoice_annulled_at = datetime.utcnow()
+            sale.invoice_annulled_at = datetime.now(timezone.utc)
             sale.invoice_credit_note_code = credit_note.code
 
         sale.status = "CANCELADA"
-        _recalculate_store_inventory_value(db, sale.store_id)
+        recalculate_store_inventory_value(db, sale.store_id)
 
         flush_session(db)
         db.refresh(sale)
@@ -18774,7 +16981,7 @@ def cancel_sale(
                 entity_type="customer",
                 entity_id=str(customer_to_sync.id),
                 operation="UPSERT",
-                payload=_customer_payload(customer_to_sync),
+                payload=customer_payload(customer_to_sync),
             )
         if ledger_entry:
             _sync_customer_ledger_entry(db, ledger_entry)
@@ -18852,7 +17059,7 @@ def register_sale_return(
         if supervisor is None:
             if not fallback_hash:
                 raise PermissionError("sale_return_supervisor_not_found")
-            if not _verify_supervisor_pin_hash(fallback_hash, approval.pin):
+            if not verify_supervisor_pin_hash(fallback_hash, approval.pin):
                 raise PermissionError("sale_return_invalid_supervisor_pin")
             approval_reference = approval.supervisor_username
         else:
@@ -18866,7 +17073,7 @@ def register_sale_return(
             if not pin_hash:
                 raise PermissionError(
                     "sale_return_supervisor_pin_not_configured")
-            if not _verify_supervisor_pin_hash(pin_hash, approval.pin):
+            if not verify_supervisor_pin_hash(pin_hash, approval.pin):
                 raise PermissionError("sale_return_invalid_supervisor_pin")
             approved_supervisor = supervisor
             approval_reference = supervisor.username
@@ -18894,7 +17101,7 @@ def register_sale_return(
                 raise ValueError("sale_return_invalid_quantity")
 
             device = get_device(db, sale.store_id, item.device_id)
-            previous_cost = _to_decimal(device.costo_unitario)
+            previous_cost = to_decimal(device.costo_unitario)
             disposition = item.disposition
             warehouse_id = item.warehouse_id
             if warehouse_id is not None and warehouse_id <= 0:
@@ -18928,7 +17135,7 @@ def register_sale_return(
                 device_id=item.device_id,
                 movement_type=models.MovementType.IN,
                 quantity=item.quantity,
-                comment=_build_sale_return_comment(
+                comment=build_sale_return_comment(
                     sale,
                     device,
                     item.reason or reason,
@@ -18939,7 +17146,7 @@ def register_sale_return(
                 source_warehouse_id=device.warehouse_id,
                 destination_store_id=destination_store_id_for_movement,
                 warehouse_id=warehouse.id if warehouse else device.warehouse_id,
-                unit_cost=_quantize_currency(previous_cost),
+                unit_cost=quantize_currency(previous_cost),
                 reference_type="sale_return",
                 reference_id=str(sale.id),
             )
@@ -18973,7 +17180,7 @@ def register_sale_return(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
 
-        _recalculate_store_inventory_value(db, sale.store_id)
+        recalculate_store_inventory_value(db, sale.store_id)
 
         flush_session(db)
         for sale_return in returns:
@@ -19000,11 +17207,11 @@ def register_sale_return(
 
         if sale.customer and sale.payment_method == models.PaymentMethod.CREDITO and refund_total > 0:
             sale.customer.outstanding_debt = (
-                _to_decimal(sale.customer.outstanding_debt) - refund_total
+                to_decimal(sale.customer.outstanding_debt) - refund_total
             ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             if sale.customer.outstanding_debt < Decimal("0"):
                 sale.customer.outstanding_debt = Decimal("0")
-            _append_customer_history(
+            append_customer_history(
                 sale.customer,
                 f"Devolución aplicada a venta #{sale.id} por ${float(refund_total):.2f}",
             )
@@ -19026,7 +17233,7 @@ def register_sale_return(
                 entity_type="customer",
                 entity_id=str(sale.customer.id),
                 operation="UPSERT",
-                payload=_customer_payload(sale.customer),
+                payload=customer_payload(sale.customer),
             )
             if ledger_entry:
                 _sync_customer_ledger_entry(db, ledger_entry)
@@ -19303,8 +17510,8 @@ def list_operations_history(
     limit: int | None = 50,
     offset: int = 0,
 ) -> schemas.OperationsHistoryResponse:
-    start_dt = start or (datetime.utcnow() - timedelta(days=30))
-    end_dt = end or datetime.utcnow()
+    start_dt = start or (datetime.now(timezone.utc) - timedelta(days=30))
+    end_dt = end or datetime.now(timezone.utc)
     if start_dt > end_dt:
         start_dt, end_dt = end_dt, start_dt
 
@@ -19314,7 +17521,7 @@ def list_operations_history(
     def register_technician(user: models.User | None) -> None:
         if user is None or user.id is None:
             return
-        name = _user_display_name(user) or f"Usuario {user.id}"
+        name = user_display_name(user) or f"Usuario {user.id}"
         technicians.setdefault(user.id, name)
 
     purchase_stmt = (
@@ -19337,7 +17544,7 @@ def list_operations_history(
             continue
         register_technician(order.created_by)
         total_amount = sum(
-            _to_decimal(item.unit_cost) * _to_decimal(item.quantity_ordered)
+            to_decimal(item.unit_cost) * to_decimal(item.quantity_ordered)
             for item in order.items
         )
         records.append(
@@ -19348,7 +17555,7 @@ def list_operations_history(
                 store_id=order.store_id,
                 store_name=order.store.name if order.store else None,
                 technician_id=order.created_by_id,
-                technician_name=_user_display_name(order.created_by),
+                technician_name=user_display_name(order.created_by),
                 reference=f"PO-{order.id}",
                 description=f"Orden de compra para {order.supplier}",
                 amount=total_amount,
@@ -19388,7 +17595,7 @@ def list_operations_history(
                     store_id=transfer.origin_store_id,
                     store_name=transfer.origin_store.name if transfer.origin_store else None,
                     technician_id=transfer.dispatched_by_id,
-                    technician_name=_user_display_name(transfer.dispatched_by),
+                    technician_name=user_display_name(transfer.dispatched_by),
                     reference=f"TR-{transfer.id}",
                     description=(
                         f"Despacho hacia {transfer.destination_store.name if transfer.destination_store else transfer.destination_store_id}"
@@ -19411,7 +17618,7 @@ def list_operations_history(
                     store_id=transfer.destination_store_id,
                     store_name=transfer.destination_store.name if transfer.destination_store else None,
                     technician_id=transfer.received_by_id,
-                    technician_name=_user_display_name(transfer.received_by),
+                    technician_name=user_display_name(transfer.received_by),
                     reference=f"TR-{transfer.id}",
                     description=(
                         f"Recepción desde {transfer.origin_store.name if transfer.origin_store else transfer.origin_store_id}"
@@ -19444,10 +17651,10 @@ def list_operations_history(
                 store_id=sale.store_id,
                 store_name=sale.store.name if sale.store else None,
                 technician_id=sale.performed_by_id,
-                technician_name=_user_display_name(sale.performed_by),
+                technician_name=user_display_name(sale.performed_by),
                 reference=f"VNT-{sale.id}",
                 description="Venta registrada en POS",
-                amount=_to_decimal(sale.total_amount),
+                amount=to_decimal(sale.total_amount),
             )
         )
 
@@ -19565,7 +17772,7 @@ def open_cash_session(
     if db.scalars(statement).first() is not None:
         raise ValueError("cash_session_already_open")
 
-    opening_amount = _to_decimal(payload.opening_amount).quantize(
+    opening_amount = to_decimal(payload.opening_amount).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
     session = models.CashRegisterSession(
@@ -19616,7 +17823,7 @@ def _cash_entries_totals(
     incomes = Decimal("0")
     expenses = Decimal("0")
     for entry_type, total in db.execute(entries_stmt):
-        normalized_total = _to_decimal(total).quantize(
+        normalized_total = to_decimal(total).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
         if entry_type == models.CashEntryType.INGRESO:
@@ -19644,15 +17851,15 @@ def close_cash_session(
         .group_by(models.Sale.payment_method)
     )
     for method, total in db.execute(totals_stmt):
-        totals_value = _to_decimal(total).quantize(
+        totals_value = to_decimal(total).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP)
         sales_totals[method.value] = totals_value
 
-    session.closing_amount = _to_decimal(payload.closing_amount).quantize(
+    session.closing_amount = to_decimal(payload.closing_amount).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
     session.closed_by_id = closed_by_id
-    session.closed_at = datetime.utcnow()
+    session.closed_at = datetime.now(timezone.utc)
     session.status = models.CashSessionStatus.CERRADO
     breakdown_snapshot = dict(session.payment_breakdown or {})
     for key, value in sales_totals.items():
@@ -19690,7 +17897,7 @@ def close_cash_session(
 
     denomination_breakdown: dict[str, int] = {}
     for denomination in payload.denominations:
-        value = _to_decimal(denomination.value).quantize(
+        value = to_decimal(denomination.value).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
         quantity = max(0, int(denomination.quantity))
@@ -19740,7 +17947,7 @@ def record_cash_entry(
     if session.status != models.CashSessionStatus.ABIERTO:
         raise ValueError("cash_session_not_open")
 
-    amount = _to_decimal(payload.amount).quantize(
+    amount = to_decimal(payload.amount).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
 
@@ -19815,7 +18022,7 @@ def get_pos_config(db: Session, store_id: int) -> models.POSConfig:
             db.refresh(config)
     else:
         db.refresh(config)
-    normalized_hardware = _normalize_hardware_settings(
+    normalized_hardware = normalize_hardware_settings(
         config.hardware_settings if isinstance(
             config.hardware_settings, dict) else None
     )
@@ -19839,7 +18046,7 @@ def update_pos_config(
 ) -> models.POSConfig:
     config = get_pos_config(db, payload.store_id)
     with transactional_session(db):
-        config.tax_rate = _to_decimal(payload.tax_rate).quantize(
+        config.tax_rate = to_decimal(payload.tax_rate).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
         config.invoice_prefix = payload.invoice_prefix.strip().upper()
@@ -19851,7 +18058,7 @@ def update_pos_config(
         if payload.hardware_settings is not None:
             config.hardware_settings = payload.hardware_settings.model_dump()
         else:
-            config.hardware_settings = _normalize_hardware_settings(
+            config.hardware_settings = normalize_hardware_settings(
                 config.hardware_settings
             )
         # Persistir el tipo de documento por defecto dentro de hardware_settings (no hay columna dedicada)
@@ -19949,7 +18156,7 @@ def list_pos_taxes(db: Session) -> list[schemas.POSTaxInfo]:
     taxes: list[schemas.POSTaxInfo] = []
     seen_rates: set[str] = set()
     for tax_rate, store_id, store_name in db.execute(statement):
-        normalized_rate = _to_decimal(tax_rate).quantize(
+        normalized_rate = to_decimal(tax_rate).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
         rate_key = f"{normalized_rate:.2f}"
@@ -20149,12 +18356,12 @@ def register_pos_sale(
     if payload.payments:
         for payment in payload.payments:
             if payment.method == models.PaymentMethod.PUNTOS:
-                loyalty_amount += _to_decimal(payment.amount)
+                loyalty_amount += to_decimal(payment.amount)
     elif payload.payment_breakdown:
         puntos_key = models.PaymentMethod.PUNTOS.value
         if puntos_key in payload.payment_breakdown:
-            loyalty_amount = _to_decimal(payload.payment_breakdown[puntos_key])
-    loyalty_amount = _quantize_currency(loyalty_amount)
+            loyalty_amount = to_decimal(payload.payment_breakdown[puntos_key])
+    loyalty_amount = quantize_currency(loyalty_amount)
     loyalty_summary: schemas.POSLoyaltySaleSummary | None = None
     for item in payload.items:
         device = get_device(db, payload.store_id, item.device_id)
@@ -20216,7 +18423,7 @@ def register_pos_sale(
                         method_enum = models.PaymentMethod(method_key)
                     except ValueError:
                         continue
-                    total_amount = _to_decimal(reported_amount).quantize(
+                    total_amount = to_decimal(reported_amount).quantize(
                         Decimal("0.01"), rounding=ROUND_HALF_UP
                     )
                     if total_amount <= Decimal("0"):
@@ -20235,7 +18442,7 @@ def register_pos_sale(
         store_credit_key = models.PaymentMethod.NOTA_CREDITO.value
         breakdown_value = payload.payment_breakdown.get(store_credit_key)
         if breakdown_value is not None:
-            store_credit_amount = _to_decimal(breakdown_value).quantize(
+            store_credit_amount = to_decimal(breakdown_value).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
             if store_credit_amount > Decimal("0"):
@@ -20252,7 +18459,7 @@ def register_pos_sale(
                 )
                 store_credit_redemptions.extend(redemptions)
                 warnings.append(
-                    f"Se aplicó nota de crédito por ${_format_currency(store_credit_amount)}"
+                    f"Se aplicó nota de crédito por ${format_currency(store_credit_amount)}"
                 )
 
     loyalty_summary = apply_loyalty_for_sale(
@@ -20271,7 +18478,7 @@ def register_pos_sale(
         and sale.payment_method == models.PaymentMethod.CREDITO
     ):
         for payment in payload.payments:
-            payment_amount = _to_decimal(payment.amount).quantize(
+            payment_amount = to_decimal(payment.amount).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
             if payment_amount <= Decimal("0"):
@@ -20312,11 +18519,11 @@ def register_pos_sale(
 
     debt_context: dict[str, object] | None = None
     if customer_after_operations is not None:
-        remaining_balance = _to_decimal(
+        remaining_balance = to_decimal(
             customer_after_operations.outstanding_debt
         ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         new_charge = (
-            _to_decimal(sale.total_amount).quantize(
+            to_decimal(sale.total_amount).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
             if sale.payment_method == models.PaymentMethod.CREDITO
@@ -20446,7 +18653,7 @@ def build_inventory_snapshot(db: Session) -> dict[str, object]:
                 "quantity": device.quantity,
                 "store_id": device.store_id,
                 "unit_price": float(device.unit_price or Decimal("0")),
-                "inventory_value": float(_device_value(device)),
+                "inventory_value": float(device_value(device)),
                 "imei": device.imei,
                 "serial": device.serial,
                 "marca": device.marca,
@@ -20476,7 +18683,7 @@ def build_inventory_snapshot(db: Session) -> dict[str, object]:
             for device in store.devices
         ]
         store_units = sum(device.quantity for device in store.devices)
-        store_value = _to_decimal(store.inventory_value or Decimal("0"))
+        store_value = to_decimal(store.inventory_value or Decimal("0"))
         total_device_records += len(devices_payload)
         total_units += store_units
         total_inventory_value += store_value
@@ -20521,7 +18728,7 @@ def build_inventory_snapshot(db: Session) -> dict[str, object]:
                 "usuario_id": movement.performed_by_id,
                 "fecha": movement.created_at.isoformat(),
                 "costo_unitario": (
-                    float(_to_decimal(movement.unit_cost))
+                    float(to_decimal(movement.unit_cost))
                     if movement.unit_cost is not None
                     else None
                 ),
@@ -20686,7 +18893,7 @@ def mark_import_validation_corrected(
         raise LookupError("validation_not_found")
     with transactional_session(db):
         validation.corregido = corrected
-        validation.fecha = datetime.utcnow()
+        validation.fecha = datetime.now(timezone.utc)
         db.add(validation)
         flush_session(db)
         db.refresh(validation)
@@ -20996,7 +19203,7 @@ def enqueue_dte_dispatch(
             models.DTEDispatchQueue.document_id == document.id
         )
     )
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     if existing:
         existing.status = models.DTEDispatchStatus.PENDING
         existing.last_error = error_message
@@ -21033,7 +19240,7 @@ def mark_dte_dispatch_sent(
             models.DTEDispatchQueue.document_id == document.id
         )
     )
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     if entry is None:
         entry = models.DTEDispatchQueue(
             document=document,
@@ -21112,7 +19319,7 @@ def update_support_feedback_status(
 
     entry.status = status
     entry.resolution_notes = resolution_notes
-    entry.updated_at = datetime.utcnow()
+    entry.updated_at = datetime.now(timezone.utc)
     db.add(entry)
     db.flush()
     db.refresh(entry)
@@ -21148,7 +19355,7 @@ def support_feedback_metrics(
         )
     ]
 
-    since = datetime.utcnow() - timedelta(days=days)
+    since = datetime.now(timezone.utc) - timedelta(days=days)
     usage_rows = db.execute(
         select(models.AuditUI.module, func.count(models.AuditUI.id))
         .where(models.AuditUI.ts >= since)

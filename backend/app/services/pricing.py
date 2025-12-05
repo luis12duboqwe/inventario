@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Iterable
 
@@ -30,7 +30,7 @@ def _quantize(value: Decimal) -> Decimal:
 def _utc_now() -> datetime:
     """Retorna la marca de tiempo actual en UTC."""
 
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
 
 
 def _scope_rank(price_list: PriceList) -> int:

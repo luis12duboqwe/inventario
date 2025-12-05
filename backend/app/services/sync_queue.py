@@ -41,7 +41,7 @@ def _retry_delay_seconds(attempt_number: int) -> int:
 
 def _normalize_dt(value: datetime | None) -> datetime:
     if value is None:
-        return datetime.utcnow()
+        return datetime.now(timezone.utc)
     if value.tzinfo is not None:
         return value.astimezone(timezone.utc).replace(tzinfo=None)
     return value
@@ -100,7 +100,7 @@ def dispatch_pending_events(
     limit: int = 25,
 ) -> schemas.SyncQueueDispatchResult:
     candidates = crud.fetch_sync_queue_candidates(db, limit=limit)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     processed = 0
     sent = 0
     failed = 0
@@ -254,7 +254,7 @@ def calculate_hybrid_forecast(
     """Estima el tiempo restante para completar la cola híbrida."""
 
     normalized_window = max(5, lookback_minutes)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     window_start = now - timedelta(minutes=normalized_window)
 
     queue_totals = crud.summarize_sync_queue_statuses(db)

@@ -1,7 +1,7 @@
 """Utilidades para asignar lotes de proveedores durante compras."""
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -34,7 +34,7 @@ def _ensure_supplier(db: Session, supplier_name: str) -> models.Supplier:
         return supplier
     normalized = _normalize_name(supplier_name)
     supplier = models.Supplier(name=normalized)
-    supplier.created_at = datetime.utcnow()
+    supplier.created_at = datetime.now(timezone.utc)
     supplier.updated_at = supplier.created_at
     db.add(supplier)
     db.flush()
@@ -89,7 +89,7 @@ def assign_supplier_batch(
         batch.purchase_date = purchase_date or batch.purchase_date
 
     batch.quantity += quantity
-    batch.updated_at = datetime.utcnow()
+    batch.updated_at = datetime.now(timezone.utc)
     db.add(batch)
     db.flush()
     db.refresh(batch)

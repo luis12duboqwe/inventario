@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 from typing import Sequence
 
@@ -42,7 +42,7 @@ def build_conflict_report(
     )
 
     return schemas.SyncConflictReport(
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         filters=filters,
         totals=totals,
         items=list(conflicts),
@@ -59,7 +59,7 @@ def render_conflict_report_pdf(report: schemas.SyncConflictReport) -> bytes:
         parent=styles["Heading1"],
         textColor=ACCENT,
     )
-    now_label = datetime.utcnow().strftime("%d/%m/%Y %H:%M UTC")
+    now_label = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
 
     elements: list = [  # type: ignore[var-annotated]
         Paragraph("Softmobile 2025 — Conflictos de sincronización", heading_style),

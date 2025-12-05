@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from math import ceil, floor
 from typing import Iterable
 
@@ -163,7 +163,7 @@ def build_observability_snapshot(db: Session) -> schemas.ObservabilitySnapshot:
         schemas.SyncOutboxStatsEntry.model_validate(item) for item in raw_stats
     ]
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     latency_samples, latency_values = _extend_latency_samples(outbox_stats, now)
     average_latency = (
         sum(latency_values) / len(latency_values) if latency_values else None

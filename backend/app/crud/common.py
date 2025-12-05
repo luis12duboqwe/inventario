@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Mapping
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -51,7 +51,7 @@ def log_audit_event(
 def normalize_date_range(
     date_from: date | datetime | None, date_to: date | datetime | None
 ) -> tuple[datetime, datetime]:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     if isinstance(date_from, datetime):
         start_dt = date_from

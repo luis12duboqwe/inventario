@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import calendar
 import json
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
@@ -301,7 +301,7 @@ def _resolve_warranty_serial(device: models.Device) -> str | None:
 def _create_warranty_assignments(
     db: Session, sale: models.Sale
 ) -> list[models.WarrantyAssignment]:
-    activation_dt = sale.created_at or datetime.utcnow()
+    activation_dt = sale.created_at or datetime.now(timezone.utc)
     activation_date = activation_dt.date()
     assignments: list[models.WarrantyAssignment] = []
 
@@ -381,7 +381,7 @@ def create_sale(
                 raise ValueError("reservation_not_active")
             if reservation.quantity != item.quantity:
                 raise ValueError("reservation_quantity_mismatch")
-            if reservation.expires_at <= datetime.utcnow():
+            if reservation.expires_at <= datetime.now(timezone.utc):
                 raise ValueError("reservation_expired")
             reservation_map[reservation.id] = reservation
             reserved_allowances[item.device_id] = reserved_allowances.get(
@@ -732,8 +732,8 @@ def cancel_sale(
         sale.status = "CANCELADA"
         if sale.invoice_reported:
             sale.invoice_reported = False
-            sale.invoice_annulled_at = datetime.utcnow()
-            sale.invoice_credit_note_code = f"NC-{sale.id}-{int(datetime.utcnow().timestamp())}"
+            sale.invoice_annulled_at = datetime.now(timezone.utc)
+            sale.invoice_credit_note_code = f"NC-{sale.id}-{int(datetime.now(timezone.utc).timestamp())}"
 
             if sale.payment_method != models.PaymentMethod.CREDITO and sale.customer_id:
                 store_credit = models.StoreCredit(
@@ -742,7 +742,7 @@ def cancel_sale(
                     balance_amount=sale.total_amount,
                     code=sale.invoice_credit_note_code,
                     notes=f"Nota de crédito por cancelación de venta #{sale.id}",
-                    expires_at=datetime.utcnow() + timedelta(days=365),
+                    expires_at=datetime.now(timezone.utc) + timedelta(days=365),
                     issued_by_id=performed_by_id,
                     status=models.StoreCreditStatus.ACTIVO
                 )
@@ -772,7 +772,7 @@ def cancel_sale(
             # Cancel warranty
             if item.warranty_assignment:
                 item.warranty_assignment.status = models.WarrantyStatus.ANULADA
-                item.warranty_assignment.expiration_date = datetime.utcnow().date()
+                item.warranty_assignment.expiration_date = datetime.now(timezone.utc).date()
 
         # Revert customer debt if credit sale
         customer_to_sync: models.Customer | None = None

@@ -1,7 +1,7 @@
 """Rutas para gestionar transferencias entre sucursales."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 from typing import Sequence
 
@@ -196,7 +196,7 @@ def export_transfer_report_pdf(
     )
     pdf_bytes = transfer_reports.render_transfer_report_pdf(report)
     metadata = schemas.BinaryFileResponse(
-        filename=f"transferencias_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf",
+        filename=f"transferencias_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.pdf",
         media_type="application/pdf",
     )
     return StreamingResponse(
@@ -234,7 +234,7 @@ def export_transfer_report_excel(
     )
     excel_bytes = transfer_reports.render_transfer_report_excel(report)
     metadata = schemas.BinaryFileResponse(
-        filename=f"transferencias_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx",
+        filename=f"transferencias_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.xlsx",
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
     return StreamingResponse(

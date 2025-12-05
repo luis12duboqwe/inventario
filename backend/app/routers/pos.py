@@ -478,7 +478,7 @@ def create_ephemeral_pos_sale(
         "payments": [],
         "total_amount": 0.0,
         "notes": payload.get("notes"),
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
     }
     _POS_SALES_REGISTRY[sale_id] = record
     return {k: v for k, v in record.items() if k != "store_id"}
@@ -1038,7 +1038,7 @@ def create_pos_credit_note(
         "reference_document_number": sale.document_number or "",
         "amount": amount,
         "reason": payload.get("reason"),
-        "created_at": fiscal_doc.created_at.isoformat() if fiscal_doc.created_at else datetime.utcnow().isoformat(),
+        "created_at": fiscal_doc.created_at.isoformat() if fiscal_doc.created_at else datetime.now(timezone.utc).isoformat(),
         "status": fiscal_doc.status,
     }
     return note

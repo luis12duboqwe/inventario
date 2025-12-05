@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Deque
 
@@ -66,7 +66,7 @@ def record_move(
 ) -> models.StockMove:
     """Crea un registro de `stock_moves` asociado a un movimiento de inventario."""  # // [PACK30-31-BACKEND]
 
-    timestamp = occurred_at or datetime.utcnow()
+    timestamp = occurred_at or datetime.now(timezone.utc)
     normalized_reference = reference.strip() if isinstance(reference, str) else None
     normalized_quantity = _to_decimal(quantity).quantize(_FOUR_PLACES)
     move = models.StockMove(
