@@ -84,6 +84,29 @@ from .utils.sync_helpers import (
     OUTBOX_PRIORITY_ORDER,
     SYSTEM_MODULE_MAP,
 )
+from .utils.privacy_helpers import (
+    mask_email,
+    mask_phone,
+    mask_person_name,
+    mask_generic_text,
+    apply_customer_anonymization,
+)
+from .utils.customer_helpers import (
+    normalize_customer_status,
+    normalize_customer_type,
+    normalize_customer_segment_category,
+    normalize_customer_tags,
+    normalize_rtn,
+    generate_customer_tax_id_placeholder,
+    normalize_customer_tax_id,
+    is_tax_id_integrity_error,
+    ensure_non_negative_decimal,
+    ensure_positive_decimal,
+    ensure_discount_percentage,
+    ALLOWED_CUSTOMER_STATUSES,
+    ALLOWED_CUSTOMER_TYPES,
+    RTN_CANONICAL_TEMPLATE,
+)
 
 logger = core_logger.bind(component=__name__)
 
@@ -1698,204 +1721,6 @@ def _append_customer_history(customer: models.Customer, note: str) -> None:
     customer.last_interaction_at = datetime.now(timezone.utc)
 
 
-def _mask_email(value: str) -> str:
-    email = (value or "").strip()
-    if "@" not in email:
-        return "***"
-    local, domain = email.split("@", 1)
-    local = local.strip()
-    domain = domain.strip() or "anon.invalid"
-    if not local:
-        return f"***@{domain}"
-    if len(local) == 1:
-        masked_local = "*"
-    elif len(local) == 2:
-        masked_local = f"{local[0]}*"
-    else:
-        masked_local = f"{local[0]}{'*' * (len(local) - 2)}{local[-1]}"
-    return f"{masked_local}@{domain}"
-
-
-def _mask_phone(value: str) -> str:
-    digits = re.sub(r"[^0-9]", "", value or "")
-    if not digits:
-        return "***"
-    if len(digits) <= 4:
-        visible = digits[-1:] if digits else ""
-        return f"{'*' * max(0, len(digits) - 1)}{visible}"
-    return f"{'*' * (len(digits) - 4)}{digits[-4:]}"
-
-
-def _mask_person_name(value: str) -> str:
-    text = (value or "").strip()
-    if not text:
-        return text
-    parts = text.split()
-    masked_parts = []
-    for part in parts:
-        if len(part) <= 2:
-            masked_parts.append(part[0] + "*")
-        else:
-            masked_parts.append(part[0] + "*" * (len(part) - 1))
-    return " ".join(masked_parts)
-
-
-def _mask_generic_text(value: str) -> str:
-    text = (value or "").strip()
-    if not text:
-        return text
-    if len(text) <= 4:
-        return "*" * len(text)
-    return f"{text[:2]}***{text[-2:]}"
-
-
-def _apply_customer_anonymization(
-    customer: models.Customer, fields: Sequence[str]
-) -> list[str]:
-    normalized: list[str] = []
-    for raw in fields or []:
-        text = str(raw or "").strip().lower()
-        if text and text not in normalized:
-            normalized.append(text)
-
-    masked: list[str] = []
-    for field in normalized:
-        if field == "name" and customer.name:
-            customer.name = _mask_person_name(customer.name)
-            masked.append("name")
-        elif field == "contact_name" and customer.contact_name:
-            customer.contact_name = _mask_person_name(customer.contact_name)
-            masked.append("contact_name")
-        elif field == "email" and customer.email:
-            customer.email = _mask_email(customer.email)
-            masked.append("email")
-        elif field == "phone" and customer.phone:
-            customer.phone = _mask_phone(customer.phone)
-            masked.append("phone")
-        elif field == "address" and customer.address:
-            customer.address = _mask_generic_text(customer.address)
-            masked.append("address")
-        elif field == "notes" and customer.notes:
-            customer.notes = _mask_generic_text(customer.notes)
-            masked.append("notes")
-        elif field == "tax_id" and customer.tax_id:
-            customer.tax_id = _mask_generic_text(customer.tax_id)
-            masked.append("tax_id")
-
-    if "history" in normalized and customer.history:
-        history_entries = list(customer.history or [])
-        customer.history = [
-            {
-                "timestamp": entry.get("timestamp"),
-                "note": "***",
-            }
-            for entry in history_entries
-        ]
-        masked.append("history")
-
-    return masked
-
-
-_ALLOWED_CUSTOMER_STATUSES = {
-    "activo", "inactivo", "moroso", "vip", "bloqueado"}
-_ALLOWED_CUSTOMER_TYPES = {"minorista", "mayorista", "corporativo"}
-
-
-def _normalize_customer_status(value: str | None) -> str:
-    normalized = (value or "activo").strip().lower()
-    if normalized not in _ALLOWED_CUSTOMER_STATUSES:
-        raise ValueError("invalid_customer_status")
-    return normalized
-
-
-def _normalize_customer_type(value: str | None) -> str:
-    normalized = (value or "minorista").strip().lower()
-    if normalized not in _ALLOWED_CUSTOMER_TYPES:
-        raise ValueError("invalid_customer_type")
-    return normalized
-
-
-def _normalize_customer_segment_category(value: str | None) -> str | None:
-    if value is None:
-        return None
-    normalized = value.strip().lower()
-    return normalized or None
-
-
-def _normalize_customer_tags(tags: Sequence[str] | None) -> list[str]:
-    if not tags:
-        return []
-    normalized: list[str] = []
-    for tag in tags:
-        if not isinstance(tag, str):
-            continue
-        cleaned = tag.strip().lower()
-        if cleaned and cleaned not in normalized:
-            normalized.append(cleaned)
-    return normalized
-
-
-_RTN_CANONICAL_TEMPLATE = "{0}-{1}-{2}"
-
-
-def _normalize_rtn(value: str | None, *, error_code: str) -> str:
-    digits = re.sub(r"[^0-9]", "", value or "")
-    if len(digits) != 14:
-        raise ValueError(error_code)
-    return _RTN_CANONICAL_TEMPLATE.format(digits[:4], digits[4:8], digits[8:])
-
-
-def _generate_customer_tax_id_placeholder() -> str:
-    placeholder = models.generate_customer_tax_id_placeholder()
-    return _normalize_rtn(placeholder, error_code="customer_tax_id_invalid")
-
-
-def _normalize_customer_tax_id(
-    value: str | None, *, allow_placeholder: bool = True
-) -> str:
-    cleaned = (value or "").strip()
-    if cleaned:
-        return _normalize_rtn(cleaned, error_code="customer_tax_id_invalid")
-    if allow_placeholder:
-        return _generate_customer_tax_id_placeholder()
-    raise ValueError("customer_tax_id_invalid")
-
-
-def _is_tax_id_integrity_error(error: IntegrityError) -> bool:
-    message = str(getattr(error, "orig", error)).lower()
-    return "rtn" in message or "tax_id" in message or "segmento_etiquetas" in message
-
-
-def _ensure_non_negative_decimal(value: Decimal, error_code: str) -> Decimal:
-    normalized = to_decimal(value).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP)
-    if normalized < Decimal("0"):
-        raise ValueError(error_code)
-    return normalized
-
-
-def _ensure_positive_decimal(value: Decimal, error_code: str) -> Decimal:
-    normalized = to_decimal(value).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-    if normalized <= Decimal("0"):
-        raise ValueError(error_code)
-    return normalized
-
-
-def _ensure_discount_percentage(
-    value: Decimal | None, error_code: str
-) -> Decimal | None:
-    if value is None:
-        return None
-    normalized = to_decimal(value).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-    if normalized < Decimal("0") or normalized > Decimal("100"):
-        raise ValueError(error_code)
-    return normalized
-
-
 def _ensure_debt_respects_limit(credit_limit: Decimal, outstanding: Decimal) -> None:
     """Valida que el saldo pendiente no supere el límite de crédito configurado."""
 
@@ -2145,7 +1970,7 @@ def _apply_store_credit_redemption(
     notes: str | None,
     performed_by_id: int | None,
 ) -> models.StoreCreditRedemption:
-    amount_value = _ensure_positive_decimal(
+    amount_value = ensure_positive_decimal(
         amount, "store_credit_invalid_amount")
     current_balance = to_decimal(credit.balance_amount).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
@@ -2205,7 +2030,7 @@ def issue_store_credit(
     reason: str | None = None,
 ) -> models.StoreCredit:
     customer = get_customer(db, payload.customer_id)
-    amount = _ensure_positive_decimal(
+    amount = ensure_positive_decimal(
         payload.amount, "store_credit_invalid_amount")
     code = (payload.code or "").strip().upper()
     if code:
@@ -2390,7 +2215,7 @@ def redeem_store_credit_for_customer(
     performed_by_id: int | None,
     reason: str | None = None,
 ) -> list[models.StoreCreditRedemption]:
-    total_requested = _ensure_positive_decimal(
+    total_requested = ensure_positive_decimal(
         amount, "store_credit_invalid_amount")
     statement = (
         select(models.StoreCredit)
@@ -4966,21 +4791,21 @@ def list_customers(
         .limit(limit)
     )
     if status:
-        normalized_status = _normalize_customer_status(status)
+        normalized_status = normalize_customer_status(status)
         statement = statement.where(
             models.Customer.status == normalized_status)
     if customer_type:
-        normalized_type = _normalize_customer_type(customer_type)
+        normalized_type = normalize_customer_type(customer_type)
         statement = statement.where(
             models.Customer.customer_type == normalized_type)
     if segment_category:
-        normalized_category = _normalize_customer_segment_category(
+        normalized_category = normalize_customer_segment_category(
             segment_category)
         if normalized_category:
             statement = statement.where(
                 models.Customer.segment_category == normalized_category
             )
-    normalized_tags = _normalize_customer_tags(tags)
+    normalized_tags = normalize_customer_tags(tags)
     if normalized_tags:
         tags_column = func.lower(cast(models.Customer.tags, String))
         for tag in normalized_tags:
@@ -5037,17 +4862,17 @@ def create_customer(
 ) -> models.Customer:
     with transactional_session(db):
         history = _history_to_json(payload.history)
-        customer_type = _normalize_customer_type(payload.customer_type)
-        status = _normalize_customer_status(payload.status)
-        segment_category = _normalize_customer_segment_category(
+        customer_type = normalize_customer_type(payload.customer_type)
+        status = normalize_customer_status(payload.status)
+        segment_category = normalize_customer_segment_category(
             payload.segment_category
         )
-        tags = _normalize_customer_tags(payload.tags)
-        tax_id = _normalize_customer_tax_id(payload.tax_id)
-        credit_limit = _ensure_non_negative_decimal(
+        tags = normalize_customer_tags(payload.tags)
+        tax_id = normalize_customer_tax_id(payload.tax_id)
+        credit_limit = ensure_non_negative_decimal(
             payload.credit_limit, "customer_credit_limit_negative"
         )
-        outstanding_debt = _ensure_non_negative_decimal(
+        outstanding_debt = ensure_non_negative_decimal(
             payload.outstanding_debt, "customer_outstanding_debt_negative"
         )
         _ensure_debt_respects_limit(credit_limit, outstanding_debt)
@@ -5072,7 +4897,7 @@ def create_customer(
         try:
             flush_session(db)
         except IntegrityError as exc:
-            if _is_tax_id_integrity_error(exc):
+            if is_tax_id_integrity_error(exc):
                 raise ValueError("customer_tax_id_duplicate") from exc
             raise ValueError("customer_already_exists") from exc
         db.refresh(customer)
@@ -5136,31 +4961,31 @@ def update_customer(
             customer.address = payload.address
             updated_fields["address"] = payload.address
         if payload.customer_type is not None:
-            normalized_type = _normalize_customer_type(payload.customer_type)
+            normalized_type = normalize_customer_type(payload.customer_type)
             customer.customer_type = normalized_type
             updated_fields["customer_type"] = normalized_type
         if payload.status is not None:
-            normalized_status = _normalize_customer_status(payload.status)
+            normalized_status = normalize_customer_status(payload.status)
             customer.status = normalized_status
             updated_fields["status"] = normalized_status
         if payload.tax_id is not None:
-            normalized_tax_id = _normalize_customer_tax_id(
+            normalized_tax_id = normalize_customer_tax_id(
                 payload.tax_id, allow_placeholder=False
             )
             customer.tax_id = normalized_tax_id
             updated_fields["tax_id"] = normalized_tax_id
         if payload.segment_category is not None:
-            normalized_category = _normalize_customer_segment_category(
+            normalized_category = normalize_customer_segment_category(
                 payload.segment_category
             )
             customer.segment_category = normalized_category
             updated_fields["segment_category"] = normalized_category
         if payload.tags is not None:
-            normalized_tags = _normalize_customer_tags(payload.tags)
+            normalized_tags = normalize_customer_tags(payload.tags)
             customer.tags = normalized_tags
             updated_fields["tags"] = normalized_tags
         if payload.credit_limit is not None:
-            customer.credit_limit = _ensure_non_negative_decimal(
+            customer.credit_limit = ensure_non_negative_decimal(
                 payload.credit_limit, "customer_credit_limit_negative"
             )
             updated_fields["credit_limit"] = float(customer.credit_limit)
@@ -5168,7 +4993,7 @@ def update_customer(
             customer.notes = payload.notes
             updated_fields["notes"] = payload.notes
         if payload.outstanding_debt is not None:
-            new_outstanding = _ensure_non_negative_decimal(
+            new_outstanding = ensure_non_negative_decimal(
                 payload.outstanding_debt, "customer_outstanding_debt_negative"
             )
             difference = (new_outstanding - previous_outstanding).quantize(
@@ -5218,7 +5043,7 @@ def update_customer(
         try:
             flush_session(db)
         except IntegrityError as exc:
-            if _is_tax_id_integrity_error(exc):
+            if is_tax_id_integrity_error(exc):
                 raise ValueError("customer_tax_id_duplicate") from exc
             raise
         db.refresh(customer)
@@ -5287,7 +5112,7 @@ def delete_customer(
             )
             return
 
-        customer.status = _normalize_customer_status("inactivo")
+        customer.status = normalize_customer_status("inactivo")
         customer.is_deleted = True
         customer.deleted_at = datetime.now(timezone.utc)
         flush_session(db)
@@ -6082,7 +5907,7 @@ def create_customer_privacy_request(
             )
             _append_customer_history(customer, history_note)
         else:
-            masked_fields = _apply_customer_anonymization(
+            masked_fields = apply_customer_anonymization(
                 customer, payload.mask_fields
             )
             consent_snapshot = dict(customer.privacy_consents or {})
@@ -7950,9 +7775,9 @@ def create_price_list_item(
     device = get_device_global(db, payload.device_id)
     if price_list.store_id is not None and device.store_id != price_list.store_id:
         raise ValueError("price_list_item_invalid_store")
-    price = _ensure_positive_decimal(
+    price = ensure_positive_decimal(
         payload.price, "price_list_item_price_invalid")
-    discount = _ensure_discount_percentage(
+    discount = ensure_discount_percentage(
         payload.discount_percentage, "price_list_item_discount_invalid"
     )
     with transactional_session(db):
@@ -7998,11 +7823,11 @@ def update_price_list_item(
     item = get_price_list_item(db, item_id)
     updates = payload.model_dump(exclude_unset=True)
     if "price" in updates and updates["price"] is not None:
-        updates["price"] = _ensure_positive_decimal(
+        updates["price"] = ensure_positive_decimal(
             updates["price"], "price_list_item_price_invalid"
         )
     if "discount_percentage" in updates:
-        updates["discount_percentage"] = _ensure_discount_percentage(
+        updates["discount_percentage"] = ensure_discount_percentage(
             updates["discount_percentage"], "price_list_item_discount_invalid"
         )
     if not updates:
