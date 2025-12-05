@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, joinedload
 from .. import models, schemas
 from ..core.transactions import flush_session, transactional_session
 from ..services.sales import consume_supplier_batch
-from .common import log_audit_event as _log_action
+from .audit import log_audit_event as _log_action
 from .common import to_decimal
 from .customers import (
     _create_customer_ledger_entry,
@@ -742,7 +742,8 @@ def cancel_sale(
                     balance_amount=sale.total_amount,
                     code=sale.invoice_credit_note_code,
                     notes=f"Nota de crédito por cancelación de venta #{sale.id}",
-                    expires_at=datetime.now(timezone.utc) + timedelta(days=365),
+                    expires_at=datetime.now(
+                        timezone.utc) + timedelta(days=365),
                     issued_by_id=performed_by_id,
                     status=models.StoreCreditStatus.ACTIVO
                 )
@@ -772,7 +773,8 @@ def cancel_sale(
             # Cancel warranty
             if item.warranty_assignment:
                 item.warranty_assignment.status = models.WarrantyStatus.ANULADA
-                item.warranty_assignment.expiration_date = datetime.now(timezone.utc).date()
+                item.warranty_assignment.expiration_date = datetime.now(
+                    timezone.utc).date()
 
         # Revert customer debt if credit sale
         customer_to_sync: models.Customer | None = None
@@ -899,3 +901,200 @@ def search_sales_history(
             pass
 
     return results
+
+
+def build_sales_summary_report(
+    db: Session,
+    date_from: datetime | None,
+    date_to: datetime | None,
+    store_id: int | None = None,
+) -> schemas.SalesSummaryReport:
+    # 1. Total Sales (Gross)
+    query = select(models.Sale).where(
+        models.Sale.status != "CANCELADA"
+    )
+    if date_from:
+        query = query.where(models.Sale.created_at >= date_from)
+    if date_to:
+        query = query.where(models.Sale.created_at <= date_to)
+
+    if store_id:
+        query = query.where(models.Sale.store_id == store_id)
+
+    sales = db.scalars(query).all()
+
+    total_sales = sum(s.total_amount for s in sales)
+    total_orders = len(sales)
+    avg_ticket = float(total_sales) / total_orders if total_orders > 0 else 0.0
+
+    # 2. Returns
+    return_query = select(models.SaleReturn)
+
+    if date_from:
+        return_query = return_query.where(
+            models.SaleReturn.created_at >= date_from)
+    if date_to:
+        return_query = return_query.where(
+            models.SaleReturn.created_at <= date_to)
+
+    if store_id:
+        return_query = return_query.join(models.Sale).where(
+            models.Sale.store_id == store_id)
+
+    returns = db.scalars(return_query).all()
+    returns_count = len(returns)
+
+    total_refunded = Decimal("0.0")
+
+    for ret in returns:
+        # Find the price from the sale.
+        # We assume the sale items are loaded or we access them lazily.
+        # Since we are in a session, lazy loading should work.
+        sale_item = next(
+            (item for item in ret.sale.items if item.device_id == ret.device_id), None)
+        if sale_item:
+            total_refunded += ret.quantity * sale_item.unit_price
+
+    net = total_sales - total_refunded
+
+    return schemas.SalesSummaryReport(
+        total_sales=float(total_sales),
+        total_orders=total_orders,
+        avg_ticket=avg_ticket,
+        returns_count=returns_count,
+        net=float(net)
+    )
+
+
+def build_sales_by_product_report(
+    db: Session,
+    date_from: datetime | None,
+    date_to: datetime | None,
+    store_id: int | None = None,
+    limit: int = 20,
+) -> list[schemas.SalesByProductItem]:
+    # 1. Sales Subquery
+    sales_q = select(
+        models.SaleItem.device_id,
+        func.sum(models.SaleItem.quantity).label("qty"),
+        func.sum(models.SaleItem.total_line).label("gross")
+    ).join(models.Sale, models.SaleItem.sale_id == models.Sale.id).where(
+        models.Sale.status != "CANCELADA"
+    )
+
+    if date_from:
+        sales_q = sales_q.where(models.Sale.created_at >= date_from)
+    if date_to:
+        sales_q = sales_q.where(models.Sale.created_at <= date_to)
+    if store_id:
+        sales_q = sales_q.where(models.Sale.store_id == store_id)
+
+    sales_sub = sales_q.group_by(models.SaleItem.device_id).subquery()
+
+    # 2. Returns Subquery
+    returns_q = select(
+        models.SaleReturn.device_id,
+        func.sum(models.SaleReturn.quantity).label("qty"),
+        func.sum(models.SaleReturn.quantity *
+                 models.SaleItem.unit_price).label("amount")
+    ).join(models.Sale, models.SaleReturn.sale_id == models.Sale.id)\
+     .join(models.SaleItem, and_(
+         models.SaleReturn.sale_id == models.SaleItem.sale_id,
+         models.SaleReturn.device_id == models.SaleItem.device_id
+     ))
+
+    if date_from:
+        returns_q = returns_q.where(models.SaleReturn.created_at >= date_from)
+    if date_to:
+        returns_q = returns_q.where(models.SaleReturn.created_at <= date_to)
+    if store_id:
+        returns_q = returns_q.where(models.Sale.store_id == store_id)
+
+    returns_sub = returns_q.group_by(models.SaleReturn.device_id).subquery()
+
+    # 3. Main Query
+    query = select(
+        models.Device.sku,
+        models.Device.name,
+        func.coalesce(sales_sub.c.qty, 0).label("gross_qty"),
+        func.coalesce(sales_sub.c.gross, 0).label("gross_amount"),
+        func.coalesce(returns_sub.c.amount, 0).label("returned_amount")
+    ).outerjoin(sales_sub, models.Device.id == sales_sub.c.device_id)\
+     .outerjoin(returns_sub, models.Device.id == returns_sub.c.device_id)\
+     .where(sales_sub.c.qty > 0)
+
+    query = query.order_by(desc(func.coalesce(
+        sales_sub.c.gross, 0) - func.coalesce(returns_sub.c.amount, 0)))
+    query = query.limit(limit)
+
+    results = db.execute(query).all()
+
+    report_items = []
+    for row in results:
+        sku, name, gross_qty, gross_amount, returned_amount = row
+        gross_qty = int(gross_qty) if gross_qty else 0
+        gross_amount = float(gross_amount) if gross_amount else 0.0
+        returned_amount = float(returned_amount) if returned_amount else 0.0
+
+        net_amount = gross_amount - returned_amount
+
+        report_items.append(schemas.SalesByProductItem(
+            sku=sku,
+            name=name,
+            quantity=gross_qty,
+            gross=gross_amount,
+            net=net_amount
+        ))
+
+    return report_items
+
+
+def build_cash_close_report(
+    db: Session,
+    date_from: datetime,
+    date_to: datetime,
+    store_id: int | None = None,
+) -> schemas.CashCloseReport:
+    # 1. Sales Gross
+    sales_query = select(func.sum(models.Sale.total_amount)).where(
+        models.Sale.status != "CANCELADA",
+        models.Sale.created_at >= date_from,
+        models.Sale.created_at <= date_to
+    )
+    if store_id:
+        sales_query = sales_query.where(models.Sale.store_id == store_id)
+
+    sales_gross = db.scalar(sales_query) or Decimal("0.0")
+
+    # 2. Refunds
+    returns_query = select(
+        func.sum(models.SaleReturn.quantity * models.SaleItem.unit_price)
+    ).join(models.Sale, models.SaleReturn.sale_id == models.Sale.id)\
+     .join(models.SaleItem, and_(
+         models.SaleReturn.sale_id == models.SaleItem.sale_id,
+         models.SaleReturn.device_id == models.SaleItem.device_id
+     )).where(
+         models.SaleReturn.created_at >= date_from,
+         models.SaleReturn.created_at <= date_to
+    )
+
+    if store_id:
+        returns_query = returns_query.where(models.Sale.store_id == store_id)
+
+    refunds = db.scalar(returns_query) or Decimal("0.0")
+
+    # 3. Incomes / Expenses (Placeholder)
+    incomes = Decimal("0.0")
+    expenses = Decimal("0.0")
+    opening = Decimal("0.0")
+
+    closing_suggested = opening + sales_gross - refunds + incomes - expenses
+
+    return schemas.CashCloseReport(
+        opening=float(opening),
+        sales_gross=float(sales_gross),
+        refunds=float(refunds),
+        incomes=float(incomes),
+        expenses=float(expenses),
+        closing_suggested=float(closing_suggested)
+    )

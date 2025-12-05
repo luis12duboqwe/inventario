@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..core.transactions import flush_session, transactional_session
-from .common import log_audit_event as _log_action, to_decimal
+from .common import to_decimal
+from .audit import log_audit_event as _log_action
 
 
 def _normalize_store_status(value: str | None) -> str:
@@ -277,6 +278,7 @@ def recalculate_store_inventory_value(
     db.add(store_obj)
     flush_session(db)
     return normalized_total
+
 
 def recalculate_store_inventory_value(
     db: Session, store: models.Store | int

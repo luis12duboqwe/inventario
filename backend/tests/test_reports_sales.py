@@ -25,7 +25,8 @@ def _bootstrap_admin(client) -> str:
     assert response.status_code == status.HTTP_201_CREATED
     token_response = client.post(
         "/auth/token",
-        data={"username": payload["username"], "password": payload["password"]},
+        data={"username": payload["username"],
+              "password": payload["password"]},
         headers={"content-type": "application/x-www-form-urlencoded"},
     )
     assert token_response.status_code == status.HTTP_200_OK
@@ -37,15 +38,18 @@ def test_reports_sales_summary_requires_reason(client):
     settings.enable_purchases_sales = True
     try:
         token = _bootstrap_admin(client)
-        missing_reason_headers = {"Authorization": f"Bearer {token}", "X-Reason": ""}
-        response = client.get("/reports/sales/summary", headers=missing_reason_headers)
+        missing_reason_headers = {
+            "Authorization": f"Bearer {token}", "X-Reason": ""}
+        response = client.get("/reports/sales/summary",
+                              headers=missing_reason_headers)
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
         valid_headers = {
             "Authorization": f"Bearer {token}",
             "X-Reason": "Consulta reportes QA",
         }
-        ok_response = client.get("/reports/sales/summary", headers=valid_headers)
+        ok_response = client.get(
+            "/reports/sales/summary", headers=valid_headers)
         assert ok_response.status_code != status.HTTP_400_BAD_REQUEST
     finally:
         settings.enable_purchases_sales = previous_flag
@@ -63,7 +67,8 @@ def test_sales_reports_summary_products_and_cash_close(client, db_session: Sessi
 
         store_response = client.post(
             "/stores",
-            json={"name": "Sucursal Centro", "location": "CDMX", "timezone": "America/Mexico_City"},
+            json={"name": "Sucursal Centro", "location": "CDMX",
+                  "timezone": "America/Mexico_City"},
             headers=headers,
         )
         assert store_response.status_code == status.HTTP_201_CREATED
@@ -76,7 +81,7 @@ def test_sales_reports_summary_products_and_cash_close(client, db_session: Sessi
                 "name": "Router Empresarial",
                 "quantity": 25,
                 "unit_price": 150.0,
-                "costo_unitario": 90.0,
+                "costo_unitario": 120.0,
                 "margen_porcentaje": 25.0,
             },
             headers=headers,
@@ -90,13 +95,15 @@ def test_sales_reports_summary_products_and_cash_close(client, db_session: Sessi
             "payment_method": "EFECTIVO",
             "items": [{"device_id": device_id, "quantity": 3}],
         }
-        first_sale_response = client.post("/sales", json=sale_payload, headers=sale_headers)
+        first_sale_response = client.post(
+            "/sales", json=sale_payload, headers=sale_headers)
         assert first_sale_response.status_code == status.HTTP_201_CREATED
         first_sale_id = first_sale_response.json()["id"]
 
         second_sale_response = client.post(
             "/sales",
-            json={"store_id": store_id, "payment_method": "TARJETA", "items": [{"device_id": device_id, "quantity": 2}]},
+            json={"store_id": store_id, "payment_method": "TARJETA",
+                  "items": [{"device_id": device_id, "quantity": 2}]},
             headers=sale_headers,
         )
         assert second_sale_response.status_code == status.HTTP_201_CREATED
@@ -118,11 +125,13 @@ def test_sales_reports_summary_products_and_cash_close(client, db_session: Sessi
             "items": [{"device_id": device_id, "quantity": 1, "reason": "Fallo en equipo"}],
         }
         return_headers = {**headers, "X-Reason": "Devolucion de prueba"}
-        return_response = client.post("/sales/returns", json=return_payload, headers=return_headers)
+        return_response = client.post(
+            "/sales/returns", json=return_payload, headers=return_headers)
         assert return_response.status_code == status.HTTP_200_OK
         returns_json = return_response.json()
         assert len(returns_json) == 1
-        return_record = db_session.get(models.SaleReturn, returns_json[0]["id"])
+        return_record = db_session.get(
+            models.SaleReturn, returns_json[0]["id"])
         assert return_record is not None
         return_record.created_at = base_datetime + timedelta(hours=15)
         db_session.add(return_record)
@@ -134,7 +143,9 @@ def test_sales_reports_summary_products_and_cash_close(client, db_session: Sessi
             "branchId": store_id,
         }
 
-        summary_response = client.get("/reports/sales/summary", params=params, headers=headers)
+        summary_headers = {**headers, "X-Reason": "Reporte de ventas"}
+        summary_response = client.get(
+            "/reports/sales/summary", params=params, headers=summary_headers)
         assert summary_response.status_code == status.HTTP_200_OK
         summary = summary_response.json()
         assert summary["totalSales"] == pytest.approx(750.0)
@@ -143,7 +154,8 @@ def test_sales_reports_summary_products_and_cash_close(client, db_session: Sessi
         assert summary["returnsCount"] == 1
         assert summary["net"] == pytest.approx(600.0)
 
-        top_response = client.get("/reports/sales/by-product", params={**params, "limit": 5}, headers=headers)
+        top_response = client.get(
+            "/reports/sales/by-product", params={**params, "limit": 5}, headers=summary_headers)
         assert top_response.status_code == status.HTTP_200_OK
         products = top_response.json()
         assert len(products) == 1
@@ -156,7 +168,7 @@ def test_sales_reports_summary_products_and_cash_close(client, db_session: Sessi
         csv_response = client.get(
             "/reports/sales/by-product",
             params={**params, "limit": 5, "format": "csv"},
-            headers=headers,
+            headers=summary_headers,
         )
         assert csv_response.status_code == status.HTTP_200_OK
         assert "text/csv" in csv_response.headers["content-type"].lower()
@@ -165,7 +177,7 @@ def test_sales_reports_summary_products_and_cash_close(client, db_session: Sessi
         cash_response = client.get(
             "/reports/cash-close",
             params={"date": report_date.isoformat(), "branchId": store_id},
-            headers=headers,
+            headers=summary_headers,
         )
         assert cash_response.status_code == status.HTTP_200_OK
         cash_report = cash_response.json()
@@ -185,7 +197,10 @@ def test_sales_daily_report_default_payload(client) -> None:
     settings.enable_purchases_sales = True
     try:
         token = _bootstrap_admin(client)
-        headers = {"Authorization": f"Bearer {token}"}
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "X-Reason": "Consulta reporte diario"
+        }
         target_date = date.today().isoformat()
 
         response = client.get(

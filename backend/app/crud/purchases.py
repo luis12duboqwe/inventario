@@ -17,7 +17,7 @@ from .. import models, schemas
 from ..config import settings
 from ..core.transactions import flush_session, transactional_session
 from ..services.purchases import assign_supplier_batch
-from .common import log_audit_event as _log_action
+from .audit import log_audit_event as _log_action
 from .common import to_decimal as _to_decimal
 from .devices import get_device
 from .inventory import create_inventory_movement as _register_inventory_movement
