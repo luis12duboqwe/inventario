@@ -15095,6 +15095,22 @@ def get_pos_config(db: Session, store_id: int) -> models.POSConfig:
     return config
 
 
+def _pos_config_payload(config: models.POSConfig) -> dict[str, Any]:
+    """Serializa la configuración POS para sincronización."""
+    return {
+        "id": config.id,
+        "store_id": config.store_id,
+        "invoice_prefix": config.invoice_prefix,
+        "receipt_header": config.receipt_header,
+        "receipt_footer": config.receipt_footer,
+        "printer_name": config.printer_name,
+        "hardware_settings": config.hardware_settings,
+        "promotions_config": config.promotions_config,
+        "tax_rate": float(config.tax_rate) if config.tax_rate else 0.0,
+        "auto_print": config.auto_print,
+    }
+
+
 def update_pos_config(
     db: Session,
     payload: schemas.POSConfigUpdate,

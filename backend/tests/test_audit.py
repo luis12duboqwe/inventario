@@ -11,7 +11,15 @@ from backend.app.middleware import build_reason_header_middleware
 from backend.app.models.audit import AuditLog
 from backend.app.services.audit import render_audit_pdf
 from backend.app.utils import audit as audit_utils
-from backend.app.main import SENSITIVE_METHODS, SENSITIVE_PREFIXES
+
+# Valores por defecto del middleware de seguridad
+SENSITIVE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+SENSITIVE_PREFIXES = [
+    "/inventory", "/purchases", "/sales", "/pos", "/backups", "/customers",
+    "/reports", "/payments", "/loyalty", "/suppliers", "/repairs", "/warranties",
+    "/returns", "/transfers", "/security", "/sync/outbox", "/operations",
+    "/pricing", "/integrations", "/price-lists", "/store-credits",
+]
 
 
 @dataclass(slots=True)

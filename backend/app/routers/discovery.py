@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ipaddress
+import logging
 import socket
 from pathlib import Path
 
@@ -10,6 +11,8 @@ from sqlalchemy.engine.url import make_url
 
 from .. import schemas
 from ..config import settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/discovery", tags=["discovery"])
 
@@ -33,7 +36,11 @@ def _resolve_port() -> int:
 def _summarize_database() -> schemas.LanDatabaseSummary:
     try:
         parsed = make_url(settings.database_url)
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            f"Error al analizar URL de base de datos para discovery: {exc}",
+            exc_info=True
+        )
         return schemas.LanDatabaseSummary(
             engine="desconocido",
             location="sin datos",
