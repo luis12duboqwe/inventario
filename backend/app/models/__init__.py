@@ -59,6 +59,9 @@ from .config import (
     ConfigRate, ConfigXmlTemplate, ConfigParameter, BackupJob, BackupMode,
     BackupComponent
 )
+from .cloud_agent import (
+    CloudAgentTask, CloudAgentTaskStatus, CloudAgentTaskType
+)
 
 __all__ = [
     "User", "Role", "Permission", "UserTOTPSecret", "PasswordResetToken",
@@ -95,5 +98,6 @@ __all__ = [
     "SyncOutboxPriority", "SyncQueueStatus",
     "RecurringOrder", "RecurringOrderType",
     "ConfigRate", "ConfigXmlTemplate", "ConfigParameter", "BackupJob",
-    "BackupMode", "BackupComponent"
+    "BackupMode", "BackupComponent",
+    "CloudAgentTask", "CloudAgentTaskStatus", "CloudAgentTaskType",
 ]

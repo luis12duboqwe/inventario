@@ -106,6 +106,33 @@ Se completó la eliminación de warnings de alias (de 32 → 17 → 0) sin modif
 - `main.tsx` incorpora `QueryClientProvider` y `App.tsx` adopta `useQuery`/`useMutation` para el flujo de autenticación y bootstrap sin modificar los estilos ni las rutas existentes.
 - Se documenta la nueva estructura en `frontend/README.md` para guiar futuras iteraciones manteniendo la versión Softmobile 2025 v2.2.0.
 
+## Delegación al Agente en la Nube — 05/12/2025
+
+- 🔄 **Infraestructura de delegación**: se añadió el módulo `backend/app/routers/cloud.py` con endpoints REST para delegar tareas al agente en la nube, permitiendo procesamiento asíncrono de operaciones costosas (sincronización de datos, generación de reportes, procesamiento por lotes, análisis de datos y respaldos).
+- 🗄️ **Modelo de datos**: tabla `cloud_agent_tasks` con seguimiento completo del ciclo de vida de tareas (PENDING → IN_PROGRESS → COMPLETED/FAILED/CANCELLED), incluyendo prioridades, reintentos automáticos y almacenamiento de datos de entrada/salida en formato JSON.
+- 🛡️ **Control de acceso**: los usuarios pueden ver solo sus propias tareas, mientras que los administradores tienen visibilidad global y pueden reintentar tareas fallidas mediante `POST /cloud/tasks/retry-failed`.
+- ⚙️ **Feature flag**: controlado por `SOFTMOBILE_ENABLE_CLOUD_AGENT` (deshabilitado por defecto). Habilitar agregando `SOFTMOBILE_ENABLE_CLOUD_AGENT=1` en el archivo `.env`.
+- 📊 **Endpoints disponibles**:
+  - `POST /api/v2.2.0/cloud/delegate` - Crear y delegar una nueva tarea
+  - `GET /api/v2.2.0/cloud/tasks` - Listar tareas con filtros por estado y tipo
+  - `GET /api/v2.2.0/cloud/tasks/{id}` - Obtener detalles de una tarea específica
+  - `DELETE /api/v2.2.0/cloud/tasks/{id}` - Cancelar una tarea pendiente o en progreso
+  - `GET /api/v2.2.0/cloud/stats` - Estadísticas agregadas (solo administradores)
+  - `POST /api/v2.2.0/cloud/tasks/retry-failed` - Reintentar tareas fallidas (solo administradores)
+- 🧪 **Pruebas automatizadas**: 12 tests en `backend/tests/test_cloud_agent.py` cubren creación, listado, actualización, cancelación, estadísticas y reintentos de tareas.
+- 🔐 **Seguridad**: todas las operaciones requieren autenticación JWT y registran auditoría con el usuario responsable.
+
+### Tipos de tareas soportadas
+
+- `sync_data` - Sincronización de datos con la nube
+- `generate_report` - Generación de reportes pesados
+- `process_batch` - Procesamiento por lotes
+- `analyze_data` - Análisis de datos
+- `backup_data` - Respaldos de datos
+- `custom` - Tareas personalizadas
+
+> La interfaz de usuario (React) para gestión visual de tareas delegadas está planificada para futuras iteraciones.
+
 ## Preparación rápida del entorno base — 20/10/2025
 
 - ✅ **Backend**: se añadió el archivo `backend/main.py` con FastAPI, CORS abierto para redes locales y montaje automático de `frontend/dist` cuando está disponible. La ruta `/api` devuelve el mensaje corporativo «API online ✅ - Softmobile 2025 v2.2.0». El arranque valida la carpeta `backend/database/softmobile.db` y registra advertencias si faltan directorios de modelos o rutas.

@@ -850,6 +850,16 @@ class Settings(BaseSettings):
             ),
         ),
     ]
+    enable_cloud_agent: Annotated[
+        bool,
+        Field(
+            default=False,
+            validation_alias=AliasChoices(
+                "ENABLE_CLOUD_AGENT",
+                "SOFTMOBILE_ENABLE_CLOUD_AGENT",
+            ),
+        ),
+    ]
     enable_wms_bins: Annotated[
         bool,
         Field(
@@ -1331,6 +1341,7 @@ class Settings(BaseSettings):
         "enable_analytics_adv",
         "enable_2fa",
         "enable_hybrid_prep",
+        "enable_cloud_agent",
         "enable_wms_bins",
         "session_cookie_secure",
     )
