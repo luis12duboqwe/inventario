@@ -185,9 +185,9 @@ from ..crud_legacy import (
 
 ### Corto Plazo (1-2 semanas)
 1. ✅ **Corregir errores críticos** - COMPLETADO (5/5)
-2. ✅ **Agregar exports explícitos en módulos CRUD** - COMPLETADO (11/11)
+2. ✅ **Agregar exports explícitos en módulos CRUD** - COMPLETADO (12/12)
    - __all__ agregado a: users, devices, stores, warehouses, audit, inventory, customers, sync, sales, purchases, loyalty
-   - 145 funciones públicas documentadas explícitamente
+   - 158 funciones públicas documentadas explícitamente
    - Control de namespace mejorado sin breaking changes
    - Pendiente: Refactorizar crud_legacy.py (tarea grande, mediano plazo)
 3. ✅ **Documentar excepciones amplias necesarias** - COMPLETADO (6/6)
@@ -235,7 +235,7 @@ No se encontraron vulnerabilidades de seguridad graves. El código sigue patrone
 
 **Arquitectura CRUD (Completado - Fase 1) ✅**
 - __all__ exports agregados a 11 módulos especializados
-- 145 funciones públicas documentadas explícitamente
+- 158 funciones públicas documentadas explícitamente
 - Control de namespace mejorado (wildcard respeta __all__)
 - Orden de imports optimizado (especializados primero)
 - Plan de migración en 4 fases: Fase 1 completada
@@ -259,7 +259,7 @@ No se encontraron vulnerabilidades de seguridad graves. El código sigue patrone
 |-----------|--------|
 | Errores críticos corregidos | 5/5 (100%) |
 | Excepciones documentadas | 6/6 (100%) |
-| Módulos CRUD con __all__ | 11/11 (100%) |
+| Módulos CRUD con __all__ | 12/12 (100%) |
 | Funciones públicas documentadas | 145 |
 | Tests pasando | 5/5 (100%) |
 | Arquitectura documentada | ✅ |

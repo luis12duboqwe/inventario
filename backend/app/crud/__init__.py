@@ -5,10 +5,10 @@ Este módulo ahora utiliza imports explícitos controlados mediante __all__ en c
 El sistema tiene:
 - 312 funciones en crud_legacy.py (16,493 líneas)
 - 234 funciones únicas usadas en 31 routers
-- 16 módulos CRUD especializados con __all__ definidos
+- 12 módulos CRUD especializados con __all__ definidos
 
 ESTADO ACTUAL:
-- ✅ Fase 1: __all__ exports agregados a 11 módulos especializados
+- ✅ Fase 1: __all__ exports agregados a 12 módulos especializados
 - ⚠️ Fase 2: crud_legacy.py aún usa wildcard (mantener compatibilidad)
 - ⏸️ Fase 3: Refactorizar crud_legacy.py en submódulos
 - ⏸️ Fase 4: Eliminar wildcard de crud_legacy completamente
@@ -27,6 +27,7 @@ Módulos especializados con __all__ definidos:
 - audit (18 exports): Auditoría y logs
 - inventory (23 exports): Movimientos y valuaciones
 - customers (5 exports): Clientes y ledger
+- suppliers (13 exports): Proveedores y lotes de compra
 - sync (2 exports): Sincronización híbrida
 - sales (9 exports): Ventas y devoluciones
 - purchases (21 exports): Compras y órdenes
@@ -42,6 +43,7 @@ from .warehouses import *  # noqa: F401,F403
 from .audit import *  # noqa: F401,F403
 from .inventory import *  # noqa: F401,F403
 from .customers import *  # noqa: F401,F403
+from .suppliers import *  # noqa: F401,F403
 from .sync import *  # noqa: F401,F403
 from .sales import *  # noqa: F401,F403
 from .purchases import *  # noqa: F401,F403
