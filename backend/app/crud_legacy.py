@@ -69,6 +69,21 @@ from .utils.decimal_helpers import (
     calculate_weighted_average_cost,
 )
 from .utils.date_helpers import normalize_date_range
+from .utils.inventory_helpers import (
+    device_value,
+    movement_value,
+    recalculate_store_inventory_value,
+    device_category_expr,
+)
+from .utils.sync_helpers import (
+    resolve_outbox_priority,
+    priority_weight,
+    resolve_system_module,
+    map_system_level,
+    OUTBOX_PRIORITY_MAP,
+    OUTBOX_PRIORITY_ORDER,
+    SYSTEM_MODULE_MAP,
+)
 
 logger = core_logger.bind(component=__name__)
 
@@ -182,96 +197,6 @@ def _project_linear_sum(
     return total
 
 
-_OUTBOX_PRIORITY_MAP: dict[str, models.SyncOutboxPriority] = {
-    "sale": models.SyncOutboxPriority.HIGH,
-    "transfer_order": models.SyncOutboxPriority.HIGH,
-    "purchase_order": models.SyncOutboxPriority.NORMAL,
-    "repair_order": models.SyncOutboxPriority.NORMAL,
-    "customer": models.SyncOutboxPriority.NORMAL,
-    "customer_privacy_request": models.SyncOutboxPriority.LOW,
-    "customer_ledger_entry": models.SyncOutboxPriority.NORMAL,
-    "supplier_ledger_entry": models.SyncOutboxPriority.NORMAL,
-    "pos_config": models.SyncOutboxPriority.NORMAL,
-    "supplier": models.SyncOutboxPriority.NORMAL,
-    "cash_session": models.SyncOutboxPriority.NORMAL,
-    "device": models.SyncOutboxPriority.NORMAL,
-    "rma_request": models.SyncOutboxPriority.NORMAL,
-    "inventory": models.SyncOutboxPriority.HIGH,
-    "store": models.SyncOutboxPriority.LOW,
-    "global": models.SyncOutboxPriority.LOW,
-    "backup": models.SyncOutboxPriority.LOW,
-    "pos_draft": models.SyncOutboxPriority.LOW,
-}
-
-_OUTBOX_PRIORITY_ORDER: dict[models.SyncOutboxPriority, int] = {
-    models.SyncOutboxPriority.HIGH: 0,
-    models.SyncOutboxPriority.NORMAL: 1,
-    models.SyncOutboxPriority.LOW: 2,
-}
-
-_SYSTEM_MODULE_MAP: dict[str, str] = {
-    "sale": "ventas",
-    "pos": "ventas",
-    "purchase": "compras",
-    "inventory": "inventario",
-    "device": "inventario",
-    "supplier_batch": "inventario",
-    "inventory_adjustment": "ajustes",
-    "adjustment": "ajustes",
-    "backup": "respaldos",
-    "config_parameter": "configuracion",
-    "config_rate": "configuracion",
-    "config_template": "configuracion",
-    "config_sync": "configuracion",
-    "user": "usuarios",
-    "role": "usuarios",
-    "auth": "usuarios",
-    "sync_session": "sincronizacion",
-    "store": "inventario",
-    "pos_fiscal_print": "ventas",
-    "customer": "clientes",
-    "customer_privacy_request": "clientes",
-    "supplier_ledger_entry": "proveedores",
-    "supplier": "proveedores",
-    "transfer_order": "inventario",
-    "purchase_order": "compras",
-    "purchase_vendor": "compras",
-    "cash_session": "ventas",
-}
-
-
-def _resolve_outbox_priority(entity_type: str, priority: models.SyncOutboxPriority | None) -> models.SyncOutboxPriority:
-    if priority is not None:
-        return priority
-    normalized = (entity_type or "").lower()
-    return _OUTBOX_PRIORITY_MAP.get(normalized, models.SyncOutboxPriority.NORMAL)
-
-
-def _priority_weight(priority: models.SyncOutboxPriority | None) -> int:
-    if priority is None:
-        return _OUTBOX_PRIORITY_ORDER[models.SyncOutboxPriority.NORMAL]
-    return _OUTBOX_PRIORITY_ORDER.get(priority, 1)
-
-
-def _resolve_system_module(entity_type: str) -> str:
-    normalized = (entity_type or "").lower()
-    for prefix, module in sorted(
-        _SYSTEM_MODULE_MAP.items(), key=lambda item: len(item[0]), reverse=True
-    ):
-        if normalized.startswith(prefix):
-            return module
-    return "general"
-
-
-def _map_system_level(action: str, details: str | None) -> models.SystemLogLevel:
-    severity = audit_utils.classify_severity(action or "", details)
-    if severity == "critical":
-        return models.SystemLogLevel.CRITICAL
-    if severity == "warning":
-        return models.SystemLogLevel.WARNING
-    return models.SystemLogLevel.INFO
-
-
 def _create_system_log(
     db: Session,
     *,
@@ -382,8 +307,8 @@ def log_audit_event(
             user = db.get(models.User, performed_by_id)
             if user is not None:
                 usuario = user.username
-        module = _resolve_system_module(entity_type)
-        level = _map_system_level(action, description_text)
+        module = resolve_system_module(entity_type)
+        level = map_system_level(action, description_text)
         _create_system_log(
             db,
             audit_log=log,
@@ -1295,52 +1220,6 @@ def build_cash_close_report(
         closing_suggested=float(closing_suggested),
     )
 
-
-def _device_value(device: models.Device) -> Decimal:
-    return Decimal(device.quantity) * (device.unit_price or Decimal("0"))
-
-
-def _movement_value(movement: models.InventoryMovement) -> Decimal:
-    """Calcula el valor monetario estimado de un movimiento."""
-
-    unit_cost: Decimal | None = movement.unit_cost
-    if unit_cost is None and movement.device is not None:
-        if getattr(movement.device, "costo_unitario", None):
-            unit_cost = movement.device.costo_unitario
-        elif movement.device.unit_price is not None:
-            unit_cost = movement.device.unit_price
-    base_cost = to_decimal(unit_cost)
-    return (Decimal(movement.quantity) * base_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-
-def _recalculate_store_inventory_value(
-    db: Session, store: models.Store | int
-) -> Decimal:
-    if isinstance(store, models.Store):
-        store_obj = store
-    else:
-        store_obj = get_store(db, int(store))
-    flush_session(db)
-    total_value = db.scalar(
-        select(func.coalesce(
-            func.sum(models.Device.quantity * models.Device.unit_price), 0))
-        .where(models.Device.store_id == store_obj.id)
-    )
-    normalized_total = to_decimal(total_value).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-    store_obj.inventory_value = normalized_total
-    db.add(store_obj)
-    flush_session(db)
-    return normalized_total
-
-
-def _device_category_expr() -> ColumnElement[str]:
-    return func.coalesce(
-        func.nullif(models.Device.modelo, ""),
-        func.nullif(models.Device.sku, ""),
-        func.nullif(models.Device.name, ""),
-    )
 
 
 def _customer_payload(customer: models.Customer) -> dict[str, object]:
@@ -7449,7 +7328,7 @@ def create_device(
         )
         flush_session(db)
         db.refresh(device)
-        _recalculate_store_inventory_value(db, store_id)
+        recalculate_store_inventory_value(db, store_id)
         enqueue_sync_outbox(
             db,
             entity_type="device",
@@ -8511,7 +8390,7 @@ def update_device(
             )
             flush_session(db)
             db.refresh(device)
-        _recalculate_store_inventory_value(db, store_id)
+        recalculate_store_inventory_value(db, store_id)
         enqueue_sync_outbox(
             db,
             entity_type="device",
@@ -9649,7 +9528,7 @@ def create_inventory_movement(
             reference_id=reference_id,
             performed_by_id=performed_by_id,
         )
-        total_value = _recalculate_store_inventory_value(db, store_id)
+        total_value = recalculate_store_inventory_value(db, store_id)
         setattr(movement, "store_inventory_value", total_value)
         enqueue_sync_outbox(
             db,
@@ -9800,7 +9679,7 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
     for store in stores:
         device_count = len(store.devices)
         store_units = sum(device.quantity for device in store.devices)
-        store_value = sum(_device_value(device) for device in store.devices)
+        store_value = sum(device_value(device) for device in store.devices)
 
         total_devices += device_count
         total_units += store_units
@@ -9829,7 +9708,7 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
                         "unit_price": device.unit_price or Decimal("0"),
                         "minimum_stock": getattr(device, "minimum_stock", 0) or 0,
                         "reorder_point": getattr(device, "reorder_point", 0) or 0,
-                        "inventory_value": _device_value(device),
+                        "inventory_value": device_value(device),
                     }
                 )
 
@@ -10233,7 +10112,7 @@ def get_inventory_current_report(
             continue
         device_count = len(store.devices)
         store_units = sum(device.quantity for device in store.devices)
-        store_value = sum(_device_value(device) for device in store.devices)
+        store_value = sum(device_value(device) for device in store.devices)
 
         report_stores.append(
             schemas.InventoryCurrentStore(
@@ -10334,7 +10213,7 @@ def get_inventory_movements_report(
     report_entries: list[schemas.MovementReportEntry] = []
 
     for movement in movements:
-        value = _movement_value(movement)
+        value = movement_value(movement)
         total_units += movement.quantity
         total_value += value
 
@@ -10661,7 +10540,7 @@ def calculate_rotation_analytics(
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
     start_dt, end_dt = normalize_date_range(date_from, date_to)
-    category_expr = _device_category_expr()
+    category_expr = device_category_expr()
 
     device_stmt = (
         select(
@@ -10789,7 +10668,7 @@ def calculate_aging_analytics(
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
     now_date = datetime.now(timezone.utc).date()
-    category_expr = _device_category_expr()
+    category_expr = device_category_expr()
     device_stmt = (
         select(
             models.Device.id,
@@ -10860,7 +10739,7 @@ def calculate_stockout_forecast(
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
     start_dt, end_dt = normalize_date_range(date_from, date_to)
-    category_expr = _device_category_expr()
+    category_expr = device_category_expr()
 
     device_stmt = (
         select(
@@ -11058,7 +10937,7 @@ def calculate_store_comparatives(
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
     start_dt, end_dt = normalize_date_range(date_from, date_to)
-    category_expr = _device_category_expr()
+    category_expr = device_category_expr()
 
     inventory_stmt = (
         select(
@@ -11210,7 +11089,7 @@ def calculate_profit_margin(
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
     start_dt, end_dt = normalize_date_range(date_from, date_to)
-    category_expr = _device_category_expr()
+    category_expr = device_category_expr()
     revenue_expr = func.coalesce(func.sum(models.SaleItem.total_line), 0)
     cost_expr = func.coalesce(
         func.sum(models.SaleItem.quantity * models.Device.costo_unitario),
@@ -11279,7 +11158,7 @@ def calculate_sales_by_store(
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
     start_dt, end_dt = normalize_date_range(date_from, date_to)
-    category_expr = _device_category_expr()
+    category_expr = device_category_expr()
     stmt = (
         select(
             models.Store.id.label("store_id"),
@@ -11338,7 +11217,7 @@ def calculate_sales_by_category(
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
     start_dt, end_dt = normalize_date_range(date_from, date_to)
-    category_expr = _device_category_expr()
+    category_expr = device_category_expr()
     stmt = (
         select(
             category_expr.label("category"),
@@ -11394,7 +11273,7 @@ def calculate_sales_timeseries(
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
     start_dt, end_dt = normalize_date_range(date_from, date_to)
-    category_expr = _device_category_expr()
+    category_expr = device_category_expr()
     stmt = (
         select(
             func.date(models.Sale.created_at).label("sale_date"),
@@ -11451,7 +11330,7 @@ def calculate_sales_projection(
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
     start_dt, end_dt = normalize_date_range(date_from, date_to)
-    category_expr = _device_category_expr()
+    category_expr = device_category_expr()
     lookback_days = max(horizon_days, 30)
     since = start_dt or (datetime.now(timezone.utc) - timedelta(days=lookback_days))
 
@@ -11608,7 +11487,7 @@ def calculate_sales_projection(
 def list_analytics_categories(
     db: Session, *, limit: int | None = None, offset: int = 0
 ) -> list[str]:
-    category_expr = _device_category_expr()
+    category_expr = device_category_expr()
     stmt = (
         select(func.distinct(category_expr).label("category"))
         .where(category_expr.is_not(None))
@@ -11936,7 +11815,7 @@ def calculate_realtime_store_widget(
     offset: int = 0,
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
-    category_expr = _device_category_expr()
+    category_expr = device_category_expr()
     today_start = datetime.now(timezone.utc).replace(
         hour=0, minute=0, second=0, microsecond=0)
 
@@ -12091,7 +11970,7 @@ def calculate_purchase_supplier_metrics(
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
     start_dt, end_dt = normalize_date_range(date_from, date_to)
-    category_expr = _device_category_expr()
+    category_expr = device_category_expr()
     supplier_expr = func.coalesce(
         models.PurchaseOrder.supplier,
         models.Device.proveedor,
@@ -12586,7 +12465,7 @@ def enqueue_sync_outbox(
         normalized_payload = json.loads(
             json.dumps(payload or {}, ensure_ascii=False, default=str)
         )
-        resolved_priority = _resolve_outbox_priority(entity_type, priority)
+        resolved_priority = resolve_outbox_priority(entity_type, priority)
         statement = select(models.SyncOutbox).where(
             models.SyncOutbox.entity_type == entity_type,
             models.SyncOutbox.entity_id == entity_id,
@@ -12622,7 +12501,7 @@ def enqueue_sync_outbox(
             entry.attempt_count = 0
             entry.error_message = None
             entry.last_attempt_at = None
-            if _priority_weight(resolved_priority) < _priority_weight(entry.priority):
+            if priority_weight(resolved_priority) < priority_weight(entry.priority):
                 entry.priority = resolved_priority
             # Si hay conflicto, marcar y aumentar la versión.
             if conflict_flag:
@@ -13267,7 +13146,7 @@ def get_sync_outbox_statistics(
                 "last_conflict_at": row.last_conflict_at,
             }
         )
-    results.sort(key=lambda item: (_priority_weight(
+    results.sort(key=lambda item: (priority_weight(
         item["priority"]), item["entity_type"]))
     if limit is None:
         return results[offset:]
@@ -14095,7 +13974,7 @@ def _apply_transfer_dispatch(
     if reason:
         order.reason = reason
 
-    _recalculate_store_inventory_value(db, order.origin_store_id)
+    recalculate_store_inventory_value(db, order.origin_store_id)
 
 
 def dispatch_transfer_order(
@@ -14371,8 +14250,8 @@ def _apply_transfer_reception(
 
         item.received_quantity = accepted_quantity
 
-    _recalculate_store_inventory_value(db, order.origin_store_id)
-    _recalculate_store_inventory_value(db, order.destination_store_id)
+    recalculate_store_inventory_value(db, order.origin_store_id)
+    recalculate_store_inventory_value(db, order.destination_store_id)
 
 
 def receive_transfer_order(
@@ -15443,7 +15322,7 @@ def receive_purchase_order(
             note=reason,
         )
         db.refresh(order)
-        _recalculate_store_inventory_value(db, order.store_id)
+        recalculate_store_inventory_value(db, order.store_id)
 
         _log_action(
             db,
@@ -15516,7 +15395,7 @@ def _revert_purchase_inventory(
         adjustments_performed = True
 
     if adjustments_performed:
-        _recalculate_store_inventory_value(db, order.store_id)
+        recalculate_store_inventory_value(db, order.store_id)
 
     return reversal_details
 
@@ -16497,7 +16376,7 @@ def _apply_repair_parts(  # // [PACK37-backend]
         Decimal("0.01"), rounding=ROUND_HALF_UP)
     order.parts_snapshot = snapshot
     order.inventory_adjusted = bool(processed_devices)
-    _recalculate_store_inventory_value(db, order.store_id)
+    recalculate_store_inventory_value(db, order.store_id)
     return order.parts_cost
 
 
@@ -16828,7 +16707,7 @@ def delete_repair_order(
                 reference_type="repair_order",
                 reference_id=str(order.id),
             )
-        _recalculate_store_inventory_value(db, order.store_id)
+        recalculate_store_inventory_value(db, order.store_id)
         db.delete(order)
         flush_session(db)
 
@@ -18090,7 +17969,7 @@ def create_sale(
         flush_session(db)
         _create_warranty_assignments(db, sale)
 
-        _recalculate_store_inventory_value(db, sale.store_id)
+        recalculate_store_inventory_value(db, sale.store_id)
 
         if customer:
             if sale.payment_method == models.PaymentMethod.CREDITO:
@@ -18412,7 +18291,7 @@ def update_sale(
             )
             db.add(target_customer)
 
-        _recalculate_store_inventory_value(db, sale.store_id)
+        recalculate_store_inventory_value(db, sale.store_id)
 
         flush_session(db)
         db.refresh(sale)
@@ -18563,7 +18442,7 @@ def cancel_sale(
             sale.invoice_credit_note_code = credit_note.code
 
         sale.status = "CANCELADA"
-        _recalculate_store_inventory_value(db, sale.store_id)
+        recalculate_store_inventory_value(db, sale.store_id)
 
         flush_session(db)
         db.refresh(sale)
@@ -18773,7 +18652,7 @@ def register_sale_return(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
 
-        _recalculate_store_inventory_value(db, sale.store_id)
+        recalculate_store_inventory_value(db, sale.store_id)
 
         flush_session(db)
         for sale_return in returns:
@@ -20246,7 +20125,7 @@ def build_inventory_snapshot(db: Session) -> dict[str, object]:
                 "quantity": device.quantity,
                 "store_id": device.store_id,
                 "unit_price": float(device.unit_price or Decimal("0")),
-                "inventory_value": float(_device_value(device)),
+                "inventory_value": float(device_value(device)),
                 "imei": device.imei,
                 "serial": device.serial,
                 "marca": device.marca,
