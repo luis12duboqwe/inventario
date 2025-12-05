@@ -59,7 +59,7 @@ vi.mock("../../modules/inventory/pages/components/DeviceEditDialog", () => ({
   default: () => null,
 }));
 
-vi.mock("../../shared/components/ui/Skeleton", () => ({
+vi.mock("../../components/ui/Skeleton", () => ({
   Skeleton: () => <div data-testid="loading-skeleton">Cargando panel…</div>,
 }));
 

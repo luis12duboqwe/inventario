@@ -71,6 +71,7 @@ vi.mock("../../components/layout/PageToolbar", () => ({
 }));
 
 vi.mock("../../components/ui/Skeleton", () => ({
+vi.mock("@components/ui/Skeleton", () => ({
   Skeleton: () => <div data-testid="loading-skeleton">Cargando...</div>,
 }));
 
