@@ -121,6 +121,15 @@ from .utils.json_helpers import (
     last_history_timestamp,
     append_customer_history,
 )
+from .utils.normalization_helpers import (
+    normalize_store_ids,
+    normalize_optional_note,
+    normalize_movement_comment,
+    normalize_role_names,
+    normalize_store_status,
+    normalize_store_code,
+    normalize_reservation_reason,
+)
 
 logger = core_logger.bind(component=__name__)
 
@@ -213,13 +222,6 @@ def _recalculate_sale_price(device: models.Device) -> None:
         base_cost * sale_factor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     device.unit_price = recalculated
     device.precio_venta = recalculated
-
-
-def _normalize_store_ids(store_ids: Iterable[int] | None) -> set[int] | None:
-    if not store_ids:
-        return None
-    normalized = {int(store_id) for store_id in store_ids if int(store_id) > 0}
-    return normalized or None
 
 
 def _inventory_movements_report_cache_key(
@@ -1328,13 +1330,6 @@ def _inventory_movement_payload(movement: models.InventoryMovement) -> dict[str,
     }
 
 
-def _normalize_optional_note(note: str | None) -> str | None:
-    if note is None:
-        return None
-    normalized = note.strip()
-    return normalized or None
-
-
 def _register_purchase_status_event(
     db: Session,
     order: models.PurchaseOrder,
@@ -1346,7 +1341,7 @@ def _register_purchase_status_event(
     event = models.PurchaseOrderStatusEvent(
         purchase_order_id=order.id,
         status=status,
-        note=_normalize_optional_note(note),
+        note=normalize_optional_note(note),
         created_by_id=created_by_id,
     )
     db.add(event)
@@ -3303,20 +3298,6 @@ def _select_primary_role(role_names: Iterable[str]) -> str:
     return min(ordered_roles, key=ROLE_PRIORITY.__getitem__)
 
 
-def _normalize_role_names(role_names: Iterable[str]) -> list[str]:
-    """Normaliza la colección de roles removiendo duplicados y espacios."""
-
-    unique_roles: list[str] = []
-    seen: set[str] = set()
-    for role_name in role_names:
-        if not isinstance(role_name, str):
-            continue
-        normalized = role_name.strip().upper()
-        if not normalized or normalized in seen:
-            continue
-        seen.add(normalized)
-        unique_roles.append(normalized)
-    return unique_roles
 
 
 def _build_role_assignments(
@@ -3344,7 +3325,7 @@ def create_user(
     performed_by_id: int | None = None,
     reason: str | None = None,
 ) -> models.User:
-    normalized_roles = _normalize_role_names(role_names)
+    normalized_roles = normalize_role_names(role_names)
     primary_role = _select_primary_role(normalized_roles)
     if primary_role not in normalized_roles:
         normalized_roles.append(primary_role)
@@ -3523,7 +3504,7 @@ def set_user_roles(
     performed_by_id: int | None = None,
     reason: str | None = None,
 ) -> models.User:
-    normalized_roles = _normalize_role_names(role_names)
+    normalized_roles = normalize_role_names(role_names)
     primary_role = _select_primary_role(normalized_roles)
     if primary_role not in normalized_roles:
         normalized_roles.append(primary_role)
@@ -4453,18 +4434,8 @@ def revoke_session(
     return session
 
 
-def _normalize_store_status(value: str | None) -> str:
-    if value is None:
-        return "activa"
-    normalized = value.strip().lower()
-    return normalized or "activa"
 
 
-def _normalize_store_code(value: str | None) -> str | None:
-    if value is None:
-        return None
-    normalized = value.strip().upper()
-    return normalized or None
 
 
 def _generate_store_code(db: Session) -> str:
@@ -4482,8 +4453,8 @@ def _generate_store_code(db: Session) -> str:
 
 def create_store(db: Session, payload: schemas.StoreCreate, *, performed_by_id: int | None = None) -> models.Store:
     with transactional_session(db):
-        status = _normalize_store_status(payload.status)
-        code = _normalize_store_code(payload.code)
+        status = normalize_store_status(payload.status)
+        code = normalize_store_code(payload.code)
         timezone = (payload.timezone or "UTC").strip()
         store = models.Store(
             name=payload.name.strip(),
@@ -4541,13 +4512,13 @@ def update_store(
             store.location = normalized_location
 
     if payload.status is not None:
-        normalized_status = _normalize_store_status(payload.status)
+        normalized_status = normalize_store_status(payload.status)
         if normalized_status != store.status:
             changes.append(f"status:{store.status}->{normalized_status}")
             store.status = normalized_status
 
     if payload.code is not None:
-        normalized_code = _normalize_store_code(payload.code)
+        normalized_code = normalize_store_code(payload.code)
         if normalized_code != store.code and normalized_code is not None:
             changes.append(f"code:{store.code}->{normalized_code}")
             store.code = normalized_code
@@ -8756,16 +8727,6 @@ def _ensure_adjustment_authorized(db: Session, performed_by_id: int | None) -> N
         raise PermissionError("movement_adjust_requires_authorized_user")
 
 
-def _normalize_movement_comment(comment: str | None) -> str:
-    if comment is None:
-        normalized = "Movimiento inventario"
-    else:
-        normalized = comment.strip() or "Movimiento inventario"
-    if len(normalized) < 5:
-        normalized = f"{normalized} Kardex".strip()
-    if len(normalized) < 5:
-        normalized = "Movimiento inventario"
-    return normalized[:255]
 
 
 def _record_inventory_movement_reference(
@@ -8823,7 +8784,7 @@ def _register_inventory_movement(
     reference_type: str | None = None,
     reference_id: str | None = None,
 ) -> models.InventoryMovement:
-    normalized_comment = _normalize_movement_comment(comment)
+    normalized_comment = normalize_movement_comment(comment)
     movement_payload = schemas.MovementCreate(
         producto_id=device_id,
         tipo_movimiento=movement_type,
@@ -9767,7 +9728,7 @@ def get_inventory_current_report(
     db: Session, *, store_ids: Iterable[int] | None = None
 ) -> schemas.InventoryCurrentReport:
     stores = list_inventory_summary(db)
-    store_filter = _normalize_store_ids(store_ids)
+    store_filter = normalize_store_ids(store_ids)
 
     report_stores: list[schemas.InventoryCurrentStore] = []
     total_devices = 0
@@ -9815,7 +9776,7 @@ def get_inventory_movements_report(
     limit: int | None = None,
     offset: int = 0,
 ) -> schemas.InventoryMovementsReport:
-    store_filter = _normalize_store_ids(store_ids)
+    store_filter = normalize_store_ids(store_ids)
     start_dt, end_dt = normalize_date_range(date_from, date_to)
 
     cache_key = _inventory_movements_report_cache_key(
@@ -9965,7 +9926,7 @@ def get_top_selling_products(
     limit: int = 50,
     offset: int = 0,
 ) -> schemas.TopProductsReport:
-    store_filter = _normalize_store_ids(store_ids)
+    store_filter = normalize_store_ids(store_ids)
     start_dt, end_dt = normalize_date_range(date_from, date_to)
 
     sold_units = func.sum(models.SaleItem.quantity).label("sold_units")
@@ -10205,7 +10166,7 @@ def calculate_rotation_analytics(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
-    store_filter = _normalize_store_ids(store_ids)
+    store_filter = normalize_store_ids(store_ids)
     start_dt, end_dt = normalize_date_range(date_from, date_to)
     category_expr = device_category_expr()
 
@@ -10333,7 +10294,7 @@ def calculate_aging_analytics(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
-    store_filter = _normalize_store_ids(store_ids)
+    store_filter = normalize_store_ids(store_ids)
     now_date = datetime.now(timezone.utc).date()
     category_expr = device_category_expr()
     device_stmt = (
@@ -10404,7 +10365,7 @@ def calculate_stockout_forecast(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
-    store_filter = _normalize_store_ids(store_ids)
+    store_filter = normalize_store_ids(store_ids)
     start_dt, end_dt = normalize_date_range(date_from, date_to)
     category_expr = device_category_expr()
 
@@ -10602,7 +10563,7 @@ def calculate_store_comparatives(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
-    store_filter = _normalize_store_ids(store_ids)
+    store_filter = normalize_store_ids(store_ids)
     start_dt, end_dt = normalize_date_range(date_from, date_to)
     category_expr = device_category_expr()
 
@@ -10754,7 +10715,7 @@ def calculate_profit_margin(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
-    store_filter = _normalize_store_ids(store_ids)
+    store_filter = normalize_store_ids(store_ids)
     start_dt, end_dt = normalize_date_range(date_from, date_to)
     category_expr = device_category_expr()
     revenue_expr = func.coalesce(func.sum(models.SaleItem.total_line), 0)
@@ -10823,7 +10784,7 @@ def calculate_sales_by_store(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
-    store_filter = _normalize_store_ids(store_ids)
+    store_filter = normalize_store_ids(store_ids)
     start_dt, end_dt = normalize_date_range(date_from, date_to)
     category_expr = device_category_expr()
     stmt = (
@@ -10882,7 +10843,7 @@ def calculate_sales_by_category(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
-    store_filter = _normalize_store_ids(store_ids)
+    store_filter = normalize_store_ids(store_ids)
     start_dt, end_dt = normalize_date_range(date_from, date_to)
     category_expr = device_category_expr()
     stmt = (
@@ -10938,7 +10899,7 @@ def calculate_sales_timeseries(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
-    store_filter = _normalize_store_ids(store_ids)
+    store_filter = normalize_store_ids(store_ids)
     start_dt, end_dt = normalize_date_range(date_from, date_to)
     category_expr = device_category_expr()
     stmt = (
@@ -10995,7 +10956,7 @@ def calculate_sales_projection(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
-    store_filter = _normalize_store_ids(store_ids)
+    store_filter = normalize_store_ids(store_ids)
     start_dt, end_dt = normalize_date_range(date_from, date_to)
     category_expr = device_category_expr()
     lookback_days = max(horizon_days, 30)
@@ -11402,7 +11363,7 @@ def detect_return_anomalies(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
-    store_filter = _normalize_store_ids(store_ids)
+    store_filter = normalize_store_ids(store_ids)
     start_dt, end_dt = normalize_date_range(date_from, date_to)
 
     stmt = (
@@ -11481,7 +11442,7 @@ def calculate_realtime_store_widget(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
-    store_filter = _normalize_store_ids(store_ids)
+    store_filter = normalize_store_ids(store_ids)
     category_expr = device_category_expr()
     today_start = datetime.now(timezone.utc).replace(
         hour=0, minute=0, second=0, microsecond=0)
@@ -11635,7 +11596,7 @@ def calculate_purchase_supplier_metrics(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
-    store_filter = _normalize_store_ids(store_ids)
+    store_filter = normalize_store_ids(store_ids)
     start_dt, end_dt = normalize_date_range(date_from, date_to)
     category_expr = device_category_expr()
     supplier_expr = func.coalesce(
@@ -15453,7 +15414,7 @@ def transition_purchase_order_status(
             details=json.dumps(
                 {
                     "status": status.value,
-                    "note": _normalize_optional_note(note),
+                    "note": normalize_optional_note(note),
                 }
             ),
         )
@@ -15490,7 +15451,7 @@ def send_purchase_order_email(
     purchase_documents.send_purchase_order_email(
         order=order,
         recipients=normalized_recipients,
-        message=_normalize_optional_note(message),
+        message=normalize_optional_note(message),
         include_documents=include_documents,
     )
 
@@ -16900,11 +16861,6 @@ def search_sales_history(
     )
 
 
-def _normalize_reservation_reason(reason: str | None) -> str:
-    normalized = (reason or "").strip()
-    if len(normalized) < 5:
-        raise ValueError("reservation_reason_required")
-    return normalized[:255]
 
 
 def _active_reservations_by_device(
@@ -17032,7 +16988,7 @@ def create_reservation(
     if expires_at <= datetime.now(timezone.utc):
         raise ValueError("reservation_invalid_expiration")
 
-    normalized_reason = _normalize_reservation_reason(reason)
+    normalized_reason = normalize_reservation_reason(reason)
     store = get_store(db, store_id)
     device = get_device(db, store_id, device_id)
 
@@ -17099,7 +17055,7 @@ def renew_reservation(
     if expires_at <= datetime.now(timezone.utc):
         raise ValueError("reservation_invalid_expiration")
 
-    _ = _normalize_reservation_reason(reason)
+    _ = normalize_reservation_reason(reason)
 
     with transactional_session(db):
         reservation.expires_at = expires_at
