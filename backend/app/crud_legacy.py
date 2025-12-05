@@ -22,7 +22,6 @@ from uuid import uuid4
 
 from pydantic import ValidationError
 
-from passlib.context import CryptContext
 from sqlalchemy import and_, case, cast, desc, func, literal, or_, select, tuple_, String
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -49,6 +48,12 @@ from .services import (
 from .services.purchases import assign_supplier_batch
 from .services.sales import consume_supplier_batch
 from .services.inventory import calculate_inventory_valuation
+from .services.inventory_validation import (
+    ensure_unique_identifiers,
+    ensure_unique_identifier_payload,
+    validate_device_numeric_fields,
+)
+from .core.security import verify_supervisor_pin_hash
 from .config import settings
 from .core.settings import inventory_alert_settings, return_policy_settings
 from . import security_tokens as token_protection
@@ -57,10 +62,6 @@ from .utils import audit_trail as audit_trail_utils
 from .utils.cache import TTLCache
 
 logger = core_logger.bind(component=__name__)
-
-_PIN_CONTEXT = CryptContext(
-    schemes=["pbkdf2_sha256", "bcrypt_sha256", "bcrypt"], deprecated="auto"
-)
 
 _INVENTORY_MOVEMENTS_CACHE: TTLCache[schemas.InventoryMovementsReport] = TTLCache(
     ttl_seconds=60.0
@@ -73,135 +74,9 @@ def invalidate_inventory_movements_cache() -> None:
     _INVENTORY_MOVEMENTS_CACHE.clear()
 
 
-def _verify_supervisor_pin_hash(hashed: str, candidate: str) -> bool:
-    try:
-        return _PIN_CONTEXT.verify(candidate, hashed)
-    except ValueError:
-        return False
-
-
 def token_filter(column: Any, candidate: str) -> ColumnElement[bool]:
     protected = token_protection.protect_token(candidate)
     return or_(column == candidate, column == protected)
-
-
-def _ensure_unique_identifiers(
-    db: Session,
-    *,
-    imei: str | None,
-    serial: str | None,
-    exclude_device_id: int | None = None,
-) -> None:
-    if imei:
-        statement = select(models.Device).where(models.Device.imei == imei)
-        if exclude_device_id:
-            statement = statement.where(models.Device.id != exclude_device_id)
-        if db.scalars(statement).first() is not None:
-            raise ValueError("device_identifier_conflict")
-        identifier_statement = select(models.DeviceIdentifier).where(
-            or_(
-                models.DeviceIdentifier.imei_1 == imei,
-                models.DeviceIdentifier.imei_2 == imei,
-            )
-        )
-        if exclude_device_id:
-            identifier_statement = identifier_statement.where(
-                models.DeviceIdentifier.producto_id != exclude_device_id
-            )
-        if db.scalars(identifier_statement).first() is not None:
-            raise ValueError("device_identifier_conflict")
-    if serial:
-        statement = select(models.Device).where(models.Device.serial == serial)
-        if exclude_device_id:
-            statement = statement.where(models.Device.id != exclude_device_id)
-        if db.scalars(statement).first() is not None:
-            raise ValueError("device_identifier_conflict")
-        identifier_statement = select(models.DeviceIdentifier).where(
-            models.DeviceIdentifier.numero_serie == serial
-        )
-        if exclude_device_id:
-            identifier_statement = identifier_statement.where(
-                models.DeviceIdentifier.producto_id != exclude_device_id
-            )
-        if db.scalars(identifier_statement).first() is not None:
-            raise ValueError("device_identifier_conflict")
-
-
-def _validate_device_numeric_fields(values: dict[str, Any]) -> None:
-    quantity = values.get("quantity")
-    if quantity is not None:
-        try:
-            parsed_quantity = int(quantity)
-        except (TypeError, ValueError):
-            raise ValueError("device_invalid_quantity")
-        if parsed_quantity < 0:
-            raise ValueError("device_invalid_quantity")
-
-    raw_cost = values.get("costo_unitario")
-    if raw_cost is not None:
-        try:
-            parsed_cost = _to_decimal(raw_cost)
-        except (ArithmeticError, TypeError, ValueError):
-            raise ValueError("device_invalid_cost")
-        if parsed_cost < 0:
-            raise ValueError("device_invalid_cost")
-
-
-def _ensure_unique_identifier_payload(
-    db: Session,
-    *,
-    imei_1: str | None,
-    imei_2: str | None,
-    numero_serie: str | None,
-    exclude_device_id: int | None = None,
-    exclude_identifier_id: int | None = None,
-) -> None:
-    imei_values = {value for value in (imei_1, imei_2) if value}
-    for imei in imei_values:
-        statement = select(models.Device).where(models.Device.imei == imei)
-        if exclude_device_id:
-            statement = statement.where(models.Device.id != exclude_device_id)
-        if db.scalars(statement).first() is not None:
-            raise ValueError("device_identifier_conflict")
-
-        identifier_statement = select(models.DeviceIdentifier).where(
-            or_(
-                models.DeviceIdentifier.imei_1 == imei,
-                models.DeviceIdentifier.imei_2 == imei,
-            )
-        )
-        if exclude_device_id:
-            identifier_statement = identifier_statement.where(
-                models.DeviceIdentifier.producto_id != exclude_device_id
-            )
-        if exclude_identifier_id:
-            identifier_statement = identifier_statement.where(
-                models.DeviceIdentifier.id != exclude_identifier_id
-            )
-        if db.scalars(identifier_statement).first() is not None:
-            raise ValueError("device_identifier_conflict")
-
-    if numero_serie:
-        statement = select(models.Device).where(
-            models.Device.serial == numero_serie)
-        if exclude_device_id:
-            statement = statement.where(models.Device.id != exclude_device_id)
-        if db.scalars(statement).first() is not None:
-            raise ValueError("device_identifier_conflict")
-
-        identifier_statement = select(models.DeviceIdentifier).where(
-            models.DeviceIdentifier.numero_serie == numero_serie
-        )
-        if exclude_device_id:
-            identifier_statement = identifier_statement.where(
-                models.DeviceIdentifier.producto_id != exclude_device_id
-            )
-        if exclude_identifier_id:
-            identifier_statement = identifier_statement.where(
-                models.DeviceIdentifier.id != exclude_identifier_id
-            )
-        if db.scalars(identifier_statement).first() is not None:
-            raise ValueError("device_identifier_conflict")
 
 
 def _to_decimal(value: Decimal | float | int | None) -> Decimal:
@@ -7588,8 +7463,8 @@ def create_device(
     provided_fields = payload.model_fields_set
     imei = payload_data.get("imei")
     serial = payload_data.get("serial")
-    _ensure_unique_identifiers(db, imei=imei, serial=serial)
-    _validate_device_numeric_fields(payload_data)
+    ensure_unique_identifiers(db, imei=imei, serial=serial)
+    validate_device_numeric_fields(payload_data)
     minimum_stock = int(payload_data.get("minimum_stock", 0) or 0)
     reorder_point = int(payload_data.get("reorder_point", 0) or 0)
     if reorder_point < minimum_stock:
@@ -8636,13 +8511,13 @@ def update_device(
         manual_price = updated_fields.pop("precio_venta")
     imei = updated_fields.get("imei")
     serial = updated_fields.get("serial")
-    _ensure_unique_identifiers(
+    ensure_unique_identifiers(
         db,
         imei=imei,
         serial=serial,
         exclude_device_id=device.id,
     )
-    _validate_device_numeric_fields(updated_fields)
+    validate_device_numeric_fields(updated_fields)
     new_minimum_stock = updated_fields.get("minimum_stock")
     new_reorder_point = updated_fields.get("reorder_point")
     current_minimum = int(getattr(device, "minimum_stock", 0) or 0)
@@ -18852,7 +18727,7 @@ def register_sale_return(
         if supervisor is None:
             if not fallback_hash:
                 raise PermissionError("sale_return_supervisor_not_found")
-            if not _verify_supervisor_pin_hash(fallback_hash, approval.pin):
+            if not verify_supervisor_pin_hash(fallback_hash, approval.pin):
                 raise PermissionError("sale_return_invalid_supervisor_pin")
             approval_reference = approval.supervisor_username
         else:
@@ -18866,7 +18741,7 @@ def register_sale_return(
             if not pin_hash:
                 raise PermissionError(
                     "sale_return_supervisor_pin_not_configured")
-            if not _verify_supervisor_pin_hash(pin_hash, approval.pin):
+            if not verify_supervisor_pin_hash(pin_hash, approval.pin):
                 raise PermissionError("sale_return_invalid_supervisor_pin")
             approved_supervisor = supervisor
             approval_reference = supervisor.username
