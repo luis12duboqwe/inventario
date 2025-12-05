@@ -633,6 +633,15 @@ from .updates import (
     UpdateStatus,
 )
 
+from .cloud_agent import (
+    CloudAgentTaskBase,
+    CloudAgentTaskCreate,
+    CloudAgentTaskUpdate,
+    CloudAgentTaskResponse,
+    CloudAgentTaskListResponse,
+    CloudAgentTaskStats,
+)
+
 __all__ = [
     "HealthStatusResponse",
     "RootWelcomeResponse",
@@ -1170,4 +1179,10 @@ __all__ = [
     "ConfigurationSyncResult",
     "ReleaseInfo",
     "UpdateStatus",
+    "CloudAgentTaskBase",
+    "CloudAgentTaskCreate",
+    "CloudAgentTaskUpdate",
+    "CloudAgentTaskResponse",
+    "CloudAgentTaskListResponse",
+    "CloudAgentTaskStats",
 ]
