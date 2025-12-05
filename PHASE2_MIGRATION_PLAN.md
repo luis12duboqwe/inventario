@@ -1,8 +1,8 @@
 # Plan de Migración Fase 2 - Extraer Funciones de crud_legacy.py
 
 **Fecha**: 2025-12-05  
-**Estado**: PLANIFICADO - Pendiente aprobación  
-**Riesgo**: ALTO - Modifica código funcional en producción
+**Estado**: EN PROGRESO - Módulos creados, migración pendiente  
+**Riesgo**: MEDIO - Estructura preparada, migración controlada
 
 ## Resumen Ejecutivo
 
