@@ -129,6 +129,19 @@ def get_help_guides() -> list[HelpGuide]:
             video=f"{base_path}/videos/seguridad_resumen.txt",
         ),
         HelpGuide(
+            module="config",
+            title="Configuración de Impresoras",
+            summary="Guía técnica para configurar impresoras térmicas y márgenes.",
+            steps=[
+                "Instala el controlador de tu impresora térmica (Zebra/Epson) en el sistema operativo.",
+                "Configura el tamaño de papel a 80mm o 58mm en las preferencias de impresión del navegador.",
+                "Desactiva encabezados y pies de página en el diálogo de impresión del sistema.",
+                "Usa la vista previa de recibo en POS para validar márgenes antes de imprimir.",
+            ],
+            manual=f"{base_path}/manual_impresoras.pdf",
+            video=f"{base_path}/videos/impresoras_setup.txt",
+        ),
+        HelpGuide(
             module="help",
             title="Centro de ayuda",
             summary="Acceso rápido a manuales PDF y guías en video sin salir del panel.",

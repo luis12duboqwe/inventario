@@ -6,6 +6,7 @@ import { type Device } from "@api/inventory";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 import { useInventoryLayout } from "../../inventory/pages/context/InventoryLayoutContext";
 import { promptCorporateReason } from "../../../utils/corporateReason";
+import { FILTER_ALL_VALUE } from "../../../constants/filters";
 import {
   priceListsService,
   type PriceList,
@@ -36,7 +37,7 @@ type NewItemState = {
 type FiltersState = {
   storeId: string;
   customerId: string;
-  status: "all" | "active" | "inactive";
+  status: typeof FILTER_ALL_VALUE | "active" | "inactive";
 };
 
 const DEFAULT_LIST_REASON = "Consulta listas de precios";
@@ -208,7 +209,7 @@ function PriceLists(): JSX.Element {
       if (filters.customerId) {
         params.customerId = Number(filters.customerId);
       }
-      if (filters.status !== "all") {
+      if (filters.status !== FILTER_ALL_VALUE) {
         params.isActive = filters.status === "active";
       }
       const lists = await priceListsService.list(dashboard.token, params, DEFAULT_LIST_REASON);
@@ -648,7 +649,7 @@ function PriceLists(): JSX.Element {
               handleFiltersChange({ status: event.target.value as FiltersState["status"] })
             }
           >
-            <option value="all">Todas</option>
+            <option value={FILTER_ALL_VALUE}>Todas</option>
             <option value="active">Activas</option>
             <option value="inactive">Inactivas</option>
           </select>

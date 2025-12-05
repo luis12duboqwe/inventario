@@ -23,6 +23,7 @@ type ScrollableTableProps<T> = {
   title?: string;
   ariaLabel?: string;
   footer?: ReactNode;
+  tableClassName?: string;
 };
 
 function ScrollableTable<T>({
@@ -36,6 +37,7 @@ function ScrollableTable<T>({
   title,
   ariaLabel,
   footer,
+  tableClassName,
 }: ScrollableTableProps<T>) {
   const { compactMode } = useDashboard();
   const [page, setPage] = useState(1);
@@ -96,10 +98,7 @@ function ScrollableTable<T>({
     return items.slice(start, start + pageSize);
   }, [items, safePage, pageSize]);
 
-  const fullScreenItems = useMemo(
-    () => items.slice(0, fullScreenLimit),
-    [items, fullScreenLimit],
-  );
+  const fullScreenItems = useMemo(() => items.slice(0, fullScreenLimit), [items, fullScreenLimit]);
 
   const renderRows = (data: T[], startIndex: number) =>
     data.map((item, index) => {
@@ -110,11 +109,7 @@ function ScrollableTable<T>({
           key,
         });
       }
-      return (
-        <tr key={key}>
-          {content}
-        </tr>
-      );
+      return <tr key={key}>{content}</tr>;
     });
 
   if (items.length === 0) {
@@ -147,7 +142,7 @@ function ScrollableTable<T>({
         role="region"
         aria-label={ariaLabel}
       >
-        <table>
+        <table className={tableClassName}>
           <thead>
             <tr>{renderHead()}</tr>
           </thead>
@@ -155,7 +150,12 @@ function ScrollableTable<T>({
         </table>
       </div>
       <div className="scrollable-table__pagination" role="navigation" aria-label="Paginación">
-        <button type="button" onClick={() => setPage(1)} disabled={page === 1} className="btn btn--ghost">
+        <button
+          type="button"
+          onClick={() => setPage(1)}
+          disabled={page === 1}
+          className="btn btn--ghost"
+        >
           « Primero
         </button>
         <button
@@ -210,7 +210,8 @@ function ScrollableTable<T>({
                 <div>
                   <h2>{title ?? "Vista completa"}</h2>
                   <p className="muted-text">
-                    Desplázate para explorar todos los registros. La vista carga datos adicionales automáticamente.
+                    Desplázate para explorar todos los registros. La vista carga datos adicionales
+                    automáticamente.
                   </p>
                 </div>
                 <button type="button" className="btn" onClick={() => setIsFullScreen(false)}>
@@ -218,14 +219,16 @@ function ScrollableTable<T>({
                 </button>
               </header>
               <div className="scrollable-table__overlay-viewport" ref={overlayViewportRef}>
-                <table>
+                <table className={tableClassName}>
                   <thead>
                     <tr>{renderHead()}</tr>
                   </thead>
                   <tbody>{renderRows(fullScreenItems, 0)}</tbody>
                 </table>
                 <div ref={sentinelRef} aria-hidden="true" className="scrollable-table__sentinel">
-                  {fullScreenLimit < items.length ? "Cargando más registros…" : "Todos los registros cargados"}
+                  {fullScreenLimit < items.length
+                    ? "Cargando más registros…"
+                    : "Todos los registros cargados"}
                 </div>
               </div>
             </motion.div>

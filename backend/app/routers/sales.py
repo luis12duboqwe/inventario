@@ -52,12 +52,11 @@ def _prepare_sales_report(
         store_id=store_id,
         limit=None,
         offset=0,
-        date_from=date_from,
-        date_to=date_to,
+        start_date=date_from,
+        end_date=date_to,
         customer_id=customer_id,
         performed_by_id=performed_by_id,
-        product_id=product_id,
-        query=query,
+        search=query,
     )
     audit_trails = audit_logger.get_last_audit_trails(
         db,
@@ -96,12 +95,11 @@ def list_sales_endpoint(
         store_id=store_id,
         limit=limit,
         offset=offset,
-        date_from=date_from,
-        date_to=date_to,
+        start_date=date_from,
+        end_date=date_to,
         customer_id=customer_id,
         performed_by_id=performed_by_id,
-        product_id=product_id,
-        query=search,
+        search=search,
     )
 
 

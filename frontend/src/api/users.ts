@@ -1,6 +1,7 @@
 import { Role } from "./types";
 import { DashboardAuditAlerts } from "./audit";
 import { request, requestCollection } from "./client";
+import { FILTER_ALL_VALUE } from "../constants/filters";
 
 export type UserAccount = {
   id: number;
@@ -22,7 +23,7 @@ export type UserAccount = {
 export type UserQueryFilters = {
   search?: string;
   role?: string;
-  status?: "all" | "active" | "inactive" | "locked";
+  status?: typeof FILTER_ALL_VALUE | "active" | "inactive" | "locked";
   storeId?: number;
 };
 
@@ -109,7 +110,7 @@ export function listUsers(
   if (filters.role) {
     params.set("role", filters.role);
   }
-  if (filters.status && filters.status !== "all") {
+  if (filters.status && filters.status !== FILTER_ALL_VALUE) {
     params.set("status", filters.status);
   }
   if (typeof filters.storeId === "number") {
@@ -221,7 +222,7 @@ export function exportUsers(
   if (filters.role) {
     params.set("role", filters.role);
   }
-  if (filters.status && filters.status !== "all") {
+  if (filters.status && filters.status !== FILTER_ALL_VALUE) {
     params.set("status", filters.status);
   }
   if (typeof filters.storeId === "number") {
@@ -230,7 +231,7 @@ export function exportUsers(
   const suffix = params.toString() ? `?${params.toString()}` : "";
   return request<Blob>(
     `/users/export${suffix}`,
-    { method: "GET", headers: { "X-Reason": reason } },
+    { method: "GET", headers: { "X-Reason": reason }, responseType: "blob" },
     token,
   );
 }

@@ -57,7 +57,7 @@ export const PageToolbar: React.FC<PageToolbarProps> = ({
   const renderedActions = useMemo(() => {
     if (!actions?.length) return null;
     return (
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div className="page-toolbar__actions">
         {actions.map((a) => (
           <button
             key={a.id ?? a.label}
@@ -65,14 +65,7 @@ export const PageToolbar: React.FC<PageToolbarProps> = ({
             onClick={a.onClick}
             disabled={!!a.disabled}
             title={a.title || a.label}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 8,
-              background: a.disabled ? "#3a3a3a" : "#2563eb",
-              color: "#fff",
-              border: "none",
-              cursor: a.disabled ? "not-allowed" : "pointer",
-            }}
+            className="page-toolbar__action-btn"
           >
             {a.label}
           </button>
@@ -82,19 +75,8 @@ export const PageToolbar: React.FC<PageToolbarProps> = ({
   }, [actions]);
 
   return (
-    <div
-      className={className}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 12,
-        padding: 12,
-        borderRadius: 12,
-        background: "rgba(255,255,255,0.03)",
-        border: "1px solid rgba(255,255,255,0.06)",
-      }}
-    >
-      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+    <div className={`page-toolbar ${className || ""}`}>
+      <div className="page-toolbar__row">
         <input
           aria-label="Buscar"
           type="search"
@@ -102,18 +84,9 @@ export const PageToolbar: React.FC<PageToolbarProps> = ({
           value={value}
           onChange={handleChange}
           disabled={disableSearch}
-          style={{
-            minWidth: 220,
-            flex: "1 1 260px",
-            padding: "10px 12px",
-            borderRadius: 10,
-            border: "1px solid rgba(255,255,255,0.12)",
-            background: "rgba(0,0,0,0.25)",
-            color: "#e5e7eb",
-            outline: "none",
-          }}
+          className="page-toolbar__search"
         />
-        <div style={{ flex: "1 1 auto" }}>{filters}</div>
+        <div className="page-toolbar__filters">{filters}</div>
         {renderedActions}
       </div>
       {children ? <div>{children}</div> : null}

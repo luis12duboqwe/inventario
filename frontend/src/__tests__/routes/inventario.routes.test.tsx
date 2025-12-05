@@ -234,7 +234,17 @@ const renderDashboardRoute = (initialPath: string) =>
       <Routes>
         <Route
           path="/dashboard/*"
-          element={<DashboardRoutes theme="dark" onToggleTheme={() => {}} onLogout={() => {}} />}
+          element={
+            <DashboardRoutes
+              theme="dark"
+              onToggleTheme={() => {
+                /* no-op */
+              }}
+              onLogout={() => {
+                /* no-op */
+              }}
+            />
+          }
         />
       </Routes>
     </MemoryRouter>,
@@ -285,7 +295,7 @@ describe("Rutas de inventario", () => {
     renderDashboardRoute("/dashboard/inventory/productos");
 
     await waitFor(() => expect(resolveInventoryModule).not.toBeNull());
-    expect(screen.getAllByText("Cargando panel…")[0]).toBeInTheDocument();
+    expect(screen.getAllByTestId("loading-skeleton")[0]).toBeInTheDocument();
 
     await act(async () => {
       resolveInventoryModule?.();
@@ -304,7 +314,7 @@ describe("Rutas de inventario", () => {
     renderDashboardRoute("/dashboard/inventory/movimientos");
 
     await waitFor(() => expect(resolveInventoryModule).not.toBeNull());
-    expect(screen.getAllByText("Cargando panel…")[0]).toBeInTheDocument();
+    expect(screen.getAllByTestId("loading-skeleton")[0]).toBeInTheDocument();
 
     await act(async () => {
       resolveInventoryModule?.();

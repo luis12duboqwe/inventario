@@ -1,4 +1,4 @@
-import type { FormEvent } from "react";
+import type { FormEvent, RefObject } from "react";
 import type { Customer, Device, Sale, Store } from "../../../../api";
 import type { SaleFormState, SaleLine, SaleSummary } from "./types";
 import { SaleForm } from "./SaleForm";
@@ -29,6 +29,8 @@ type Props = {
   onRequestInvoice: () => void;
   formatCurrency: (value: number) => string;
   invoiceAvailable: boolean;
+  deviceSearchRef?: RefObject<HTMLInputElement>;
+  customerSelectRef?: RefObject<HTMLSelectElement>;
 };
 
 function SidePanel({
@@ -54,6 +56,8 @@ function SidePanel({
   onRequestInvoice,
   formatCurrency,
   invoiceAvailable,
+  deviceSearchRef,
+  customerSelectRef,
 }: Props) {
   const deviceSearchDisabled = !saleForm.storeId;
 
@@ -65,6 +69,7 @@ function SidePanel({
         saleForm={saleForm}
         onSaleFormChange={onSaleFormChange}
         paymentLabels={paymentLabels}
+        customerSelectRef={customerSelectRef}
       />
 
       <DeviceSearch
@@ -75,6 +80,7 @@ function SidePanel({
         onAddDevice={onAddDevice}
         disabled={deviceSearchDisabled}
         formatCurrency={formatCurrency}
+        inputRef={deviceSearchRef}
       />
 
       <SaleCart

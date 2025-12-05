@@ -142,7 +142,7 @@ export function exportAuditLogsCsv(
   const suffix = query ? `?${query}` : "";
   return request<Blob>(
     `/audit/logs/export.csv${suffix}`,
-    { method: "GET", headers: { "X-Reason": reason } },
+    { method: "GET", headers: { "X-Reason": reason }, responseType: "blob" },
     token
   );
 }
@@ -156,7 +156,7 @@ export function downloadAuditPdf(
   const suffix = query ? `?${query}` : "";
   return request<Blob>(
     `/reports/audit/pdf${suffix}`,
-    { method: "GET", headers: { "X-Reason": reason } },
+    { method: "GET", headers: { "X-Reason": reason }, responseType: "blob" },
     token
   );
 }

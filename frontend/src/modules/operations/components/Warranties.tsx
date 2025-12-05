@@ -255,7 +255,17 @@ function WarrantyClaimDialog({
   );
 
   return (
-    <Modal open={open} onClose={loading ? () => {} : onClose} title="Registrar reclamo de garantía">
+    <Modal
+      open={open}
+      onClose={
+        loading
+          ? () => {
+              /* no-op */
+            }
+          : onClose
+      }
+      title="Registrar reclamo de garantía"
+    >
       {assignment ? (
         <form onSubmit={submitClaim} className="warranty-claim-form">
           <div className="warranty-claim-grid">

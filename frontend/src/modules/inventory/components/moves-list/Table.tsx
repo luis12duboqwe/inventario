@@ -35,28 +35,28 @@ export default function Table({
   const allSelected = data.length > 0 && data.every((row) => selected.includes(row.id));
 
   if (loading) {
-    return <div style={{ padding: 12 }}>Cargando…</div>;
+    return <div className="p-4 text-center text-muted-foreground">Cargando…</div>;
   }
 
   if (!data.length) {
-    return <div style={{ padding: 12, color: "#9ca3af" }}>Sin resultados</div>;
+    return <div className="p-4 text-center text-muted-foreground">Sin resultados</div>;
   }
 
   return (
-    <div style={{ overflow: "auto", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+    <div className="overflow-auto rounded-xl border border-border">
+      <table className="w-full border-collapse text-sm">
         <thead>
-          <tr style={{ background: "rgba(255,255,255,0.03)" }}>
-            <th style={{ textAlign: "center", padding: 10, width: 36 }}>
+          <tr className="bg-surface-highlight">
+            <th className="text-center p-3 w-9">
               <input type="checkbox" checked={allSelected} onChange={onToggleSelectAll} />
             </th>
-            <th style={{ textAlign: "left", padding: 10 }}>Fecha</th>
-            <th style={{ textAlign: "left", padding: 10 }}>#</th>
-            <th style={{ textAlign: "left", padding: 10 }}>Tipo</th>
-            <th style={{ textAlign: "left", padding: 10 }}>Origen → Destino</th>
-            <th style={{ textAlign: "center", padding: 10 }}>Items</th>
-            <th style={{ textAlign: "left", padding: 10 }}>Usuario</th>
-            <th style={{ textAlign: "left", padding: 10 }}>Estado</th>
+            <th className="text-left p-3 font-medium text-muted-foreground">Fecha</th>
+            <th className="text-left p-3 font-medium text-muted-foreground">#</th>
+            <th className="text-left p-3 font-medium text-muted-foreground">Tipo</th>
+            <th className="text-left p-3 font-medium text-muted-foreground">Origen → Destino</th>
+            <th className="text-center p-3 font-medium text-muted-foreground">Items</th>
+            <th className="text-left p-3 font-medium text-muted-foreground">Usuario</th>
+            <th className="text-left p-3 font-medium text-muted-foreground">Estado</th>
           </tr>
         </thead>
         <tbody>
@@ -64,22 +64,24 @@ export default function Table({
             <tr
               key={row.id}
               onClick={() => onRowClick?.(row)}
-              style={{ cursor: onRowClick ? "pointer" : "default" }}
+              className={`border-t border-border hover:bg-surface-highlight transition-colors ${
+                onRowClick ? "cursor-pointer" : ""
+              }`}
             >
-              <td style={{ textAlign: "center", padding: 10 }} onClick={(event) => event.stopPropagation()}>
+              <td className="text-center p-3" onClick={(event) => event.stopPropagation()}>
                 <input
                   type="checkbox"
                   checked={selected.includes(row.id)}
                   onChange={() => onToggleSelect?.(row.id)}
                 />
               </td>
-              <td style={{ padding: 10 }}>{row.date}</td>
-              <td style={{ padding: 10 }}>{row.number || "-"}</td>
-              <td style={{ padding: 10 }}>{row.type}</td>
-              <td style={{ padding: 10 }}>{[row.source || "—", row.dest || "—"].join(" → ")}</td>
-              <td style={{ padding: 10, textAlign: "center" }}>{row.itemsCount}</td>
-              <td style={{ padding: 10 }}>{row.user || "—"}</td>
-              <td style={{ padding: 10 }}>
+              <td className="p-3">{row.date}</td>
+              <td className="p-3">{row.number || "-"}</td>
+              <td className="p-3">{row.type}</td>
+              <td className="p-3">{[row.source || "—", row.dest || "—"].join(" → ")}</td>
+              <td className="p-3 text-center">{row.itemsCount}</td>
+              <td className="p-3">{row.user || "—"}</td>
+              <td className="p-3">
                 <StatusBadge value={row.status} />
               </td>
             </tr>

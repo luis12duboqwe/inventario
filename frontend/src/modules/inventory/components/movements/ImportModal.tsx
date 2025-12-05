@@ -1,4 +1,6 @@
 import React from "react";
+import { Modal } from "../../../../../components/ui/Modal";
+import { Button } from "../../../../../components/ui/Button";
 
 type Props = {
   open?: boolean;
@@ -8,27 +10,20 @@ type Props = {
 export default function ImportModal({ open, onClose }: Props) {
   if (!open) return null;
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "grid", placeItems: "center", zIndex: 50 }}>
-      <div
-        style={{
-          width: 560,
-          maxWidth: "95vw",
-          background: "#0b1220",
-          borderRadius: 12,
-          border: "1px solid rgba(255,255,255,0.08)",
-          padding: 16,
-        }}
-      >
-        <h3 style={{ marginTop: 0 }}>Importar movimientos</h3>
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
-          <button onClick={onClose} style={{ padding: "8px 12px", borderRadius: 8 }}>
+    <Modal
+      isOpen={open}
+      onClose={onClose}
+      title="Importar movimientos"
+      footer={
+        <div className="flex gap-2 justify-end">
+          <Button variant="ghost" onClick={onClose}>
             Cerrar
-          </button>
-          <button style={{ padding: "8px 12px", borderRadius: 8, background: "#2563eb", color: "#fff", border: 0 }}>
-            Procesar
-          </button>
+          </Button>
+          <Button variant="primary">Procesar</Button>
         </div>
-      </div>
-    </div>
+      }
+    >
+      <div className="p-4">{/* Content would go here */}</div>
+    </Modal>
   );
 }

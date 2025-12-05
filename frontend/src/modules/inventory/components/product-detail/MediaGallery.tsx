@@ -33,37 +33,24 @@ export default function MediaGallery({ images }: Props) {
   const activeUrl = data.find((image) => image.id === active)?.url || data[0]?.url;
 
   return (
-    <div style={{ display: "grid", gap: 8 }}>
-      <div
-        style={{
-          width: "100%",
-          aspectRatio: "4 / 3",
-          background: "#0f172a",
-          borderRadius: 8,
-          display: "grid",
-          placeItems: "center",
-        }}
-      >
+    <div className="grid gap-2">
+      <div className="w-full aspect-[4/3] bg-surface rounded-lg grid place-items-center overflow-hidden">
         {activeUrl ? (
-          <img src={activeUrl} alt="" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "cover" }} />
+          <img src={activeUrl} alt="" className="max-w-full max-h-full object-cover" />
         ) : (
-          <span style={{ color: "#64748b" }}>Sin imagen</span>
+          <span className="text-muted-foreground">Sin imagen</span>
         )}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(72px,1fr))", gap: 6 }}>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(72px,1fr))] gap-2">
         {data.map((image) => (
           <button
             key={image.id}
             onClick={() => setActive(image.id)}
-            style={{
-              borderRadius: 8,
-              overflow: "hidden",
-              border: active === image.id ? "2px solid #2563eb" : "1px solid rgba(255,255,255,0.08)",
-              padding: 0,
-              background: "#0f172a",
-            }}
+            className={`rounded-lg overflow-hidden border p-0 bg-surface ${
+              active === image.id ? "border-primary" : "border-border"
+            }`}
           >
-            <img src={image.url} alt="" style={{ width: "100%", height: 64, objectFit: "cover" }} />
+            <img src={image.url} alt="" className="w-full h-16 object-cover" />
           </button>
         ))}
       </div>

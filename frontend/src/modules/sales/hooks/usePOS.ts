@@ -1,5 +1,6 @@
 // [PACK22-POS-HOOK-START]
 import { useCallback, useRef, useState } from "react";
+import { emitClientError } from "../../../utils/clientLog";
 import type { CartLineInput, Product, PaymentInput, Totals, CheckoutRequest } from "../../../services/sales";
 import { calcTotalsLocal, asCheckoutRequest } from "../utils/totals";
 import { SalesPOS } from "../../../services/sales";
@@ -137,7 +138,7 @@ export function usePOS() {
         setPendingOffline(q);
         setBanner({ type: "warn", msg: "Sin conexión. Venta en cola offline para reintento." });
       } catch (storageError) {
-        console.error("Failed to save offline sale to localStorage", storageError);
+        emitClientError("usePOS", "Failed to save offline sale to localStorage", storageError);
         setBanner({ type: "error", msg: "Error crítico: No se pudo guardar la venta offline." });
       }
       throw e;

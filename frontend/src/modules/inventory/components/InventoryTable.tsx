@@ -1,18 +1,20 @@
 import { ChangeEvent, useCallback, useMemo, useState, Fragment } from "react";
-import { MapPin, ChevronDown, ChevronRight, Columns } from "lucide-react";
-import QRCode from "qrcode";
+import { MapPin, ChevronDown, ChevronRight, Columns, CheckSquare, Square } from "lucide-react";
 
-import ScrollableTable from "../../../shared/components/ScrollableTable";
-import { colors } from "../../../theme/designTokens";
-import { emitClientError } from "../../../utils/clientLog";
+import ScrollableTable from "@shared/components/ScrollableTable";
 import Modal from "@components/ui/Modal";
-import {
-  Device,
-  getInventoryAvailability,
-  type InventoryAvailabilityRecord,
-} from "@api/inventory";
+import { Device } from "@api/inventory";
+import "./InventoryTable.css";
 import { useInventoryLayout } from "../pages/context/InventoryLayoutContext";
 import { formatCurrencyWithUsd } from "@/utils/locale";
+import {
+  useInventoryAvailability,
+  buildAvailabilityReference,
+} from "../hooks/useInventoryAvailability";
+import { useLabelPrinter } from "../hooks/useLabelPrinter";
+import PrintLabelDialog, { PrintOptions } from "./PrintLabelDialog";
+import BulkTransferDialog from "./BulkTransferDialog";
+import BulkStatusDialog from "./BulkStatusDialog";
 
 type Props = {
   devices: Device[];
@@ -53,15 +55,8 @@ const estadoTone = (
   }
 };
 
-const buildAvailabilityReference = (device: Device): string => {
-  const normalizedSku = device.sku?.trim().toLowerCase();
-  if (normalizedSku) {
-    return normalizedSku;
-  }
-  return `device:${device.id}`;
-};
-
 type ColumnId =
+  | "select"
   | "expand"
   | "sku"
   | "name"
@@ -88,6 +83,7 @@ type ColumnConfig = {
 };
 
 const COLUMNS: ColumnConfig[] = [
+  { id: "select", label: "", sticky: "left", alwaysVisible: true },
   { id: "expand", label: "", sticky: "left", alwaysVisible: true },
   { id: "sku", label: "SKU", sticky: "left", alwaysVisible: true },
   { id: "name", label: "Nombre", sticky: "left", alwaysVisible: true },
@@ -109,31 +105,39 @@ const COLUMNS: ColumnConfig[] = [
 function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDevice }: Props) {
   const [pageSize, setPageSize] = useState(50);
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+  const [selectedDeviceIds, setSelectedDeviceIds] = useState<Set<number>>(new Set());
   const [visibleColumns, setVisibleColumns] = useState<Set<ColumnId>>(() => {
     return new Set(COLUMNS.filter((c) => !c.defaultHidden).map((c) => c.id));
   });
   const [isColumnSelectorOpen, setIsColumnSelectorOpen] = useState(false);
 
+  // Print Dialog State
+  const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false);
+  const [devicesToPrint, setDevicesToPrint] = useState<Device[]>([]);
+
+  // Transfer Dialog State
+  const [isTransferDialogOpen, setIsTransferDialogOpen] = useState(false);
+
+  // Status Dialog State
+  const [isStatusDialogOpen, setIsStatusDialogOpen] = useState(false);
+
   const pageSizeOptions = useMemo(() => [25, 50, 100, 250], []);
   const {
-    module: { selectedStoreId, token },
+    module: { selectedStoreId, token, stores },
+    downloads: { triggerRefreshSummary },
   } = useInventoryLayout();
-  const [availabilityRecords, setAvailabilityRecords] = useState<
-    Record<string, InventoryAvailabilityRecord>
-  >({});
-  const [availabilityTarget, setAvailabilityTarget] = useState<Device | null>(null);
-  const [availabilityOpen, setAvailabilityOpen] = useState(false);
-  const [availabilityLoading, setAvailabilityLoading] = useState(false);
-  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
 
-  const escapeHtml = useCallback((value: string) => {
-    return value
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-  }, []);
+  const {
+    availabilityRecords,
+    availabilityTarget,
+    availabilityOpen,
+    availabilityLoading,
+    availabilityError,
+    handleOpenAvailability,
+    handleCloseAvailability,
+  } = useInventoryAvailability(token);
+
+  const { handlePrintLabels } = useLabelPrinter();
 
   const handlePageSizeChange = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
     setPageSize(Number(event.target.value));
@@ -151,6 +155,26 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDev
     });
   }, []);
 
+  const toggleSelection = useCallback((id: number) => {
+    setSelectedDeviceIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    if (selectedDeviceIds.size === devices.length && devices.length > 0) {
+      setSelectedDeviceIds(new Set());
+    } else {
+      setSelectedDeviceIds(new Set(devices.map((d) => d.id)));
+    }
+  }, [devices, selectedDeviceIds]);
+
   const toggleColumn = useCallback((id: ColumnId) => {
     setVisibleColumns((prev) => {
       const next = new Set(prev);
@@ -163,121 +187,39 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDev
     });
   }, []);
 
-  const handleCloseAvailability = useCallback(() => {
-    setAvailabilityOpen(false);
-    setAvailabilityError(null);
-  }, []);
+  const openPrintDialog = (devicesList: Device[]) => {
+    setDevicesToPrint(devicesList);
+    setIsPrintDialogOpen(true);
+  };
 
-  const handleOpenAvailability = useCallback(
-    async (device: Device) => {
-      const reference = buildAvailabilityReference(device);
-      setAvailabilityTarget(device);
-      setAvailabilityOpen(true);
-      setAvailabilityError(null);
-      if (availabilityRecords[reference]) {
-        return;
-      }
-      setAvailabilityLoading(true);
-      try {
-        const response = await getInventoryAvailability(token, {
-          ...(device.sku ? { skus: [device.sku] } : {}),
-          ...(device.sku ? {} : { deviceIds: [device.id] }),
-          limit: 10,
-        });
-        const mapped: Record<string, InventoryAvailabilityRecord> = {};
-        response.items.forEach((item) => {
-          mapped[item.reference] = item;
-        });
-        setAvailabilityRecords((prev) => ({ ...prev, ...mapped }));
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : "No fue posible consultar la disponibilidad corporativa.";
-        setAvailabilityError(message);
-      } finally {
-        setAvailabilityLoading(false);
-      }
-    },
-    [availabilityRecords, token],
-  );
+  const handleConfirmPrint = (options: PrintOptions) => {
+    void handlePrintLabels(devicesToPrint, options);
+    setIsPrintDialogOpen(false);
+    setDevicesToPrint([]);
 
-  const handlePrintLabel = useCallback(
-    async (device: Device) => {
-      const qrPayload = JSON.stringify({
-        sku: device.sku,
-        imei: device.imei ?? null,
-        serial: device.serial ?? null,
-      });
+    // Si imprimimos desde la selección masiva, limpiamos la selección
+    if (selectedDeviceIds.size > 0 && devicesToPrint.length > 1) {
+      setSelectedDeviceIds(new Set());
+    }
+  };
 
-      let dataUrl: string;
-      try {
-        dataUrl = await QRCode.toDataURL(qrPayload, {
-          width: 160,
-          margin: 1,
-          errorCorrectionLevel: "M",
-        });
-      } catch (error) {
-        emitClientError("No fue posible generar el código QR", error);
-        window.alert("No fue posible generar la etiqueta. Intenta nuevamente.");
-        return;
-      }
+  const handleTransferClick = () => {
+    setIsTransferDialogOpen(true);
+  };
 
-      const printWindow = window.open("", "softmobile-print-label", "width=420,height=600");
-      if (!printWindow) {
-        window.alert("Debes permitir ventanas emergentes para imprimir la etiqueta.");
-        return;
-      }
+  const handleTransferSuccess = () => {
+    setSelectedDeviceIds(new Set());
+    triggerRefreshSummary();
+  };
 
-      const modelLabel = escapeHtml(device.modelo ?? device.name);
-      const skuLabel = escapeHtml(device.sku);
-      const imeiLabel = device.imei ? escapeHtml(device.imei) : "—";
-      const serialLabel = device.serial ? escapeHtml(device.serial) : "—";
+  const handleStatusClick = () => {
+    setIsStatusDialogOpen(true);
+  };
 
-      const html = `<!DOCTYPE html>
-<html lang="es">
-  <head>
-    <meta charSet="utf-8" />
-    <title>Etiqueta ${modelLabel}</title>
-    <style>
-      * { box-sizing: border-box; }
-      body { font-family: 'Segoe UI', sans-serif; background: ${colors.backgroundSecondary}; color: ${colors.textSecondary}; margin: 0; padding: 16px; }
-      .label { width: 260px; border: 2px solid ${colors.accent}; border-radius: 12px; padding: 16px; margin: 0 auto; text-align: center; }
-      h1 { font-size: 18px; margin: 0 0 12px; color: ${colors.accent}; }
-      p { margin: 4px 0; font-size: 13px; }
-      .meta { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
-      .qr { margin-top: 8px; }
-      img { width: 140px; height: 140px; }
-    </style>
-  </head>
-  <body>
-    <div class="label">
-      <h1>${modelLabel}</h1>
-      <div class="meta">
-        <p><strong>SKU:</strong> ${skuLabel}</p>
-        <p><strong>IMEI:</strong> ${imeiLabel}</p>
-        <p><strong>Serie:</strong> ${serialLabel}</p>
-      </div>
-      <div class="qr">
-        <img loading="lazy" decoding="async"
-          src="${dataUrl}"
-          alt="QR del dispositivo"
-        />
-      </div>
-    </div>
-    <script>
-      window.print();
-      setTimeout(() => window.close(), 300);
-    </script>
-  </body>
-</html>`;
-
-      printWindow.document.open();
-      printWindow.document.write(html);
-      printWindow.document.close();
-    },
-    [escapeHtml],
-  );
+  const handleStatusSuccess = () => {
+    setSelectedDeviceIds(new Set());
+    triggerRefreshSummary();
+  };
 
   const activeReference = availabilityTarget
     ? buildAvailabilityReference(availabilityTarget)
@@ -292,6 +234,26 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDev
 
   const renderCell = (columnId: ColumnId, device: Device) => {
     switch (columnId) {
+      case "select":
+        return (
+          <button
+            type="button"
+            className="btn-icon-ghost"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleSelection(device.id);
+            }}
+            aria-label={
+              selectedDeviceIds.has(device.id) ? "Deseleccionar fila" : "Seleccionar fila"
+            }
+          >
+            {selectedDeviceIds.has(device.id) ? (
+              <CheckSquare size={16} className="text-accent" />
+            ) : (
+              <Square size={16} />
+            )}
+          </button>
+        );
       case "expand":
         return (
           <button
@@ -362,9 +324,7 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDev
             <button
               type="button"
               className="btn btn--secondary"
-              onClick={() => {
-                void handlePrintLabel(device);
-              }}
+              onClick={() => openPrintDialog([device])}
             >
               Imprimir etiqueta
             </button>
@@ -421,15 +381,60 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDev
         </div>
       </div>
 
+      {selectedDeviceIds.size > 0 && (
+        <div className="floating-actions-bar fixed bottom-8 left-1/2 -translate-x-1/2 bg-surface-raised p-4 rounded-lg shadow-lg flex items-center gap-6 z-50 border border-border-subtle">
+          <span className="font-semibold">{selectedDeviceIds.size} seleccionados</span>
+          <div className="actions-group flex gap-2">
+            <button
+              className="btn btn--secondary btn--sm"
+              onClick={() => {
+                const selectedDevices = devices.filter((d) => selectedDeviceIds.has(d.id));
+                openPrintDialog(selectedDevices);
+              }}
+            >
+              Imprimir etiquetas
+            </button>
+            <button className="btn btn--secondary btn--sm" onClick={handleTransferClick}>
+              Transferir
+            </button>
+            <button className="btn btn--secondary btn--sm" onClick={handleStatusClick}>
+              Cambiar estado
+            </button>
+            <button
+              className="btn btn--ghost btn--sm"
+              onClick={() => setSelectedDeviceIds(new Set())}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
       <ScrollableTable
         items={devices}
         itemKey={(device) => device.id}
         pageSize={pageSize}
+        tableClassName="inventory-table"
         renderHead={() => (
           <>
             {COLUMNS.filter((col) => visibleColumns.has(col.id)).map((col) => (
               <th key={col.id} scope="col" className={col.sticky ? `sticky-col-${col.sticky}` : ""}>
-                {col.label}
+                {col.id === "select" ? (
+                  <button
+                    type="button"
+                    className="btn-icon-ghost"
+                    onClick={toggleSelectAll}
+                    aria-label="Seleccionar todo"
+                  >
+                    {selectedDeviceIds.size === devices.length && devices.length > 0 ? (
+                      <CheckSquare size={16} className="text-accent" />
+                    ) : (
+                      <Square size={16} />
+                    )}
+                  </button>
+                ) : (
+                  col.label
+                )}
               </th>
             ))}
           </>
@@ -437,13 +442,14 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDev
         renderRow={(device) => {
           const isHighlighted = highlightedDeviceIds?.has(device.id);
           const isExpanded = expandedRows.has(device.id);
+          const isSelected = selectedDeviceIds.has(device.id);
 
           return (
             <Fragment key={device.id}>
               <tr
                 className={`${isHighlighted ? "inventory-row low-stock" : "inventory-row"} ${
                   isExpanded ? "expanded" : ""
-                }`}
+                } ${isSelected ? "selected" : ""}`}
                 onClick={() => toggleRow(device.id)}
               >
                 {COLUMNS.filter((col) => visibleColumns.has(col.id)).map((col) => (
@@ -531,68 +537,96 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDev
         }
       />
       <Modal
-        open={availabilityOpen}
+        isOpen={availabilityOpen}
         onClose={handleCloseAvailability}
         title={availabilityModalTitle}
-        description={availabilityModalSubtitle}
-        size="md"
+        size="lg"
       >
         <div className="inventory-availability__content">
-          {availabilityLoading ? (
-            <p className="muted-text">Consultando existencias corporativas…</p>
-          ) : null}
-          {availabilityError ? (
-            <p className="inventory-availability__error">{availabilityError}</p>
-          ) : null}
-          {!availabilityLoading && !availabilityError ? (
-            activeAvailability ? (
-              <>
-                <table className="inventory-availability__table">
-                  <thead>
-                    <tr>
-                      <th scope="col">Sucursal</th>
-                      <th scope="col">Unidades</th>
+          <p className="muted-text">{availabilityModalSubtitle}</p>
+
+          {availabilityLoading && <p>Cargando disponibilidad...</p>}
+          {availabilityError && (
+            <p className="inventory-availability__error">
+              Error al cargar disponibilidad: {availabilityError}
+            </p>
+          )}
+
+          {activeAvailability && (
+            <>
+              <table className="inventory-availability__table">
+                <thead>
+                  <tr>
+                    <th>Sucursal</th>
+                    <th className="text-right">Disponible</th>
+                    <th className="text-right">Reservado</th>
+                    <th className="text-right">En tránsito</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeAvailability.stores.map((store) => (
+                    <tr
+                      key={store.store_id}
+                      className={
+                        store.store_id === selectedStoreId
+                          ? "inventory-availability__row--active"
+                          : ""
+                      }
+                    >
+                      <td>
+                        <div className="inventory-availability__store">
+                          <span>{store.store_name}</span>
+                          {store.store_id === selectedStoreId && (
+                            <span className="inventory-availability__badge">Actual</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="inventory-availability__qty">{store.quantity}</td>
+                      <td className="inventory-availability__qty muted-text">0</td>
+                      <td className="inventory-availability__qty muted-text">0</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {activeAvailability.stores.map((store) => {
-                      const isCurrent =
-                        typeof selectedStoreId === "number" && store.store_id === selectedStoreId;
-                      const rowClassName = isCurrent
-                        ? "inventory-availability__row inventory-availability__row--active"
-                        : "inventory-availability__row";
-                      return (
-                        <tr key={store.store_id} className={rowClassName}>
-                          <td>
-                            <div className="inventory-availability__store">
-                              <span>{store.store_name}</span>
-                              {isCurrent ? (
-                                <span className="inventory-availability__badge">
-                                  Sucursal actual
-                                </span>
-                              ) : null}
-                            </div>
-                          </td>
-                          <td className="inventory-availability__qty">{store.quantity}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                <div className="inventory-availability__footer">
-                  <span className="inventory-availability__total">
-                    Total corporativo: <strong>{activeAvailability.total_quantity}</strong> unidades
-                  </span>
+                  ))}
+                </tbody>
+              </table>
+              <div className="inventory-availability__footer">
+                <div className="inventory-availability__total">
+                  Total corporativo: <strong>{activeAvailability.total_quantity}</strong> unidades
                 </div>
-              </>
-            ) : (
-              <p className="muted-text">
-                Sin datos de otras sucursales registrados para este dispositivo.
-              </p>
-            )
-          ) : null}
+              </div>
+            </>
+          )}
+        </div>
+        <div className="modal-actions">
+          <button type="button" className="btn btn--primary" onClick={handleCloseAvailability}>
+            Cerrar
+          </button>
         </div>
       </Modal>
+
+      <PrintLabelDialog
+        open={isPrintDialogOpen}
+        onClose={() => setIsPrintDialogOpen(false)}
+        onConfirm={handleConfirmPrint}
+        deviceCount={devicesToPrint.length}
+      />
+
+      <BulkTransferDialog
+        open={isTransferDialogOpen}
+        onClose={() => setIsTransferDialogOpen(false)}
+        selectedDeviceIds={Array.from(selectedDeviceIds)}
+        stores={stores}
+        currentStoreId={selectedStoreId}
+        token={token}
+        onSuccess={handleTransferSuccess}
+      />
+
+      <BulkStatusDialog
+        open={isStatusDialogOpen}
+        onClose={() => setIsStatusDialogOpen(false)}
+        selectedDevices={devices.filter((d) => selectedDeviceIds.has(d.id))}
+        token={token}
+        onSuccess={handleStatusSuccess}
+      />
     </>
   );
 }

@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { exportCsvFromItems, exportCsvAll, exportXlsxIfAvailable } from "@/services/exports";
 import type { ExportItem } from "@/services/exports";
+import { useDashboard } from "@/modules/dashboard/context/DashboardContext";
 
 type Props = {
   entity: "customers" | "quotes" | "returns";
@@ -9,6 +10,7 @@ type Props = {
 };
 
 export default function ExportDropdown({ entity, currentItems }: Props) {
+  const { pushToast } = useDashboard();
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
 
@@ -35,30 +37,17 @@ export default function ExportDropdown({ entity, currentItems }: Props) {
     const ok = await exportXlsxIfAvailable(entity, currentItems);
     close();
     if (!ok) {
-      alert("XLSX no disponible (requiere SheetJS). Se recomienda CSV.");
+      pushToast("XLSX no disponible (requiere SheetJS). Se recomienda CSV.", "warning");
     }
   }
 
   return (
-    <div style={{ position: "relative", display: "inline-block" }}>
+    <div className="export-dropdown">
       <button type="button" onClick={() => setOpen((value) => !value)} disabled={busy}>
         {busy ? "Exportando…" : "Exportar ▾"}
       </button>
       {open && (
-        <div
-          style={{
-            position: "absolute",
-            top: "100%",
-            left: 0,
-            background: "#111",
-            border: "1px solid #333",
-            padding: 8,
-            minWidth: 220,
-            zIndex: 10,
-            display: "grid",
-            gap: 4,
-          }}
-        >
+        <div className="export-dropdown__menu">
           <button type="button" onClick={onCsvPage} disabled={busy}>
             CSV (esta página)
           </button>
@@ -68,9 +57,7 @@ export default function ExportDropdown({ entity, currentItems }: Props) {
           <button type="button" onClick={onXlsxPage} disabled={busy}>
             XLSX* (esta página)
           </button>
-          <div style={{ fontSize: 12, opacity: 0.7, paddingTop: 6 }}>
-            * Requiere `XLSX` global. Si no, usa CSV.
-          </div>
+          <div className="export-dropdown__hint">* Requiere `XLSX` global. Si no, usa CSV.</div>
         </div>
       )}
     </div>

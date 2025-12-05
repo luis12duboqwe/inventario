@@ -8,6 +8,8 @@ import type {
 } from "@api/inventory";
 import Button from "@components/ui/Button";
 
+import "./InventoryAlerts.css";
+
 type InventoryAlertsProps = {
   items: InventoryAlertItem[];
   summary: InventoryAlertSummary;

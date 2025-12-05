@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import AppErrorBoundary from "../AppErrorBoundary";
+import AppErrorBoundary from "../../../components/ui/AppErrorBoundary";
 
 // [PACK36-tests]
 
@@ -23,7 +23,9 @@ describe("AppErrorBoundary", () => {
     );
 
     expect(screen.getByRole("alert")).toHaveTextContent("Algo salió mal");
-    expect(screen.getByText("Se produjo un error inesperado al mostrar esta sección.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Se produjo un error inesperado al mostrar esta sección."),
+    ).toBeInTheDocument();
 
     rerender(
       <AppErrorBoundary>

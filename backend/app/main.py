@@ -2,32 +2,27 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
-import traceback
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 
-from collections.abc import Callable, Generator, Mapping
-from typing import Any
-
-from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
 
-from . import crud, security as security_core
+from . import crud
 from .config import settings
-from .core.roles import ADMIN, DEFAULT_ROLES
+from .core.roles import DEFAULT_ROLES
 from .core.transactions import transactional_session
-from .database import SessionLocal, get_db, Base, engine
+from .database import SessionLocal, get_db, Base
 from .middleware import (
     DEFAULT_EXPORT_PREFIXES,
     DEFAULT_EXPORT_TOKENS,
     DEFAULT_SENSITIVE_GET_PREFIXES,
     build_reason_header_middleware,
 )
+from .middleware.error_handler import capture_internal_errors
+from .middleware.cors_handler import cors_preflight_handler
 from .routers import (
     alerts,
     configuration,
@@ -58,7 +53,6 @@ from .routers import (
     support,
     rmas,
     purchases,
-    price_lists,
     repairs,
     warranties,
     reports,
@@ -81,34 +75,6 @@ from .services.scheduler import BackgroundScheduler
 logger = logging.getLogger(__name__)
 
 _scheduler: BackgroundScheduler | None = None
-
-SENSITIVE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
-SENSITIVE_PREFIXES = (
-    "/inventory",
-    "/purchases",
-    "/sales",
-    "/pos",
-    "/backups",
-    "/customers",
-    "/reports",
-    "/payments",
-    "/loyalty",
-    "/suppliers",
-    "/repairs",
-    "/warranties",
-    "/returns",
-    "/transfers",
-    "/security",
-    "/sync/outbox",
-    "/operations",
-    "/pricing",
-    "/integrations",
-    "/price-lists",
-    "/store-credits",
-)
-READ_SENSITIVE_PREFIXES = ("/pos", "/reports", "/customers", "/loyalty")
-OPTIONAL_REASON_PREFIXES = ("/purchases/",)
-OPTIONAL_REASON_SUFFIXES = ("/status", "/send")
 
 
 def _resolve_additional_cors_origins() -> set[str]:
@@ -146,76 +112,6 @@ def _resolve_additional_cors_origins() -> set[str]:
     return {origin for origin in extra_origins if origin}
 
 
-ROLE_PROTECTED_PREFIXES: dict[str, set[str]] = {
-    "/users": {"ADMIN"},
-    "/sync": {"ADMIN", "GERENTE"},
-    "/integrations": {"ADMIN"},
-}
-
-
-def _collect_user_roles(user: Any) -> set[str]:
-    roles: set[str] = set()
-    assignments = getattr(user, "roles", None) or []
-    for assignment in assignments:
-        role_obj = getattr(assignment, "role", None)
-        role_name = getattr(role_obj, "name", None)
-        if role_name:
-            roles.add(str(role_name).upper())
-            continue
-        fallback_name = getattr(assignment, "name", None)
-        if fallback_name:
-            roles.add(str(fallback_name).upper())
-
-    direct_role = getattr(user, "rol", None) or getattr(user, "role", None) or getattr(user, "role_name", None)
-    if direct_role:
-        direct_name = getattr(direct_role, "name", None)
-        roles.add(str(direct_name or direct_role).upper())
-
-    return roles
-
-MODULE_PERMISSION_PREFIXES: tuple[tuple[str, str], ...] = (
-    ("/users", "usuarios"),
-    ("/security", "seguridad"),
-    ("/inventory", "inventario"),
-    ("/stores", "tiendas"),
-    ("/purchases", "compras"),
-    ("/sales", "ventas"),
-    ("/pos", "pos"),
-    ("/customers", "clientes"),
-    ("/payments", "ventas"),
-    ("/store-credits", "clientes"),
-    ("/loyalty", "lealtad"),
-    ("/suppliers", "proveedores"),
-    ("/repairs", "reparaciones"),
-    ("/returns", "operaciones"),
-    ("/transfers", "transferencias"),
-    ("/operations", "operaciones"),
-    ("/pricing", "precios"),
-    ("/reports", "reportes"),
-    ("/audit", "auditoria"),
-    ("/sync", "sincronizacion"),
-    ("/backups", "respaldos"),
-    ("/updates", "actualizaciones"),
-    ("/integrations", "integraciones"),
-)
-
-
-def _resolve_module(path: str) -> str | None:
-    for prefix, module in MODULE_PERMISSION_PREFIXES:
-        if path.startswith(prefix):
-            return module
-    return None
-
-
-def _resolve_action(method: str) -> str:
-    normalized = method.upper()
-    if normalized == "DELETE":
-        return "delete"
-    if normalized in {"POST", "PUT", "PATCH"}:
-        return "edit"
-    return "view"
-
-
 def _bootstrap_defaults(session: Session = None) -> None:
     """Crea datos base requeridos (roles, etc.) usando la sesión provista.
 
@@ -233,167 +129,6 @@ def _bootstrap_defaults(session: Session = None) -> None:
     finally:
         if created_local_session:
             session.close()
-
-
-def _authorize_request_sync(
-    dependency: Callable[[], Generator[Session, None, None]],
-    headers: Mapping[str, str],
-    cookies: Mapping[str, str],
-    method_upper: str,
-    path: str,
-    module: str | None,
-    required_roles: set[str],
-) -> Response | None:
-    db_generator = dependency()
-    try:
-        try:
-            db: Session = next(db_generator)
-        except StopIteration:  # pragma: no cover - defensive
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "detail": "No fue posible obtener la sesión de base de datos."},
-            )
-
-        auth_header = headers.get(
-            "Authorization") or headers.get("authorization")
-        session_cookie = cookies.get(settings.session_cookie_name)
-        session_token: str | None = None
-        user = None
-
-        if auth_header:
-            parts = auth_header.split(" ", 1)
-            if len(parts) != 2 or parts[0].lower() != "bearer":
-                return JSONResponse(
-                    status_code=401,
-                    content={"detail": "Esquema de autenticación inválido."},
-                )
-            token = parts[1].strip()
-            try:
-                token_payload = security_core.decode_token(token)
-            except HTTPException as exc:  # pragma: no cover - propagado
-                return JSONResponse(
-                    status_code=exc.status_code,
-                    content={"detail": exc.detail},
-                )
-            if crud.is_jwt_blacklisted(db, token_payload.jti):
-                return JSONResponse(
-                    status_code=401,
-                    content={"detail": "Token revocado."},
-                )
-            session_token = token_payload.jti
-            active_session = crud.get_active_session_by_token(
-                db, session_token)
-            if active_session is None or active_session.revoked_at is not None:
-                return JSONResponse(
-                    status_code=401,
-                    content={"detail": "Sesión inválida o revocada."},
-                )
-            if crud.is_session_expired(active_session.expires_at):
-                return JSONResponse(
-                    status_code=401,
-                    content={"detail": "Sesión expirada."},
-                )
-            user = crud.get_user_by_username(db, token_payload.sub)
-        elif session_cookie:
-            session_token = session_cookie
-            active_session = crud.get_active_session_by_token(
-                db, session_token)
-            if active_session is None or active_session.revoked_at is not None:
-                return JSONResponse(
-                    status_code=401,
-                    content={"detail": "Sesión inválida o revocada."},
-                )
-            if crud.is_session_expired(active_session.expires_at):
-                return JSONResponse(
-                    status_code=401,
-                    content={"detail": "Sesión expirada."},
-                )
-            user = active_session.user
-        else:
-            # Reglas de GET: solo exigir en exportaciones (csv/pdf/xlsx/export) y lecturas POS sensibles
-            def _requires_reason_get(p: str) -> bool:
-                if any(token in p for token in ("/csv", "/pdf", "/xlsx", "/export/")) and (
-                    p.startswith("/reports")
-                    or p.startswith("/purchases")
-                    or p.startswith("/sales")
-                    or p.startswith("/backups")
-                    or p.startswith("/users")
-                ):
-                    return True
-                if p.startswith("/pos/receipt") or p.startswith("/pos/config"):
-                    return True
-                return False
-
-            requires_reason = (
-                method_upper in SENSITIVE_METHODS
-                and any(path.startswith(prefix) for prefix in SENSITIVE_PREFIXES)
-            ) or (method_upper == "GET" and _requires_reason_get(path))
-            if requires_reason:
-                reason = headers.get("X-Reason") or headers.get("x-reason")
-                if not reason or len(reason.strip()) < 5:
-                    return JSONResponse(
-                        status_code=400,
-                        content={
-                            "detail": "X-Reason header required with at least 5 characters.",
-                        },
-                    )
-            else:
-                # Si el cliente envía X-Reason pero es inválido, rechazar igualmente
-                reason_hdr = headers.get("X-Reason") or headers.get("x-reason")
-                if reason_hdr is not None and len(reason_hdr.strip()) < 5:
-                    return JSONResponse(
-                        status_code=400,
-                        content={
-                            "detail": "X-Reason header required with at least 5 characters."},
-                    )
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "Autenticación requerida."},
-            )
-
-        if user is None or not user.is_active:
-            return JSONResponse(
-                status_code=403,
-                content={"detail": "Usuario inactivo o inexistente."},
-            )
-
-        user_roles = _collect_user_roles(user)
-        is_admin = ADMIN in user_roles
-        if required_roles and not is_admin:
-            if not user_roles:
-                return JSONResponse(
-                    status_code=403,
-                    content={
-                        "detail": "El usuario autenticado no tiene roles asignados.",
-                    },
-                )
-            if user_roles.isdisjoint(required_roles):
-                return JSONResponse(
-                    status_code=403,
-                    content={"detail": "No cuentas con permisos suficientes."},
-                )
-
-        if module and not is_admin:
-            if not user_roles:
-                return JSONResponse(
-                    status_code=403,
-                    content={"detail": "El usuario autenticado no tiene roles asignados."},
-                )
-            if not crud.user_has_module_permission(db, user, module, _resolve_action(method_upper)):
-                return JSONResponse(
-                    status_code=403,
-                    content={"detail": "No cuentas con permisos para este módulo."},
-                )
-
-        if session_token:
-            crud.mark_session_used(db, session_token)
-    finally:
-        close_gen = getattr(db_generator, "close", None)
-        if callable(close_gen):
-            close_gen()
-
-    return None
 
 
 @asynccontextmanager
@@ -457,120 +192,22 @@ def create_app() -> FastAPI:
             allow_headers=["*"],
         )
 
-    def _persist_system_error(request: Request, exc: Exception, *, status_code: int | None = None) -> None:
-        if status_code is not None and status_code < 500:
-            return
-        module = _resolve_module(request.url.path) or "general"
-        message = getattr(exc, "detail", str(exc))
-        if not isinstance(message, str):
-            try:
-                message = json.dumps(message, ensure_ascii=False)
-            except Exception:  # pragma: no cover - degradado seguro
-                message = str(message)
-        stack_trace = "".join(
-            traceback.format_exception(type(exc), exc, exc.__traceback__)
-        )
-        client_host = request.client.host if request.client else None
-        try:
-            with SessionLocal() as session:
-                with transactional_session(session):
-                    username: str | None = None
-                    auth_header = request.headers.get("Authorization") or ""
-                    token_parts = auth_header.split(" ", 1)
-                    if len(token_parts) == 2 and token_parts[0].lower() == "bearer":
-                        token = token_parts[1].strip()
-                        try:
-                            payload = security_core.decode_token(token)
-                            user = crud.get_user_by_username(
-                                session, payload.sub)
-                            if user is not None:
-                                username = user.username
-                        except HTTPException:
-                            username = None
-                    crud.register_system_error(
-                        session,
-                        mensaje=message,
-                        stack_trace=stack_trace,
-                        modulo=module,
-                        usuario=username,
-                        ip_origen=client_host,
-                    )
-        except Exception:  # pragma: no cover - evitamos fallos en el logger
-            logger.exception(
-                "No se pudo registrar el error del sistema en la bitácora."
-            )
-
     _enforce_reason_header = build_reason_header_middleware(
-        sensitive_methods=SENSITIVE_METHODS,
-        sensitive_prefixes=SENSITIVE_PREFIXES,
+        sensitive_methods=settings.sensitive_methods,
+        sensitive_prefixes=tuple(settings.sensitive_prefixes),
         export_tokens=DEFAULT_EXPORT_TOKENS,
         export_prefixes=DEFAULT_EXPORT_PREFIXES,
-        read_sensitive_get_prefixes=DEFAULT_SENSITIVE_GET_PREFIXES,
-        optional_reason_prefixes=OPTIONAL_REASON_PREFIXES,
-        optional_reason_suffixes=OPTIONAL_REASON_SUFFIXES,
+        read_sensitive_get_prefixes=tuple(settings.read_sensitive_prefixes),
+        optional_reason_prefixes=tuple(settings.optional_reason_prefixes),
+        optional_reason_suffixes=tuple(settings.optional_reason_suffixes),
     )
 
     @app.middleware("http")
     async def enforce_reason_header(request: Request, call_next):
         return await _enforce_reason_header(request, call_next)
 
-    @app.middleware("http")
-    async def capture_internal_errors(request: Request, call_next):
-        try:
-            return await call_next(request)
-        except HTTPException as exc:
-            _persist_system_error(request, exc, status_code=exc.status_code)
-            raise
-        except Exception as exc:  # pragma: no cover - errores inesperados
-            _persist_system_error(request, exc)
-            raise
-
-    @app.middleware("http")
-    async def enforce_route_permissions(request: Request, call_next):
-        method_upper = request.method.upper()
-        if method_upper == "OPTIONS":
-            response = Response(status_code=200)
-            origin = request.headers.get("origin")
-            if origin:
-                response.headers["Access-Control-Allow-Origin"] = origin
-                response.headers["Vary"] = "Origin"
-            response.headers["Access-Control-Allow-Credentials"] = "true"
-            allow_headers = request.headers.get(
-                "access-control-request-headers")
-            if allow_headers:
-                response.headers["Access-Control-Allow-Headers"] = allow_headers
-            allow_method = request.headers.get("access-control-request-method")
-            if allow_method:
-                response.headers["Access-Control-Allow-Methods"] = allow_method
-            return response
-
-        # Endpoints públicos de webhooks de integraciones (push outbox)
-        if "/integrations/hooks" in request.url.path:
-            return await call_next(request)
-        module = _resolve_module(request.url.path)
-        required_roles: set[str] = set()
-        for prefix, roles in ROLE_PROTECTED_PREFIXES.items():
-            if request.url.path.startswith(prefix):
-                required_roles = roles
-                break
-
-        if module or required_roles:
-            dependency = request.app.dependency_overrides.get(get_db, get_db)
-            auth_response = await asyncio.to_thread(
-                _authorize_request_sync,
-                dependency,
-                request.headers,
-                request.cookies,
-                method_upper,
-                request.url.path,
-                module,
-                set(required_roles),
-            )
-            if auth_response is not None:
-                return auth_response
-
-        response = await call_next(request)
-        return response
+    app.middleware("http")(capture_internal_errors)
+    app.middleware("http")(cors_preflight_handler)
 
     routers_to_mount: tuple[APIRouter, ...] = (
         health.router,
@@ -618,7 +255,8 @@ def create_app() -> FastAPI:
         observability_admin.router,
         audit.router,
         audit_ui.router,
-        wms_bins.router,  # Los handlers verifican el flag y devuelven 404 cuando está desactivado.
+        # Los handlers verifican el flag y devuelven 404 cuando está desactivado.
+        wms_bins.router,
     )
 
     for module_router in routers_to_mount:

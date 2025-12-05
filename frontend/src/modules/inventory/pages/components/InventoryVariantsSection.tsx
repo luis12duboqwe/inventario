@@ -2,6 +2,7 @@ import { FormEvent, useMemo, useState } from "react";
 
 import { useInventoryLayout } from "../context/InventoryLayoutContext";
 import { promptCorporateReason } from "../../utils/corporateReason";
+import "./InventoryVariantsSection.css";
 
 type VariantFormState = {
   editingId: number | null;

@@ -463,7 +463,7 @@ export function exportSyncConflictsPdf(
   const query = buildSyncConflictQuery(filters);
   return request<Blob>(
     `/sync/conflicts/export/pdf${query}`,
-    { method: "GET", headers: { "X-Reason": reason } },
+    { method: "GET", headers: { "X-Reason": reason }, responseType: "blob" },
     token,
   );
 }
@@ -476,7 +476,7 @@ export function exportSyncConflictsExcel(
   const query = buildSyncConflictQuery(filters);
   return request<Blob>(
     `/sync/conflicts/export/xlsx${query}`,
-    { method: "GET", headers: { "X-Reason": reason } },
+    { method: "GET", headers: { "X-Reason": reason }, responseType: "blob" },
     token,
   );
 }

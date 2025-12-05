@@ -219,15 +219,17 @@ export function closeRepairOrder(
         method: "POST",
         body: JSON.stringify(payload),
         headers: { "X-Reason": reason },
+        responseType: "blob",
       }
     : {
         method: "POST",
         headers: { "X-Reason": reason },
+        responseType: "blob",
       };
 
   return request<Blob>(`/repairs/${repairId}/close`, init, token);
 }
 
 export async function downloadRepairOrderPdf(token: string, repairId: number): Promise<Blob> {
-  return request<Blob>(`/repairs/${repairId}/pdf`, { method: "GET" }, token);
+  return request<Blob>(`/repairs/${repairId}/pdf`, { method: "GET", responseType: "blob" }, token);
 }

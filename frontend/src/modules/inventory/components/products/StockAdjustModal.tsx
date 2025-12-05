@@ -1,4 +1,7 @@
 import React from "react";
+import { Modal } from "@components/ui/Modal";
+import { Button } from "@components/ui/Button";
+import { TextField } from "@components/ui/TextField";
 import type { ProductRow } from "./Table";
 
 type Props = {
@@ -10,51 +13,42 @@ type Props = {
 
 export default function StockAdjustModal({ open, row, onClose, onConfirm }: Props) {
   const [value, setValue] = React.useState<string>("");
-  if (!open || !row) return null;
+
+  const handleConfirm = () => {
+    const n = Number(value);
+    if (!Number.isNaN(n) && n !== 0) {
+      onConfirm?.(n);
+      setValue("");
+    }
+  };
+
+  if (!row) return null;
+
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        display: "grid",
-        placeItems: "center",
-        zIndex: 50,
-      }}
+    <Modal
+      isOpen={!!open}
+      onClose={onClose}
+      title={`Ajustar stock — ${row.name}`}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button variant="primary" onClick={handleConfirm}>
+            Confirmar
+          </Button>
+        </>
+      }
     >
-      <div
-        style={{
-          width: 420,
-          maxWidth: "95vw",
-          background: "#0b1220",
-          borderRadius: 12,
-          border: "1px solid rgba(255,255,255,0.08)",
-          padding: 16,
-        }}
-      >
-        <h3 style={{ marginTop: 0 }}>Ajustar stock — {row.name}</h3>
-        <input
+      <div className="space-y-4">
+        <TextField
           type="number"
           placeholder="Δ Cantidad (ej. +5 o -3)"
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          style={{ padding: 8, borderRadius: 8, width: "100%" }}
+          fullWidth
         />
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
-          <button onClick={onClose} style={{ padding: "8px 12px", borderRadius: 8 }}>
-            Cancelar
-          </button>
-          <button
-            onClick={() => {
-              const n = Number(value);
-              if (!Number.isNaN(n) && n !== 0) onConfirm?.(n);
-            }}
-            style={{ padding: "8px 12px", borderRadius: 8, background: "#2563eb", color: "#fff", border: 0 }}
-          >
-            Confirmar
-          </button>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }

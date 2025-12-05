@@ -3,6 +3,8 @@ import { Suspense, lazy } from "react";
 import { Skeleton } from "@components/ui/Skeleton";
 import { useInventoryLayout } from "../context/InventoryLayoutContext";
 
+import "./InventoryProductsTableSection.css";
+
 const InventoryTable = lazy(() => import("../../components/InventoryTable"));
 
 function InventoryProductsTableSection() {

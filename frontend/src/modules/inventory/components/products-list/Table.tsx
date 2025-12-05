@@ -1,7 +1,7 @@
 import React from "react";
-
 import StatusBadge from "./StatusBadge";
 import StockBadge from "./StockBadge";
+import "../../InventoryTable.css"; // Ensure styles are loaded
 
 export type ProductRow = {
   id: string;
@@ -38,27 +38,27 @@ export default function Table({
   const allSelected = data.length > 0 && data.every((row) => selected.includes(row.id));
 
   if (loading) {
-    return <div style={{ padding: 12 }}>Cargando…</div>;
+    return <div className="p-3">Cargando…</div>;
   }
 
   if (data.length === 0) {
-    return <div style={{ padding: 12, color: "#9ca3af" }}>Sin resultados</div>;
+    return <div className="product-grid__empty">Sin resultados</div>;
   }
 
   return (
-    <div style={{ overflow: "auto", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+    <div className="overflow-auto">
+      <table className="inventory-table">
         <thead>
-          <tr style={{ background: "rgba(255,255,255,0.03)" }}>
-            <th style={{ textAlign: "center", padding: 10, width: 36 }}>
+          <tr>
+            <th className="text-center w-9">
               <input type="checkbox" checked={allSelected} onChange={onToggleSelectAll} />
             </th>
-            <th style={{ textAlign: "left", padding: 10 }}>Nombre</th>
-            <th style={{ textAlign: "left", padding: 10 }}>SKU</th>
-            <th style={{ textAlign: "left", padding: 10 }}>Categoría</th>
-            <th style={{ textAlign: "right", padding: 10 }}>Precio</th>
-            <th style={{ textAlign: "center", padding: 10 }}>Stock</th>
-            <th style={{ textAlign: "left", padding: 10 }}>Estado</th>
+            <th>Nombre</th>
+            <th>SKU</th>
+            <th>Categoría</th>
+            <th className="text-right">Precio</th>
+            <th className="text-center">Stock</th>
+            <th>Estado</th>
           </tr>
         </thead>
         <tbody>
@@ -66,23 +66,29 @@ export default function Table({
             <tr
               key={row.id}
               onClick={() => onRowClick?.(row)}
-              style={{ cursor: onRowClick ? "pointer" : "default" }}
+              className={`${selected.includes(row.id) ? "selected" : ""} ${
+                onRowClick ? "cursor-pointer" : "cursor-default"
+              }`}
             >
-              <td style={{ textAlign: "center", padding: 10 }} onClick={(event) => event.stopPropagation()}>
+              <td className="text-center" onClick={(event) => event.stopPropagation()}>
                 <input
                   type="checkbox"
                   checked={selected.includes(row.id)}
                   onChange={() => onToggleSelect?.(row.id)}
                 />
               </td>
-              <td style={{ padding: 10 }}>{row.name}</td>
-              <td style={{ padding: 10 }}>{row.sku || "—"}</td>
-              <td style={{ padding: 10 }}>{row.category || "—"}</td>
-              <td style={{ padding: 10, textAlign: "right" }}>{Intl.NumberFormat().format(row.price)}</td>
-              <td style={{ padding: 10, textAlign: "center" }}>
+              <td>{row.name}</td>
+              <td>{row.sku || "—"}</td>
+              <td>{row.category || "—"}</td>
+              <td className="text-right">
+                {Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(
+                  row.price,
+                )}
+              </td>
+              <td className="text-center">
                 <StockBadge qty={row.stock} />
               </td>
-              <td style={{ padding: 10 }}>
+              <td>
                 <StatusBadge value={row.status} />
               </td>
             </tr>

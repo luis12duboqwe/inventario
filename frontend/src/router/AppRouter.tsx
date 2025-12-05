@@ -15,8 +15,6 @@ import AppErrorBoundary from "@components/ui/AppErrorBoundary"; // [PACK36-route
 import { lazyWithRetry } from "../shared/utils/lazyWithRetry";
 // [PACK28-router-guards]
 import RequireAuth from "./guards/RequireAuth";
-// [PACK28-router-guards]
-import RequireRole from "./guards/RequireRole";
 import RouteErrorElement from "./RouteErrorElement"; // [PACK36-router]
 import {
   bootstrapAdmin,

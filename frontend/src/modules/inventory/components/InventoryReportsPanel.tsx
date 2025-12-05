@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Skeleton } from "@components/ui/Skeleton"; // [PACK36-inventory-reports]
 import { safeArray, safeNumber } from "@/utils/safeValues"; // [PACK36-inventory-reports]
+import { FILTER_ALL_VALUE } from "@/config/constants";
 
 import type {
   InventoryCurrentFilters,
@@ -31,6 +32,7 @@ import type {
 } from "@api/inventory";
 import type { Store } from "@api/types";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
+import "./InventoryReportsPanel.css";
 
 // Tipos locales para evitar "any" implícito en mapeos y mantener compatibilidad con respuestas de API.
 type CurrentStoreRow = {
@@ -187,11 +189,11 @@ function InventoryReportsPanel({
   const normalizedStores = useMemo<Store[]>(() => safeArray(stores) as Store[], [stores]); // [PACK36-inventory-reports]
 
   // Permite que el usuario seleccione una sucursal, pero sin setState en efectos: se deriva del prop cuando el usuario no ha elegido.
-  const [userSelectedStoreFilter, setUserSelectedStoreFilter] = useState<number | "ALL" | null>(
-    null,
-  );
-  const storeFilter: number | "ALL" = useMemo(
-    () => userSelectedStoreFilter ?? selectedStoreId ?? "ALL",
+  const [userSelectedStoreFilter, setUserSelectedStoreFilter] = useState<
+    number | typeof FILTER_ALL_VALUE | null
+  >(null);
+  const storeFilter: number | typeof FILTER_ALL_VALUE = useMemo(
+    () => userSelectedStoreFilter ?? selectedStoreId ?? FILTER_ALL_VALUE,
     [userSelectedStoreFilter, selectedStoreId],
   );
   const [{ from: dateFrom, to: dateTo }, setDateRange] = useState(createDefaultDateRange);
@@ -227,14 +229,15 @@ function InventoryReportsPanel({
   }, []);
 
   const filters = useMemo<InventoryCurrentFilters>(() => {
-    if (storeFilter === "ALL") {
+    if (storeFilter === FILTER_ALL_VALUE) {
       return {};
     }
     return { storeIds: [storeFilter] };
   }, [storeFilter]);
 
   const valueFilters = useMemo<InventoryValueFilters>(() => {
-    const base: InventoryValueFilters = storeFilter === "ALL" ? {} : { storeIds: [storeFilter] };
+    const base: InventoryValueFilters =
+      storeFilter === FILTER_ALL_VALUE ? {} : { storeIds: [storeFilter] };
     if (selectedCategories.length > 0) {
       return { ...base, categories: selectedCategories };
     }
@@ -271,7 +274,7 @@ function InventoryReportsPanel({
 
   const syncFilters = useMemo<SyncDiscrepancyFilters>(
     () => ({
-      ...(storeFilter !== "ALL" ? { storeIds: [storeFilter] } : {}),
+      ...(storeFilter !== FILTER_ALL_VALUE ? { storeIds: [storeFilter] } : {}),
       dateFrom,
       dateTo,
       ...(selectedSeverity !== "todas" ? { severity: selectedSeverity } : {}),
@@ -503,14 +506,16 @@ function InventoryReportsPanel({
           <label className="form-field">
             <span>Sucursal</span>
             <select
-              value={storeFilter === "ALL" ? "ALL" : String(storeFilter)}
+              value={storeFilter === FILTER_ALL_VALUE ? FILTER_ALL_VALUE : String(storeFilter)}
               onChange={(event) => {
                 const value =
-                  event.target.value === "ALL" ? "ALL" : Number.parseInt(event.target.value, 10);
+                  event.target.value === FILTER_ALL_VALUE
+                    ? FILTER_ALL_VALUE
+                    : Number.parseInt(event.target.value, 10);
                 setUserSelectedStoreFilter(value);
               }}
             >
-              <option value="ALL">Todas las sucursales</option>
+              <option value={FILTER_ALL_VALUE}>Todas las sucursales</option>
               {normalizedStores.map((store) => (
                 <option key={store.id} value={store.id}>
                   {store.name}

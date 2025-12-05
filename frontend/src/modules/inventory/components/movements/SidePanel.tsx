@@ -1,5 +1,6 @@
 import React from "react";
 import type { MovementRow } from "./Table";
+import { Button } from "../../../../../components/ui/Button";
 
 type Props = {
   row?: MovementRow | null;
@@ -21,38 +22,20 @@ export default function SidePanel({ row, onClose }: Props) {
     ["Nota", row.note || "-"],
   ];
   return (
-    <aside
-      style={{
-        position: "fixed",
-        right: 0,
-        top: 0,
-        bottom: 0,
-        width: 420,
-        background: "#0b1220",
-        borderLeft: "1px solid rgba(255,255,255,0.08)",
-        padding: 16,
-        overflow: "auto",
-        zIndex: 40,
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <h3 style={{ margin: 0 }}>Detalle movimiento</h3>
-        <button onClick={onClose} style={{ padding: "6px 10px", borderRadius: 8 }}>
+    <aside className="fixed right-0 top-0 bottom-0 w-[420px] bg-surface border-l border-border p-4 overflow-auto z-40">
+      <div className="flex justify-between items-center mb-2">
+        <h3 className="m-0 text-lg font-bold">Detalle movimiento</h3>
+        <Button variant="ghost" onClick={onClose}>
           Cerrar
-        </button>
+        </Button>
       </div>
-      <div style={{ display: "grid", gap: 8 }}>
+      <div className="grid gap-2">
         {fields.map(([k, v]) => (
           <div
             key={k}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              borderBottom: "1px dashed rgba(255,255,255,0.08)",
-              padding: "6px 0",
-            }}
+            className="flex justify-between border-b border-dashed border-border py-1.5 last:border-0"
           >
-            <span style={{ color: "#94a3b8" }}>{k}</span>
+            <span className="text-muted-foreground">{k}</span>
             <span>{v as string}</span>
           </div>
         ))}

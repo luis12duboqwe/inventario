@@ -1,5 +1,6 @@
 import type { Customer, Sale, Store } from "../../../../api";
 import type { SaleFormState } from "./types";
+import type { RefObject } from "react";
 
 type Props = {
   stores: Store[];
@@ -7,6 +8,7 @@ type Props = {
   saleForm: SaleFormState;
   onSaleFormChange: (changes: Partial<SaleFormState>) => void;
   paymentLabels: Record<Sale["payment_method"], string>;
+  customerSelectRef?: RefObject<HTMLSelectElement>;
 };
 
 export function SaleForm({
@@ -15,6 +17,7 @@ export function SaleForm({
   saleForm,
   onSaleFormChange,
   paymentLabels,
+  customerSelectRef,
 }: Props) {
   return (
     <div className="form-grid">
@@ -38,6 +41,7 @@ export function SaleForm({
       <label>
         Cliente registrado
         <select
+          ref={customerSelectRef}
           value={saleForm.customerId ?? ""}
           onChange={(event) =>
             onSaleFormChange({

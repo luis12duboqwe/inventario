@@ -1,12 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Calendar, CheckCircle, AlertCircle, Clock, FileText } from "lucide-react";
 import { useDashboard } from "../../../dashboard/context/DashboardContext";
+import { emitClientError } from "../../../../utils/clientLog";
 import { request } from "@api/client";
-import {
-  CustomerDebtSnapshot,
-  CreditScheduleEntry,
-  CustomerPaymentReceipt,
-} from "@api/customers";
+import { CustomerDebtSnapshot, CreditScheduleEntry, CustomerPaymentReceipt } from "@api/customers";
 
 interface CreditInstallment {
   id: number;
@@ -56,7 +53,7 @@ export const CreditSchedule: React.FC<CreditScheduleProps> = ({
       });
       setInstallments(data);
     } catch (error) {
-      console.error("Error loading installments:", error);
+      emitClientError("Error loading installments:", error);
     } finally {
       setLoading(false);
     }
@@ -102,7 +99,7 @@ export const CreditSchedule: React.FC<CreditScheduleProps> = ({
       void loadSchedule();
       onScheduleCreated?.();
     } catch (error) {
-      console.error("Error generating credit schedule:", error);
+      emitClientError("Error generating credit schedule:", error);
       dashboard.pushToast({
         message: "Error al generar el plan de pagos",
         variant: "error",
@@ -127,7 +124,7 @@ export const CreditSchedule: React.FC<CreditScheduleProps> = ({
       });
       await loadSchedule();
     } catch (error) {
-      console.error("Error marking installment as paid:", error);
+      emitClientError("Error marking installment as paid:", error);
       dashboard.pushToast({
         message: "Error al registrar el pago",
         variant: "error",

@@ -16,19 +16,19 @@ export default function ItemsTable({ items }: Props) {
   const data = Array.isArray(items) ? items : [];
 
   if (!data.length) {
-    return <div style={{ padding: 12, color: "#9ca3af" }}>Sin items</div>;
+    return <div className="p-3 text-muted-foreground">Sin items</div>;
   }
 
   return (
-    <div style={{ overflow: "auto", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+    <div className="overflow-auto rounded-xl border border-border">
+      <table className="w-full border-collapse text-sm">
         <thead>
-          <tr style={{ background: "rgba(255,255,255,0.03)" }}>
-            <th style={{ textAlign: "left", padding: 10 }}>SKU</th>
-            <th style={{ textAlign: "left", padding: 10 }}>Producto</th>
-            <th style={{ textAlign: "center", padding: 10 }}>Cant.</th>
-            <th style={{ textAlign: "right", padding: 10 }}>Costo</th>
-            <th style={{ textAlign: "right", padding: 10 }}>Subtotal</th>
+          <tr className="bg-surface-highlight">
+            <th className="text-left p-2.5">SKU</th>
+            <th className="text-left p-2.5">Producto</th>
+            <th className="text-center p-2.5">Cant.</th>
+            <th className="text-right p-2.5">Costo</th>
+            <th className="text-right p-2.5">Subtotal</th>
           </tr>
         </thead>
         <tbody>
@@ -36,15 +36,11 @@ export default function ItemsTable({ items }: Props) {
             const subtotal = (row.qty || 0) * (row.cost || 0);
             return (
               <tr key={row.id}>
-                <td style={{ padding: 10 }}>{row.sku}</td>
-                <td style={{ padding: 10 }}>{row.name}</td>
-                <td style={{ padding: 10, textAlign: "center" }}>{row.qty}</td>
-                <td style={{ padding: 10, textAlign: "right" }}>
-                  {Intl.NumberFormat().format(row.cost || 0)}
-                </td>
-                <td style={{ padding: 10, textAlign: "right" }}>
-                  {Intl.NumberFormat().format(subtotal)}
-                </td>
+                <td className="p-2.5">{row.sku}</td>
+                <td className="p-2.5">{row.name}</td>
+                <td className="p-2.5 text-center">{row.qty}</td>
+                <td className="p-2.5 text-right">{Intl.NumberFormat().format(row.cost || 0)}</td>
+                <td className="p-2.5 text-right">{Intl.NumberFormat().format(subtotal)}</td>
               </tr>
             );
           })}

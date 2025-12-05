@@ -172,7 +172,7 @@ export function useSalesLogic() {
       // For now, just a placeholder
       await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate delay
       pushToast({ message: "Solicitud de factura enviada", variant: "info" });
-    } catch (error) {
+    } catch {
       pushToast({ message: "Error al solicitar factura", variant: "error" });
     } finally {
       setIsPrinting(false);

@@ -23,49 +23,65 @@ type Props = {
   onRowClick?: (row: MovementRow) => void;
 };
 
-export default function Table({ rows, loading, selectedIds, onToggleSelect, onToggleSelectAll, onRowClick }: Props) {
+export default function Table({
+  rows,
+  loading,
+  selectedIds,
+  onToggleSelect,
+  onToggleSelectAll,
+  onRowClick,
+}: Props) {
   const data = Array.isArray(rows) ? rows : [];
   const selected = Array.isArray(selectedIds) ? selectedIds : [];
   const allSelected = data.length > 0 && data.every((r) => selected.includes(r.id));
 
-  if (loading) return <div style={{ padding: 12 }}>Cargando…</div>;
-  if (!data.length) return <div style={{ padding: 12, color: "#9ca3af" }}>Sin resultados</div>;
+  if (loading) return <div className="p-4 text-center text-muted-foreground">Cargando…</div>;
+  if (!data.length)
+    return <div className="p-4 text-center text-muted-foreground">Sin resultados</div>;
 
   return (
-    <div style={{ overflow: "auto", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+    <div className="overflow-auto rounded-xl border border-border">
+      <table className="w-full border-collapse text-sm">
         <thead>
-          <tr style={{ background: "rgba(255,255,255,0.03)" }}>
-            <th style={{ textAlign: "center", padding: 10, width: 36 }}>
+          <tr className="bg-surface-highlight">
+            <th className="text-center p-2.5 w-9">
               <input type="checkbox" checked={allSelected} onChange={onToggleSelectAll} />
             </th>
-            <th style={{ textAlign: "left", padding: 10 }}>Fecha</th>
-            <th style={{ textAlign: "left", padding: 10 }}>Tipo</th>
-            <th style={{ textAlign: "left", padding: 10 }}>Producto</th>
-            <th style={{ textAlign: "right", padding: 10 }}>Cant.</th>
-            <th style={{ textAlign: "left", padding: 10 }}>De</th>
-            <th style={{ textAlign: "left", padding: 10 }}>A</th>
-            <th style={{ textAlign: "left", padding: 10 }}>Ref.</th>
-            <th style={{ textAlign: "left", padding: 10 }}>Usuario</th>
+            <th className="text-left p-2.5">Fecha</th>
+            <th className="text-left p-2.5">Tipo</th>
+            <th className="text-left p-2.5">Producto</th>
+            <th className="text-right p-2.5">Cant.</th>
+            <th className="text-left p-2.5">De</th>
+            <th className="text-left p-2.5">A</th>
+            <th className="text-left p-2.5">Ref.</th>
+            <th className="text-left p-2.5">Usuario</th>
           </tr>
         </thead>
         <tbody>
           {data.map((r) => (
-            <tr key={r.id} onClick={() => onRowClick?.(r)} style={{ cursor: onRowClick ? "pointer" : "default" }}>
-              <td style={{ textAlign: "center", padding: 10 }} onClick={(e) => e.stopPropagation()}>
-                <input type="checkbox" checked={selected.includes(r.id)} onChange={() => onToggleSelect?.(r.id)} />
+            <tr
+              key={r.id}
+              onClick={() => onRowClick?.(r)}
+              className={onRowClick ? "cursor-pointer hover:bg-surface-highlight" : ""}
+            >
+              <td className="text-center p-2.5" onClick={(e) => e.stopPropagation()}>
+                <input
+                  type="checkbox"
+                  checked={selected.includes(r.id)}
+                  onChange={() => onToggleSelect?.(r.id)}
+                />
               </td>
-              <td style={{ padding: 10 }}>{r.date}</td>
-              <td style={{ padding: 10 }}>{r.type}</td>
-              <td style={{ padding: 10 }}>
+              <td className="p-2.5">{r.date}</td>
+              <td className="p-2.5">{r.type}</td>
+              <td className="p-2.5">
                 {r.product}
                 {r.sku ? ` (${r.sku})` : ""}
               </td>
-              <td style={{ padding: 10, textAlign: "right" }}>{r.qty}</td>
-              <td style={{ padding: 10 }}>{r.fromStore || "-"}</td>
-              <td style={{ padding: 10 }}>{r.toStore || "-"}</td>
-              <td style={{ padding: 10 }}>{r.reference || "-"}</td>
-              <td style={{ padding: 10 }}>{r.user || "-"}</td>
+              <td className="p-2.5 text-right">{r.qty}</td>
+              <td className="p-2.5">{r.fromStore || "-"}</td>
+              <td className="p-2.5">{r.toStore || "-"}</td>
+              <td className="p-2.5">{r.reference || "-"}</td>
+              <td className="p-2.5">{r.user || "-"}</td>
             </tr>
           ))}
         </tbody>

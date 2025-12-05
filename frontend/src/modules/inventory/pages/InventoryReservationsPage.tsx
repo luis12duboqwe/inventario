@@ -1,6 +1,7 @@
 import { FormEvent, useMemo, useState } from "react";
 
 import { useInventoryLayout } from "./context/InventoryLayoutContext";
+import { useDashboard } from "@/modules/dashboard/context/DashboardContext";
 import { promptCorporateReason } from "../../../utils/corporateReason";
 import type { InventoryReservation } from "@api/inventory";
 
@@ -56,6 +57,7 @@ function InventoryReservationsPage(): JSX.Element {
     module: { devices, selectedStoreId },
     reservations,
   } = useInventoryLayout();
+  const { pushToast } = useDashboard();
   const [selectedDeviceId, setSelectedDeviceId] = useState<number | "">("");
   const [quantity, setQuantity] = useState(1);
   const [expiresAt, setExpiresAt] = useState(() => {
@@ -80,7 +82,7 @@ function InventoryReservationsPage(): JSX.Element {
     }
     const isoExpires = parseDateInput(expiresAt);
     if (!isoExpires) {
-      alert("Ingresa una fecha de expiración válida en formato AAAA-MM-DD HH:MM");
+      pushToast("Ingresa una fecha de expiración válida en formato AAAA-MM-DD HH:MM", "warning");
       return;
     }
     const reason = promptCorporateReason(DEFAULT_REASON_CREATE);
@@ -118,7 +120,7 @@ function InventoryReservationsPage(): JSX.Element {
     }
     const isoExpires = parseDateInput(newExpiration);
     if (!isoExpires) {
-      alert("No se pudo interpretar la nueva fecha de expiración.");
+      pushToast("No se pudo interpretar la nueva fecha de expiración.", "warning");
       return;
     }
     const reason = promptCorporateReason(`Renovar reserva #${reservation.id}`);

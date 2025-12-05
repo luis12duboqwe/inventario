@@ -1,4 +1,5 @@
 import React from "react";
+import { Button } from "@components/ui/Button";
 
 type Props = {
   summary: Record<string, unknown>;
@@ -9,26 +10,15 @@ export default function StepReview({ summary, onSubmit }: Props) {
   const data = summary || {};
 
   return (
-    <div style={{ display: "grid", gap: 8 }}>
-      <div
-        style={{
-          padding: 12,
-          borderRadius: 12,
-          background: "rgba(255,255,255,0.04)",
-          border: "1px solid rgba(255,255,255,0.08)",
-        }}
-      >
-        <div style={{ fontSize: 12, color: "#94a3b8" }}>Resumen</div>
-        <pre style={{ whiteSpace: "pre-wrap" }}>{JSON.stringify(data, null, 2)}</pre>
+    <div className="space-y-4">
+      <div className="p-4 rounded-xl bg-surface-highlight border border-border">
+        <div className="text-xs text-muted-foreground mb-2">Resumen</div>
+        <pre className="whitespace-pre-wrap text-sm font-mono">{JSON.stringify(data, null, 2)}</pre>
       </div>
       <div>
-        <button
-          onClick={onSubmit}
-          style={{ padding: "8px 12px", borderRadius: 8, background: "#22c55e", color: "#0b1220", border: 0, fontWeight: 700 }}
-          type="button"
-        >
+        <Button variant="primary" onClick={onSubmit} type="button">
           Crear movimiento
-        </button>
+        </Button>
       </div>
     </div>
   );

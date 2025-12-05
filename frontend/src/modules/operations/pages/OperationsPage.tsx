@@ -27,19 +27,60 @@ const baseOperationsNavigation: Array<{
     id: "ventas",
     title: "Ventas",
     links: [
-      { id: "ventas-caja", to: "ventas/caja", label: "Caja", description: "Cobros rápidos y conciliaciones" },
-      { id: "ventas-facturacion", to: "ventas/facturacion", label: "Facturación", description: "Ventas, notas y devoluciones" },
-      { id: "ventas-clientes", to: "ventas/clientes", label: "Clientes", description: "Cartera, notas y métricas" },
-      { id: "ventas-cajas", to: "ventas/cajas", label: "Cajas", description: "Historial de sesiones" },
+      {
+        id: "ventas-caja",
+        to: "ventas/caja",
+        label: "Caja",
+        description: "Cobros rápidos y conciliaciones",
+      },
+      {
+        id: "ventas-facturacion",
+        to: "ventas/facturacion",
+        label: "Facturación",
+        description: "Ventas, notas y devoluciones",
+      },
+      {
+        id: "ventas-clientes",
+        to: "ventas/clientes",
+        label: "Clientes",
+        description: "Cartera, notas y métricas",
+      },
+      {
+        id: "ventas-cajas",
+        to: "ventas/cajas",
+        label: "Cajas",
+        description: "Historial de sesiones",
+      },
+      {
+        id: "ventas-fidelizacion",
+        to: "fidelizacion",
+        label: "Fidelización",
+        description: "Puntos y recompensas",
+      },
     ],
   },
   {
     id: "compras",
     title: "Compras",
     links: [
-      { id: "compras-ordenes", to: "compras/ordenes", label: "Órdenes", description: "Recepciones y costos" },
-      { id: "compras-pagos", to: "compras/pagos", label: "Pagos", description: "Desembolsos y notas" },
-      { id: "compras-proveedores", to: "compras/proveedores", label: "Proveedores", description: "Catálogo y lotes" },
+      {
+        id: "compras-ordenes",
+        to: "compras/ordenes",
+        label: "Órdenes",
+        description: "Recepciones y costos",
+      },
+      {
+        id: "compras-pagos",
+        to: "compras/pagos",
+        label: "Pagos",
+        description: "Desembolsos y notas",
+      },
+      {
+        id: "compras-proveedores",
+        to: "compras/proveedores",
+        label: "Proveedores",
+        description: "Catálogo y lotes",
+      },
     ],
   },
   {
@@ -58,6 +99,12 @@ const baseOperationsNavigation: Array<{
         label: "Transferencias",
         description: "Entre sucursales",
       },
+      {
+        id: "movimientos-wms",
+        to: "wms",
+        label: "WMS / Almacén",
+        description: "Ubicaciones y racks",
+      },
     ],
   },
   {
@@ -75,7 +122,7 @@ const baseOperationsNavigation: Array<{
 ];
 
 function OperationsPage() {
-  const { enablePurchasesSales, enableTransfers } = useOperationsModule();
+  const { enablePurchasesSales, enableTransfers, enableLoyalty, enableWMS } = useOperationsModule();
 
   const navigation = useMemo(() => {
     return baseOperationsNavigation.map((group) => ({
@@ -86,13 +133,17 @@ function OperationsPage() {
           !enablePurchasesSales && (group.id === "ventas" || group.id === "compras")
             ? true
             : link.id === "movimientos-transferencias" && !enableTransfers
-              ? true
-              : group.id === "garantias" && !enablePurchasesSales
-                ? true
-                : link.disabled,
+            ? true
+            : link.id === "ventas-fidelizacion" && !enableLoyalty
+            ? true
+            : link.id === "movimientos-wms" && !enableWMS
+            ? true
+            : group.id === "garantias" && !enablePurchasesSales
+            ? true
+            : link.disabled,
       })),
     }));
-  }, [enablePurchasesSales, enableTransfers]);
+  }, [enablePurchasesSales, enableTransfers, enableLoyalty, enableWMS]);
 
   const moduleStatus = useMemo<ModuleStatus>(() => {
     if (!enablePurchasesSales && !enableTransfers) {

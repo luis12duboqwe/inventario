@@ -1,7 +1,9 @@
 import { FormEvent, useMemo, useState } from "react";
 
 import { useInventoryLayout } from "../context/InventoryLayoutContext";
+import { useDashboard } from "@/modules/dashboard/context/DashboardContext";
 import { promptCorporateReason } from "../../utils/corporateReason";
+import "./InventoryBundlesSection.css";
 
 type BundleFormState = {
   editingId: number | null;
@@ -36,6 +38,7 @@ function InventoryBundlesSection(): JSX.Element | null {
     bundles,
     helpers: { storeNameById },
   } = useInventoryLayout();
+  const { pushToast } = useDashboard();
 
   const [formState, setFormState] = useState<BundleFormState>(() => ({
     editingId: null,
@@ -119,7 +122,7 @@ function InventoryBundlesSection(): JSX.Element | null {
       );
 
     if (preparedItems.length === 0) {
-      window.alert("Agrega al menos un dispositivo al combo corporativo.");
+      pushToast("Agrega al menos un dispositivo al combo corporativo.", "warning");
       return;
     }
 
@@ -430,100 +433,103 @@ function InventoryBundlesSection(): JSX.Element | null {
 
         <div className="form-row full">
           <h4>Componentes del combo</h4>
-          {itemDrafts.map((item) => {
-            const resolvedDeviceOptions = deviceOptions.some(
-              (option) => option.value === item.deviceId,
-            )
-              ? deviceOptions
-              : item.deviceId
-              ? [
-                  {
-                    value: item.deviceId,
-                    label: item.deviceLabel ?? `Dispositivo #${item.deviceId}`,
-                  },
-                  ...deviceOptions,
-                ]
-              : deviceOptions;
+          <div className="bundle-items-container">
+            {itemDrafts.map((item, index) => {
+              const resolvedDeviceOptions = deviceOptions.some(
+                (option) => option.value === item.deviceId,
+              )
+                ? deviceOptions
+                : item.deviceId
+                ? [
+                    {
+                      value: item.deviceId,
+                      label: item.deviceLabel ?? `Dispositivo #${item.deviceId}`,
+                    },
+                    ...deviceOptions,
+                  ]
+                : deviceOptions;
 
-            const variantOptions = (() => {
-              if (!enableVariants || !item.deviceId) {
-                return [] as Array<{ value: string; label: string }>;
-              }
-              const numericDeviceId = Number.parseInt(item.deviceId, 10);
-              const availableVariants = variants.items.filter(
-                (variant) => variant.device_id === numericDeviceId,
-              );
-              const mapped = availableVariants.map((variant) => ({
-                value: String(variant.id),
-                label: variant.name,
-              }));
-              if (
-                item.variantId &&
-                !mapped.some((option) => option.value === item.variantId) &&
-                item.variantLabel
-              ) {
-                return [{ value: item.variantId, label: item.variantLabel }, ...mapped];
-              }
-              return mapped;
-            })();
+              const variantOptions = (() => {
+                if (!enableVariants || !item.deviceId) {
+                  return [] as Array<{ value: string; label: string }>;
+                }
+                const numericDeviceId = Number.parseInt(item.deviceId, 10);
+                const availableVariants = variants.items.filter(
+                  (variant) => variant.device_id === numericDeviceId,
+                );
+                const mapped = availableVariants.map((variant) => ({
+                  value: String(variant.id),
+                  label: variant.name,
+                }));
+                if (
+                  item.variantId &&
+                  !mapped.some((option) => option.value === item.variantId) &&
+                  item.variantLabel
+                ) {
+                  return [{ value: item.variantId, label: item.variantLabel }, ...mapped];
+                }
+                return mapped;
+              })();
 
-            return (
-              <div key={item.key}>
-                <div className="form-row">
-                  <label htmlFor={`device-${item.key}`}>Dispositivo</label>
-                  <select
-                    id={`device-${item.key}`}
-                    value={item.deviceId}
-                    onChange={(event) => handleItemDeviceChange(item.key, event.target.value)}
-                    required
-                  >
-                    <option value="">Selecciona un dispositivo</option>
-                    {resolvedDeviceOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {enableVariants ? (
+              return (
+                <div key={item.key} className="bundle-item">
+                  <div className="bundle-item-header">Componente #{index + 1}</div>
                   <div className="form-row">
-                    <label htmlFor={`variant-${item.key}`}>Variante (opcional)</label>
+                    <label htmlFor={`device-${item.key}`}>Dispositivo</label>
                     <select
-                      id={`variant-${item.key}`}
-                      value={item.variantId}
-                      onChange={(event) => handleItemVariantChange(item.key, event.target.value)}
+                      id={`device-${item.key}`}
+                      value={item.deviceId}
+                      onChange={(event) => handleItemDeviceChange(item.key, event.target.value)}
+                      required
                     >
-                      <option value="">Usar configuración base</option>
-                      {variantOptions.map((option) => (
+                      <option value="">Selecciona un dispositivo</option>
+                      {resolvedDeviceOptions.map((option) => (
                         <option key={option.value} value={option.value}>
                           {option.label}
                         </option>
                       ))}
                     </select>
                   </div>
-                ) : null}
-                <div className="form-row">
-                  <label htmlFor={`quantity-${item.key}`}>Cantidad</label>
-                  <input
-                    id={`quantity-${item.key}`}
-                    type="number"
-                    min="1"
-                    value={item.quantity}
-                    onChange={(event) => handleItemQuantityChange(item.key, event.target.value)}
-                  />
+                  {enableVariants ? (
+                    <div className="form-row">
+                      <label htmlFor={`variant-${item.key}`}>Variante (opcional)</label>
+                      <select
+                        id={`variant-${item.key}`}
+                        value={item.variantId}
+                        onChange={(event) => handleItemVariantChange(item.key, event.target.value)}
+                      >
+                        <option value="">Usar configuración base</option>
+                        {variantOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : null}
+                  <div className="form-row">
+                    <label htmlFor={`quantity-${item.key}`}>Cantidad</label>
+                    <input
+                      id={`quantity-${item.key}`}
+                      type="number"
+                      min="1"
+                      value={item.quantity}
+                      onChange={(event) => handleItemQuantityChange(item.key, event.target.value)}
+                    />
+                  </div>
+                  <div className="form-row">
+                    <button
+                      type="button"
+                      className="danger"
+                      onClick={() => handleRemoveItem(item.key)}
+                    >
+                      Quitar
+                    </button>
+                  </div>
                 </div>
-                <div className="form-row">
-                  <button
-                    type="button"
-                    className="danger"
-                    onClick={() => handleRemoveItem(item.key)}
-                  >
-                    Quitar
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
           <button type="button" className="secondary" onClick={handleAddItem}>
             Agregar componente
           </button>

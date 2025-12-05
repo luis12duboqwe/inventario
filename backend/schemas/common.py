@@ -12,7 +12,8 @@ T = TypeVar("T")
 class PageParams(BaseModel):
     """Parámetros estándar de paginación."""
 
-    page: int = Field(default=1, ge=1, description="Número de página solicitada")
+    page: int = Field(
+        default=1, ge=1, description="Número de página solicitada")
     size: int = Field(
         default=50,
         ge=1,

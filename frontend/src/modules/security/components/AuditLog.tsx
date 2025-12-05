@@ -11,6 +11,8 @@ import {
   getAuditReminders,
 } from "@api/audit";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
+import Tooltip from "@components/ui/Tooltip";
+import { Info, Inbox, Search } from "lucide-react";
 
 type Props = {
   token: string;
@@ -647,52 +649,67 @@ function AuditLog({ token }: Props) {
               Sin alertas de seguridad en la ventana seleccionada
             </span>
           )}
-          <table>
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Acción</th>
-                <th>Entidad</th>
-                <th>Módulo</th>
-                <th>Usuario</th>
-                <th>Detalle</th>
-                <th>Severidad</th>
-              </tr>
-            </thead>
-            <tbody>
-              {logs.map((log) => (
-                <tr
-                  key={log.id}
-                  className={
-                    log.severity === "critical"
-                      ? "critical-row"
-                      : log.severity === "warning"
-                      ? "warning-row"
-                      : undefined
-                  }
-                >
-                  <td>{new Date(log.created_at).toLocaleString()}</td>
-                  <td>
-                    <span aria-hidden="true" role="img" className="audit-log-icon">
-                      {resolveActionIcon(log.action)}
-                    </span>
-                    <span>{log.action}</span>
-                  </td>
-                  <td>
-                    {log.entity_type} #{log.entity_id}
-                  </td>
-                  <td>{log.module ?? "general"}</td>
-                  <td>{log.performed_by_id ?? "-"}</td>
-                  <td>{log.details ?? "-"}</td>
-                  <td>
-                    <span className={`pill ${resolveSeverityClass(log.severity)}`}>
-                      {log.severity_label}
-                    </span>
-                  </td>
+          {logs.length === 0 && !loading && (
+            <div className="empty-state">
+              <Search size={48} className="text-muted mb-2" />
+              <p className="muted-text">No se encontraron eventos con los filtros actuales.</p>
+            </div>
+          )}
+          {logs.length > 0 && (
+            <table className="scrollable-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>
+                    <div className="flex items-center gap-1">
+                      Acción
+                      <Tooltip content="Tipo de evento registrado en el sistema">
+                        <Info size={14} className="text-muted cursor-help" />
+                      </Tooltip>
+                    </div>
+                  </th>
+                  <th>Entidad</th>
+                  <th>Módulo</th>
+                  <th>Usuario</th>
+                  <th>Detalle</th>
+                  <th>Severidad</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {logs.map((log) => (
+                  <tr
+                    key={log.id}
+                    className={
+                      log.severity === "critical"
+                        ? "critical-row"
+                        : log.severity === "warning"
+                        ? "warning-row"
+                        : undefined
+                    }
+                  >
+                    <td data-label="Fecha">{new Date(log.created_at).toLocaleString()}</td>
+                    <td data-label="Acción">
+                      <span aria-hidden="true" role="img" className="audit-log-icon">
+                        {resolveActionIcon(log.action)}
+                      </span>
+                      <span>{log.action}</span>
+                    </td>
+                    <td data-label="Entidad">
+                      {log.entity_type} #{log.entity_id}
+                    </td>
+                    <td data-label="Módulo">{log.module ?? "general"}</td>
+                    <td data-label="Usuario">{log.performed_by_id ?? "-"}</td>
+                    <td data-label="Detalle">{log.details ?? "-"}</td>
+                    <td data-label="Severidad">
+                      <span className={`pill ${resolveSeverityClass(log.severity)}`}>
+                        {log.severity_label}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
 
@@ -730,10 +747,13 @@ function AuditLog({ token }: Props) {
         {reminderError && <p className="error-text">{reminderError}</p>}
         {reminderLoading && <p>Cargando recordatorios...</p>}
         {!reminderLoading && reminders && pendingReminders.length === 0 ? (
-          <p className="muted-text">Sin alertas críticas pendientes en este momento.</p>
+          <div className="empty-state py-4">
+            <Inbox size={32} className="text-muted mb-2" />
+            <p className="muted-text">Sin alertas críticas pendientes en este momento.</p>
+          </div>
         ) : null}
         {pendingReminders.length > 0 ? (
-          <table className="reminder-table">
+          <table className="reminder-table scrollable-table">
             <thead>
               <tr>
                 <th>Entidad</th>
@@ -746,13 +766,13 @@ function AuditLog({ token }: Props) {
             <tbody>
               {pendingReminders.map((reminder) => (
                 <tr key={`${reminder.entity_type}-${reminder.entity_id}`}>
-                  <td>
+                  <td data-label="Entidad">
                     {reminder.entity_type} #{reminder.entity_id}
                   </td>
-                  <td>{reminder.latest_action}</td>
-                  <td>{reminder.occurrences}</td>
-                  <td>{new Date(reminder.last_seen).toLocaleString()}</td>
-                  <td>
+                  <td data-label="Última acción">{reminder.latest_action}</td>
+                  <td data-label="Repeticiones">{reminder.occurrences}</td>
+                  <td data-label="Visto por última vez">{new Date(reminder.last_seen).toLocaleString()}</td>
+                  <td data-label="Acciones">
                     <button
                       type="button"
                       className="btn btn--primary"

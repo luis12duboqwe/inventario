@@ -37,65 +37,22 @@ export class ErrorBoundary extends React.Component<Props, State> {
   override render(): React.ReactNode {
     if (this.state.hasError) {
       return (
-        <div
-          style={{
-            minHeight: "100vh",
-            display: "grid",
-            placeItems: "center",
-            background: "#0b1220",
-            color: "#cbd5e1",
-            padding: 24,
-          }}
-        >
-          <div style={{ maxWidth: 560, textAlign: "center" }}>
-            <h1 style={{ margin: "8px 0 4px" }}>Algo salió mal</h1>
-            <p style={{ margin: 0, color: "#94a3b8" }}>
+        <div className="simple-error-boundary">
+          <div className="simple-error-boundary__card">
+            <h1 className="simple-error-boundary__title">Algo salió mal</h1>
+            <p className="simple-error-boundary__description">
               Se produjo un error al renderizar la interfaz.
             </p>
             {this.state.errMsg ? (
-              <pre
-                style={{
-                  textAlign: "left",
-                  whiteSpace: "pre-wrap",
-                  background: "rgba(255,255,255,0.04)",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  borderRadius: 12,
-                  padding: 12,
-                  marginTop: 12,
-                }}
-              >
-                {this.state.errMsg}
-              </pre>
+              <pre className="simple-error-boundary__pre">{this.state.errMsg}</pre>
             ) : null}
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                justifyContent: "center",
-                marginTop: 16,
-              }}
-            >
-              <button
-                onClick={this.handleRetry}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  background: "#2563eb",
-                  color: "#fff",
-                  border: 0,
-                }}
-              >
+            <div className="simple-error-boundary__actions">
+              <button onClick={this.handleRetry} className="simple-error-boundary__btn-primary">
                 Reintentar
               </button>
               <button
                 onClick={() => (window.location.href = "/")}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  background: "rgba(255,255,255,0.08)",
-                  color: "#e5e7eb",
-                  border: 0,
-                }}
+                className="simple-error-boundary__btn-secondary"
               >
                 Ir al inicio
               </button>

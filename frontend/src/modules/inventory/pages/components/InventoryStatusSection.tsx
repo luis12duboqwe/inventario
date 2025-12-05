@@ -5,6 +5,8 @@ import { motion } from "framer-motion";
 import { Loader } from "@components/ui/Loader";
 import { useInventoryLayout } from "../context/InventoryLayoutContext";
 
+import "./InventoryStatusSection.css";
+
 const InventoryCategoryChart = lazy(() => import("../../components/InventoryCategoryChart"));
 
 function InventoryStatusSection() {
@@ -67,7 +69,9 @@ function InventoryStatusSection() {
         </header>
         <select
           value={selectedStoreId ?? ""}
-          onChange={(event) => setSelectedStoreId(event.target.value ? Number(event.target.value) : null)}
+          onChange={(event) =>
+            setSelectedStoreId(event.target.value ? Number(event.target.value) : null)
+          }
         >
           {stores.map((store) => (
             <option key={store.id} value={store.id}>
@@ -97,7 +101,9 @@ function InventoryStatusSection() {
                 storeValuationSnapshot.hasRelevantDifference ? "warning" : "success"
               }`}
             >
-              {storeValuationSnapshot.hasRelevantDifference ? "Revisión requerida" : "Sin diferencias"}
+              {storeValuationSnapshot.hasRelevantDifference
+                ? "Revisión requerida"
+                : "Sin diferencias"}
             </span>
           </header>
           <ul className="metrics-list">
@@ -124,7 +130,9 @@ function InventoryStatusSection() {
             {storeValuationSnapshot.hasRelevantDifference
               ? `El valor calculado es ${
                   storeValuationSnapshot.difference > 0 ? "mayor" : "menor"
-                } que el contable por ${formatCurrency(Math.abs(storeValuationSnapshot.difference))}.`
+                } que el contable por ${formatCurrency(
+                  Math.abs(storeValuationSnapshot.difference),
+                )}.`
               : "Los valores coinciden con el registro contable corporativo."}
           </p>
         </section>
@@ -143,7 +151,8 @@ function InventoryStatusSection() {
           <ul className="metrics-list">
             {topStores.map((storeMetric) => (
               <li key={storeMetric.store_id}>
-                <strong>{storeMetric.store_name}</strong> · {storeMetric.device_count} dispositivos · {storeMetric.total_units}
+                <strong>{storeMetric.store_name}</strong> · {storeMetric.device_count} dispositivos
+                · {storeMetric.total_units}
                 unidades ·<span> {formatCurrency(storeMetric.total_value)}</span>
               </li>
             ))}
@@ -158,8 +167,7 @@ function InventoryStatusSection() {
             <p className="card-subtitle">Visualiza la distribución de existencias en inventario.</p>
           </div>
           <span className="pill neutral">
-            Total {totalCategoryUnits.toLocaleString("es-HN")}
-            {" "}uds
+            Total {totalCategoryUnits.toLocaleString("es-HN")} uds
           </span>
         </header>
         <Suspense fallback={<Loader label="Cargando gráfica por categoría…" variant="spinner" />}>

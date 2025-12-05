@@ -20,7 +20,9 @@ class MonitoringService {
   private static instance: MonitoringService;
   private isInitialized = false;
 
-  private constructor() {}
+  private constructor() {
+    // Singleton
+  }
 
   public static getInstance(): MonitoringService {
     if (!MonitoringService.instance) {
@@ -32,7 +34,6 @@ class MonitoringService {
   public init() {
     if (this.isInitialized) return;
     // Here we would initialize Sentry.init()
-    console.log("[Monitoring] Service initialized");
     this.isInitialized = true;
   }
 
@@ -40,10 +41,7 @@ class MonitoringService {
     const message = error instanceof Error ? error.message : String(error);
     const stack = error instanceof Error ? error.stack : undefined;
 
-    // 1. Log to Console (Dev)
-    console.error("[Monitoring] Exception captured:", message, context);
-
-    // 2. Log to Internal Audit (Compliance)
+    // 1. Log to Internal Audit (Compliance)
     void logUI({
       ts: Date.now(),
       module: "MONITORING",
@@ -54,14 +52,15 @@ class MonitoringService {
         componentStack: context?.componentStack,
         tags: context?.tags,
       },
-    }).catch((err) => console.error("[Monitoring] Failed to log to audit:", err));
+    }).catch(() => {
+      // Silent failure in production
+    });
 
-    // 3. Send to External Service (Sentry/Datadog)
+    // 2. Send to External Service (Sentry/Datadog)
     // if (window.Sentry) Sentry.captureException(error, { extra: context });
   }
 
-  public captureMessage(message: string, level: "info" | "warning" | "error" = "info") {
-    console.log(`[Monitoring] [${level.toUpperCase()}] ${message}`);
+  public captureMessage(message: string, _level: "info" | "warning" | "error" = "info") {
     // if (window.Sentry) Sentry.captureMessage(message, level);
   }
 }

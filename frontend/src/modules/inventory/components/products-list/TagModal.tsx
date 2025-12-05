@@ -1,4 +1,7 @@
 import React from "react";
+import Modal from "../../../../../components/ui/Modal";
+import Button from "../../../../../components/ui/Button";
+import TextField from "../../../../../components/ui/TextField";
 
 type Props = {
   open?: boolean;
@@ -19,45 +22,40 @@ export default function TagModal({ open, onClose, onSubmit }: Props) {
     .filter(Boolean);
   const valid = list.length > 0;
 
+  const handleSubmit = () => {
+    if (valid && onSubmit) {
+      onSubmit({ tags: list });
+    }
+  };
+
   return (
-    <div
-      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "grid", placeItems: "center" }}
+    <Modal
+      isOpen={open}
+      onClose={onClose || (() => {})}
+      title="Asignar etiquetas"
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button variant="primary" disabled={!valid} onClick={handleSubmit}>
+            Aplicar
+          </Button>
+        </>
+      }
     >
-      <div
-        style={{
-          width: 520,
-          background: "#0b1220",
-          borderRadius: 12,
-          border: "1px solid rgba(255,255,255,0.08)",
-          padding: 16,
-        }}
-      >
-        <h3 style={{ marginTop: 0 }}>Asignar etiquetas</h3>
-        <input
+      <div className="flex flex-col gap-4">
+        <p className="m-0 text-muted-foreground text-sm">
+          Ingresa las etiquetas separadas por coma.
+        </p>
+        <TextField
           placeholder="tag1, tag2, tag3"
           value={tags}
           onChange={(event) => setTags(event.target.value)}
-          style={{ padding: 8, borderRadius: 8, width: "100%" }}
+          fullWidth
         />
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
-          <button onClick={onClose} style={{ padding: "8px 12px", borderRadius: 8 }}>
-            Cancelar
-          </button>
-          <button
-            disabled={!valid}
-            onClick={() => valid && onSubmit?.({ tags: list })}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 8,
-              background: valid ? "#2563eb" : "rgba(255,255,255,0.08)",
-              color: "#fff",
-              border: 0,
-            }}
-          >
-            Aplicar
-          </button>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }

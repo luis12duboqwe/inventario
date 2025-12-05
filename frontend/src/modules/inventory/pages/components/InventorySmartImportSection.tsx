@@ -4,6 +4,8 @@ import Button from "@components/ui/Button";
 import { Loader } from "@components/ui/Loader";
 import { useInventoryLayout } from "../context/InventoryLayoutContext";
 
+import "./InventorySmartImportSection.css";
+
 function InventorySmartImportSection() {
   const {
     downloads: { downloadSmartResultCsv, downloadSmartResultPdf },
@@ -57,7 +59,8 @@ function InventorySmartImportSection() {
         <div>
           <h2>Importar desde Excel (inteligente)</h2>
           <p className="card-subtitle">
-            Analiza cualquier archivo Excel o CSV, detecta columnas clave y completa el inventario aunque falten campos.
+            Analiza cualquier archivo Excel o CSV, detecta columnas clave y completa el inventario
+            aunque falten campos.
           </p>
         </div>
       </header>
@@ -67,7 +70,8 @@ function InventorySmartImportSection() {
             <div>
               <h3 id="smart-import-templates-title">Asistentes por proveedor</h3>
               <p className="muted-text">
-                Precarga coincidencias de columnas y descarga la plantilla oficial del proveedor seleccionado.
+                Precarga coincidencias de columnas y descarga la plantilla oficial del proveedor
+                seleccionado.
               </p>
             </div>
             <div className="smart-import__assistant-actions">
@@ -94,7 +98,10 @@ function InventorySmartImportSection() {
           <div className="smart-import__assistant-controls">
             <label className="smart-import__assistant-field">
               <span>Proveedor</span>
-              <select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)}>
+              <select
+                value={selectedTemplateId}
+                onChange={(event) => setSelectedTemplateId(event.target.value)}
+              >
                 <option value="">Selecciona proveedor</option>
                 {vendorTemplates.map((template) => (
                   <option key={template.id} value={template.id}>
@@ -160,7 +167,12 @@ function InventorySmartImportSection() {
           onClick={() => {
             void handleSmartCommit();
           }}
-          disabled={smartImportLoading || !smartImportFile || smartPreviewDirty || (!smartImportPreviewState && !smartImportResult)}
+          disabled={
+            smartImportLoading ||
+            !smartImportFile ||
+            smartPreviewDirty ||
+            (!smartImportPreviewState && !smartImportResult)
+          }
         >
           {smartImportLoading ? "Procesando…" : "Importar desde Excel (inteligente)"}
         </Button>
@@ -188,21 +200,28 @@ function InventorySmartImportSection() {
         </Button>
       </div>
       {smartPreviewDirty ? (
-        <p className="smart-import__note smart-import__note--warning">Reanaliza el archivo para aplicar las reasignaciones de columnas.</p>
+        <p className="smart-import__note smart-import__note--warning">
+          Reanaliza el archivo para aplicar las reasignaciones de columnas.
+        </p>
       ) : null}
-  {smartImportLoading ? <Loader label="Procesando importación inteligente…" variant="spinner" /> : null}
+      {smartImportLoading ? (
+        <Loader label="Procesando importación inteligente…" variant="spinner" />
+      ) : null}
       {smartImportPreviewState ? (
         <div className="smart-import__preview">
           <h4>Columnas detectadas</h4>
           <p className="muted-text">
-            Registros incompletos estimados: {smartImportPreviewState.registros_incompletos_estimados}
+            Registros incompletos estimados:{" "}
+            {smartImportPreviewState.registros_incompletos_estimados}
           </p>
           {smartImportPreviewState.columnas_faltantes.length > 0 ? (
             <p className="smart-import__note smart-import__note--warning">
               Columnas faltantes: {smartImportPreviewState.columnas_faltantes.join(", ")}
             </p>
           ) : (
-            <p className="smart-import__note smart-import__note--success">Todas las columnas clave fueron identificadas.</p>
+            <p className="smart-import__note smart-import__note--success">
+              Todas las columnas clave fueron identificadas.
+            </p>
           )}
           {smartImportPreviewState.advertencias.length > 0 ? (
             <ul className="smart-import__warnings">
@@ -236,19 +255,28 @@ function InventorySmartImportSection() {
               </thead>
               <tbody>
                 {smartImportPreviewState.columnas.map((match) => {
-                  const currentHeader = smartImportOverrides[match.campo] ?? match.encabezado_origen ?? "";
+                  const currentHeader =
+                    smartImportOverrides[match.campo] ?? match.encabezado_origen ?? "";
                   return (
                     <tr key={match.campo}>
                       <td>{match.campo}</td>
                       <td>
-                        <span className={`smart-import-status smart-import-status--${match.estado}`}>
-                          {match.estado === "ok" ? "Detectada" : match.estado === "pendiente" ? "Parcial" : "Faltante"}
+                        <span
+                          className={`smart-import-status smart-import-status--${match.estado}`}
+                        >
+                          {match.estado === "ok"
+                            ? "Detectada"
+                            : match.estado === "pendiente"
+                            ? "Parcial"
+                            : "Faltante"}
                         </span>
                       </td>
                       <td>
                         <select
                           value={currentHeader}
-                          onChange={(event) => handleSmartOverrideChange(match.campo, event.target.value)}
+                          onChange={(event) =>
+                            handleSmartOverrideChange(match.campo, event.target.value)
+                          }
                         >
                           {overrideOptions.map((option) => (
                             <option key={`${match.campo}-${option || "vacío"}`} value={option}>
@@ -309,7 +337,8 @@ function InventorySmartImportSection() {
           <ul className="metrics-list">
             {smartImportHistory.map((entry) => (
               <li key={entry.id}>
-                <strong>{entry.nombre_archivo}</strong> · {new Date(entry.fecha).toLocaleString("es-HN")} · {entry.total_registros}
+                <strong>{entry.nombre_archivo}</strong> ·{" "}
+                {new Date(entry.fecha).toLocaleString("es-HN")} · {entry.total_registros}
                 registros
               </li>
             ))}

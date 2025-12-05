@@ -212,7 +212,7 @@ function CountingPanel({ title = "Conteo cíclico" }: Props) {
                 const next = Number.parseInt(event.target.value, 10);
                 setManualCount(Number.isNaN(next) ? 0 : Math.max(0, next));
               }}
-              style={{ width: 80 }}
+              className="w-20"
               aria-label="Conteo"
             />
             <button type="button" className="ghost" onClick={handleAddManual}>

@@ -48,7 +48,8 @@ def _consume_lots(lots: Deque[list[Decimal]], quantity: Decimal) -> None:
 
 
 def _current_average_cost(db: Session, product_id: int) -> Decimal:
-    device_stmt = select(models.Device.costo_unitario).where(models.Device.id == product_id)
+    device_stmt = select(models.Device.costo_unitario).where(
+        models.Device.id == product_id)
     device_cost = db.scalar(device_stmt)
     return _to_decimal(device_cost or _ZERO)
 
@@ -105,7 +106,8 @@ def _simulate_fifo_cost(
         move_quantity = _to_decimal(movement.quantity).quantize(_FOUR_PLACES)
         move_cost = _to_decimal(movement.unit_cost).quantize(_TWO_PLACES)
         if movement.movement_type == models.MovementType.IN:
-            lots.append([move_quantity, move_cost if move_cost > _ZERO else last_known_cost])
+            lots.append([move_quantity, move_cost if move_cost >
+                        _ZERO else last_known_cost])
             current_stock += move_quantity
             if move_cost > _ZERO:
                 last_known_cost = move_cost
@@ -127,7 +129,8 @@ def _simulate_fifo_cost(
     if not lots:
         return last_known_cost.quantize(_TWO_PLACES, rounding=ROUND_HALF_UP)
 
-    simulated_lots: Deque[list[Decimal]] = deque([[qty, cost] for qty, cost in lots])
+    simulated_lots: Deque[list[Decimal]] = deque(
+        [[qty, cost] for qty, cost in lots])
     remaining = quantity
     accumulated_cost = _ZERO
     baseline_cost = lots[0][1] if lots else last_known_cost
@@ -175,4 +178,26 @@ def compute_unit_cost(
         product_id=product_id,
         branch_id=branch_id,
         quantity=required_quantity,
+    )
+
+
+def record_stock_move(
+    db: Session,
+    *,
+    product_id: int,
+    branch_id: int | None,
+    move_type: models.StockMoveType,
+    quantity: Decimal | int | float,
+    unit_cost: Decimal | None = None,
+    reference_id: str | None = None,
+    performed_by_id: int | None = None,
+) -> models.StockMove:
+    """Wrapper para record_move compatible con crud/inventory.py."""
+    return record_move(
+        db,
+        product_id=product_id,
+        branch_id=branch_id,
+        quantity=quantity,
+        move_type=move_type,
+        reference=reference_id,
     )

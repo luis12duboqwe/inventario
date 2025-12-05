@@ -19,13 +19,20 @@ export {
 
 export const API_URL = getCurrentApiBaseUrl();
 
-export function clearRequestCache(): void {
-  // No-op: Cache is now handled by React Query or Axios (if configured)
+export function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 export async function request<T>(
   path: string,
-  options: RequestInit = {},
+  options: RequestInit & { responseType?: 'json' | 'blob' | 'text' | 'arraybuffer' } = {},
   token?: string
 ): Promise<T> {
   const headers: Record<string, string> = {};
@@ -74,16 +81,8 @@ export async function request<T>(
     signal: options.signal as AbortSignal,
   };
 
-  if (finalHeaders["Accept"] === "application/pdf" ||
-      finalHeaders["Accept"] === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
-      finalHeaders["Accept"] === "text/csv" ||
-      path.includes("/export") ||
-      path.includes("/pdf") ||
-      path.includes("/csv") ||
-      path.includes("/xlsx") ||
-      path.includes("/label/")
-     ) {
-      config.responseType = 'blob';
+  if (options.responseType) {
+    config.responseType = options.responseType;
   }
 
   const response = await httpClient.request(config);

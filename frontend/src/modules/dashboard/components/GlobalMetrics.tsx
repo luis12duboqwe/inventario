@@ -257,7 +257,7 @@ function GlobalMetrics({ auditAlertsMock }: GlobalMetricsProps) {
             ))}
           </div>
           <div className="metric-charts">
-            <div className="chart-card" style={{ padding: 24 }}>
+            <div className="chart-card p-6">
               <Skeleton lines={10} />
             </div>
           </div>

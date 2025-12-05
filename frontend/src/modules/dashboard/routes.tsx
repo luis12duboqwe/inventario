@@ -31,6 +31,8 @@ const OperationsDiagnostics = lazyWithRetry(
 );
 const OperationsBundles = lazyWithRetry(() => import("../operations/pages/OperationsBundles"));
 const OperationsDte = lazyWithRetry(() => import("../operations/pages/OperationsDte"));
+const OperationsLoyalty = lazyWithRetry(() => import("../operations/pages/OperationsLoyalty"));
+const OperationsWMS = lazyWithRetry(() => import("../operations/pages/OperationsWMS"));
 const AnalyticsPage = lazyWithRetry(() => import("../analytics/pages/AnalyticsPage"));
 const HelpCenterPage = lazyWithRetry(() => import("../help/pages/HelpCenterPage"));
 const SupportFeedbackPage = lazyWithRetry(() => import("../support/Feedback"));
@@ -90,7 +92,7 @@ function resolveInitialModule(): string {
 
 const ModuleLoader = memo(function ModuleLoader() {
   return (
-    <div className="module-content space-y-6 p-6">
+    <div className="module-content space-y-6 p-6" data-testid="loading-skeleton">
       <div className="space-y-2">
         <Skeleton className="h-8 w-1/3 rounded-md" />
         <Skeleton className="h-4 w-1/2 rounded-md" />
@@ -176,6 +178,8 @@ const DashboardRoutes = memo(function DashboardRoutes({
           <Route path="diagnosticos" element={<OperationsDiagnostics />} />
           <Route path="paquetes" element={<OperationsBundles />} />
           <Route path="dte" element={<OperationsDte />} />
+          <Route path="fidelizacion" element={<OperationsLoyalty />} />
+          <Route path="wms" element={<OperationsWMS />} />
         </Route>
         <Route
           path="mobile"

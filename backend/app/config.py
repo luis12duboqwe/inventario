@@ -1095,6 +1095,59 @@ class Settings(BaseSettings):
         ),
     ]
 
+    # // [PACK-AUTH-CONFIG]
+    sensitive_methods: Annotated[
+        set[str],
+        Field(
+            default_factory=lambda: {"POST", "PUT", "PATCH", "DELETE"},
+            validation_alias=AliasChoices(
+                "SENSITIVE_METHODS", "SOFTMOBILE_SENSITIVE_METHODS"
+            ),
+        ),
+    ]
+    sensitive_prefixes: Annotated[
+        list[str],
+        Field(
+            default_factory=lambda: [
+                "/inventory", "/purchases", "/sales", "/pos", "/backups", "/customers",
+                "/reports", "/payments", "/loyalty", "/suppliers", "/repairs", "/warranties",
+                "/returns", "/transfers", "/security", "/sync/outbox", "/operations",
+                "/pricing", "/integrations", "/price-lists", "/store-credits",
+            ],
+            validation_alias=AliasChoices(
+                "SENSITIVE_PREFIXES", "SOFTMOBILE_SENSITIVE_PREFIXES"
+            ),
+        ),
+    ]
+    read_sensitive_prefixes: Annotated[
+        list[str],
+        Field(
+            default_factory=lambda: [
+                "/pos", "/reports", "/customers", "/loyalty"],
+            validation_alias=AliasChoices(
+                "READ_SENSITIVE_PREFIXES", "SOFTMOBILE_READ_SENSITIVE_PREFIXES"
+            ),
+        ),
+    ]
+    optional_reason_prefixes: Annotated[
+        list[str],
+        Field(
+            default_factory=lambda: ["/purchases/"],
+            validation_alias=AliasChoices(
+                "OPTIONAL_REASON_PREFIXES", "SOFTMOBILE_OPTIONAL_REASON_PREFIXES"
+            ),
+        ),
+    ]
+    optional_reason_suffixes: Annotated[
+        list[str],
+        Field(
+            default_factory=lambda: ["/status", "/send"],
+            validation_alias=AliasChoices(
+                "OPTIONAL_REASON_SUFFIXES", "SOFTMOBILE_OPTIONAL_REASON_SUFFIXES"
+            ),
+        ),
+    ]
+
     @field_validator("pos_payment_terminals", mode="before")
     @classmethod
     def _parse_pos_terminals(
