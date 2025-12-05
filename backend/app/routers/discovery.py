@@ -37,6 +37,9 @@ def _summarize_database() -> schemas.LanDatabaseSummary:
     try:
         parsed = make_url(settings.database_url)
     except Exception as exc:
+        # NOTA: Captura amplia intencional. El endpoint de discovery debe funcionar
+        # incluso con URLs malformadas o dialectos no soportados. Devolvemos datos
+        # por defecto para que el cliente pueda continuar con la configuración.
         logger.warning(
             f"Error al analizar URL de base de datos para discovery: {exc}",
             exc_info=True
