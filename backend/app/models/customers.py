@@ -1,6 +1,6 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Any, Optional, List, Dict
-from datetime import datetime
+from typing import TYPE_CHECKING, Any, Optional
+from datetime import datetime, timezone
 from decimal import Decimal
 import enum
 import secrets
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 
 def generate_customer_tax_id_placeholder() -> str:
-    timestamp_component = datetime.utcnow().strftime("%y%m%d")
+    timestamp_component = datetime.now(timezone.utc).strftime("%y%m%d")
     random_component = f"{secrets.randbelow(10**8):08d}"
     digits = f"{timestamp_component}{random_component}"
     return f"{digits[:4]}-{digits[4:8]}-{digits[8:]}"
