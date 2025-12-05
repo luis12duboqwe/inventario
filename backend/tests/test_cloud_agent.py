@@ -268,7 +268,7 @@ def test_retry_failed_tasks(db_session: Session, client: TestClient):
     assert any(t.id == task.id for t in retried)
     
     # Verificar que la tarea fue reintentada
-    db.refresh(task)
+    db_session.refresh(task)
     assert task.status == models.CloudAgentTaskStatus.PENDING
     assert task.retry_count == 1
     assert task.error_message is None
@@ -286,7 +286,7 @@ def test_api_delegate_task(client: TestClient):
     response = client.post(
         "/cloud/delegate",
         json={
-            "task_type": "GENERATE_REPORT",
+            "task_type": "generate_report",
             "title": "Generar reporte mensual",
             "description": "Reporte de ventas del mes",
             "input_data": {"month": "2025-12", "format": "PDF"},
@@ -296,11 +296,14 @@ def test_api_delegate_task(client: TestClient):
         headers=admin_headers,
     )
     
+    if response.status_code != 201:
+        print(f"Response status: {response.status_code}")
+        print(f"Response body: {response.json()}")
     assert response.status_code == 201
     data = response.json()
-    assert data["task_type"] == "GENERATE_REPORT"
+    assert data["task_type"] == "generate_report"
     assert data["title"] == "Generar reporte mensual"
-    assert data["status"] == "PENDING"
+    assert data["status"] == "pending"
     assert data["priority"] == 2
 
 
@@ -317,7 +320,7 @@ def test_api_list_tasks(client: TestClient):
     client.post(
         "/cloud/delegate",
         json={
-            "task_type": "SYNC_DATA",
+            "task_type": "sync_data",
             "title": "Sincronizar inventario",
         },
         headers=admin_headers,
@@ -347,7 +350,7 @@ def test_api_get_task(client: TestClient):
     create_response = client.post(
         "/cloud/delegate",
         json={
-            "task_type": "BACKUP_DATA",
+            "task_type": "backup_data",
             "title": "Respaldar base de datos",
         },
         headers=admin_headers,
@@ -360,7 +363,7 @@ def test_api_get_task(client: TestClient):
     assert response.status_code == 200
     data = response.json()
     assert data["id"] == task_id
-    assert data["task_type"] == "BACKUP_DATA"
+    assert data["task_type"] == "backup_data"
 
 
 def test_api_cancel_task(client: TestClient):
@@ -376,7 +379,7 @@ def test_api_cancel_task(client: TestClient):
     create_response = client.post(
         "/cloud/delegate",
         json={
-            "task_type": "PROCESS_BATCH",
+            "task_type": "process_batch",
             "title": "Procesar importación",
         },
         headers=admin_headers,
@@ -390,7 +393,7 @@ def test_api_cancel_task(client: TestClient):
     
     # Verificar que fue cancelada
     get_response = client.get(f"/cloud/tasks/{task_id}", headers=admin_headers)
-    assert get_response.json()["status"] == "CANCELLED"
+    assert get_response.json()["status"] == "cancelled"
 
 
 def test_api_get_stats(client: TestClient):

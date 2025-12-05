@@ -59,6 +59,13 @@ async def delegate_task(
         created_by_id=current_user.id,
     )
     
+    # Parsear JSON en input_data
+    if task.input_data:
+        try:
+            task.input_data = json.loads(task.input_data)
+        except (json.JSONDecodeError, TypeError):
+            task.input_data = None
+    
     return task
 
 
@@ -84,7 +91,9 @@ async def list_tasks(
     _check_cloud_agent_enabled()
     
     # Los usuarios normales solo ven sus propias tareas
-    created_by_id = None if current_user.is_admin else current_user.id
+    # Verificar si el usuario tiene rol ADMIN
+    has_admin = any(ur.role.name == ADMIN for ur in current_user.roles)
+    created_by_id = None if has_admin else current_user.id
     
     skip = (page - 1) * size
     tasks, total = cloud_agent.list_tasks(
@@ -145,7 +154,8 @@ async def get_task(
         )
     
     # Los usuarios normales solo pueden ver sus propias tareas
-    if not current_user.is_admin and task.created_by_id != current_user.id:
+    has_admin = any(ur.role.name == ADMIN for ur in current_user.roles)
+    if not has_admin and task.created_by_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tiene permiso para ver esta tarea"
@@ -191,7 +201,8 @@ async def cancel_task(
         )
     
     # Los usuarios normales solo pueden cancelar sus propias tareas
-    if not current_user.is_admin and task.created_by_id != current_user.id:
+    has_admin = any(ur.role.name == ADMIN for ur in current_user.roles)
+    if not has_admin and task.created_by_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tiene permiso para cancelar esta tarea"
@@ -221,7 +232,8 @@ async def get_stats(
     """
     _check_cloud_agent_enabled()
     
-    if not current_user.is_admin:
+    has_admin = any(ur.role.name == ADMIN for ur in current_user.roles)
+    if not has_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Solo los administradores pueden ver estadísticas globales"
@@ -248,7 +260,8 @@ async def retry_failed_tasks(
     """
     _check_cloud_agent_enabled()
     
-    if not current_user.is_admin:
+    has_admin = any(ur.role.name == ADMIN for ur in current_user.roles)
+    if not has_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Solo los administradores pueden reintentar tareas"
