@@ -244,34 +244,41 @@ def test_retry_failed_tasks(db_session: Session, client: TestClient):
     admin_headers = _auth_headers(client)
     admin_user = _get_admin_user(db_session)
 
-    """Verificar el reintento de tareas fallidas."""
-    # Crear una tarea y marcarla como fallida
-    task = cloud_agent.create_task(
-        db=db_session,
-        task_type=models.CloudAgentTaskType.CUSTOM,
-        title="Tarea personalizada",
-        created_by_id=admin_user.id,
-        max_retries=3,
-    )
+    # Asegurar que el feature flag está habilitado
+    from backend.app.config import settings
+    original_value = settings.enable_cloud_agent
+    settings.enable_cloud_agent = True
     
-    cloud_agent.update_task_status(
-        db=db_session,
-        task_id=task.id,
-        status=models.CloudAgentTaskStatus.FAILED,
-        error_message="Error simulado",
-    )
-    
-    # Reintentar tareas fallidas
-    retried = cloud_agent.retry_failed_tasks(db=db_session)
-    
-    assert len(retried) >= 1
-    assert any(t.id == task.id for t in retried)
-    
-    # Verificar que la tarea fue reintentada
-    db_session.refresh(task)
-    assert task.status == models.CloudAgentTaskStatus.PENDING
-    assert task.retry_count == 1
-    assert task.error_message is None
+    try:
+        # Crear una tarea y marcarla como fallida
+        task = cloud_agent.create_task(
+            db=db_session,
+            task_type=models.CloudAgentTaskType.CUSTOM,
+            title="Tarea personalizada",
+            created_by_id=admin_user.id,
+            max_retries=3,
+        )
+        
+        cloud_agent.update_task_status(
+            db=db_session,
+            task_id=task.id,
+            status=models.CloudAgentTaskStatus.FAILED,
+            error_message="Error simulado",
+        )
+        
+        # Reintentar tareas fallidas
+        retried = cloud_agent.retry_failed_tasks(db=db_session)
+        
+        assert len(retried) >= 1
+        assert any(t.id == task.id for t in retried)
+        
+        # Verificar que la tarea fue reintentada
+        db_session.refresh(task)
+        assert task.status == models.CloudAgentTaskStatus.PENDING
+        assert task.retry_count == 1
+        assert task.error_message is None
+    finally:
+        settings.enable_cloud_agent = original_value
 
 
 def test_api_delegate_task(client: TestClient):
