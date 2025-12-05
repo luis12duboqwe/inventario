@@ -1,9 +1,9 @@
 # Actualizado por Codex el 2025-10-20
-fastapi==0.121.1
+fastapi==0.123.0
 fastapi-limiter==0.1.6
 uvicorn[standard]==0.38.0
 sqlalchemy==2.0.44
-pydantic==2.12.3
+pydantic==2.12.5
 pydantic-settings==2.11.0
 httpx==0.28.1
 passlib[bcrypt]==1.7.4
@@ -13,16 +13,16 @@ python-jose[cryptography]==3.3.0
 pyjwt==2.10.1
 python-multipart==0.0.20
 email-validator==2.3.0
-fakeredis==2.32.0
+fakeredis==2.32.1
 loguru==0.7.2
 reportlab==4.4.4
 openpyxl==3.1.5
 apscheduler==3.11.1
-alembic==1.17.1
+alembic==1.17.2
 packaging==25.0
 pyotp==2.9.0
 prometheus-client==0.23.1
 boto3==1.35.41
 pytest==8.3.3
 pytest-asyncio==0.23.8
-locust==2.31.6
+locust==2.42.6
