@@ -51,6 +51,7 @@ from .services.sales import consume_supplier_batch
 from .services.inventory import calculate_inventory_valuation
 from .crud.audit import _attach_last_audit_trails, log_audit_event as _log_action, get_last_audit_entries
 from .crud.customers import _validate_customer_credit
+from .crud.loyalty import apply_loyalty_for_sale
 from backend.app.crud.users import (
     get_user,
     get_user_by_username,
