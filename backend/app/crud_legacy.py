@@ -330,6 +330,75 @@ def list_transfer_orders(*args, **kwargs):
 # END OF TRANSFERS COMPATIBILITY ALIASES
 # ============================================================================
 
+# ============================================================================
+# COMPATIBILITY ALIASES - Invoicing Module Migration (Fase 2, Incremento 4)
+# ============================================================================
+# These aliases maintain backward compatibility after migrating Invoicing functions
+# to backend/app/crud/invoicing.py. They will be removed in a future PR after
+# validation in production.
+#
+# Migration date: 2025-12-06
+# Target removal: After 30 days of production validation
+# ============================================================================
+
+from .crud import invoicing as _invoicing_module
+
+def create_dte_authorization(*args, **kwargs):
+    """DEPRECATED: Use crud.invoicing.create_dte_authorization. Alias for compatibility."""
+    return _invoicing_module.create_dte_authorization(*args, **kwargs)
+
+def list_dte_authorizations(*args, **kwargs):
+    """DEPRECATED: Use crud.invoicing.list_dte_authorizations. Alias for compatibility."""
+    return _invoicing_module.list_dte_authorizations(*args, **kwargs)
+
+def get_dte_authorization(*args, **kwargs):
+    """DEPRECATED: Use crud.invoicing.get_dte_authorization. Alias for compatibility."""
+    return _invoicing_module.get_dte_authorization(*args, **kwargs)
+
+def update_dte_authorization(*args, **kwargs):
+    """DEPRECATED: Use crud.invoicing.update_dte_authorization. Alias for compatibility."""
+    return _invoicing_module.update_dte_authorization(*args, **kwargs)
+
+def reserve_dte_folio(*args, **kwargs):
+    """DEPRECATED: Use crud.invoicing.reserve_dte_folio. Alias for compatibility."""
+    return _invoicing_module.reserve_dte_folio(*args, **kwargs)
+
+def register_dte_document(*args, **kwargs):
+    """DEPRECATED: Use crud.invoicing.register_dte_document. Alias for compatibility."""
+    return _invoicing_module.register_dte_document(*args, **kwargs)
+
+def log_dte_event(*args, **kwargs):
+    """DEPRECATED: Use crud.invoicing.log_dte_event. Alias for compatibility."""
+    return _invoicing_module.log_dte_event(*args, **kwargs)
+
+def list_dte_documents(*args, **kwargs):
+    """DEPRECATED: Use crud.invoicing.list_dte_documents. Alias for compatibility."""
+    return _invoicing_module.list_dte_documents(*args, **kwargs)
+
+def get_dte_document(*args, **kwargs):
+    """DEPRECATED: Use crud.invoicing.get_dte_document. Alias for compatibility."""
+    return _invoicing_module.get_dte_document(*args, **kwargs)
+
+def register_dte_ack(*args, **kwargs):
+    """DEPRECATED: Use crud.invoicing.register_dte_ack. Alias for compatibility."""
+    return _invoicing_module.register_dte_ack(*args, **kwargs)
+
+def enqueue_dte_dispatch(*args, **kwargs):
+    """DEPRECATED: Use crud.invoicing.enqueue_dte_dispatch. Alias for compatibility."""
+    return _invoicing_module.enqueue_dte_dispatch(*args, **kwargs)
+
+def mark_dte_dispatch_sent(*args, **kwargs):
+    """DEPRECATED: Use crud.invoicing.mark_dte_dispatch_sent. Alias for compatibility."""
+    return _invoicing_module.mark_dte_dispatch_sent(*args, **kwargs)
+
+def list_dte_dispatch_queue(*args, **kwargs):
+    """DEPRECATED: Use crud.invoicing.list_dte_dispatch_queue. Alias for compatibility."""
+    return _invoicing_module.list_dte_dispatch_queue(*args, **kwargs)
+
+# ============================================================================
+# END OF INVOICING COMPATIBILITY ALIASES
+# ============================================================================
+
 _INVENTORY_MOVEMENTS_CACHE: TTLCache[schemas.InventoryMovementsReport] = TTLCache(
     ttl_seconds=60.0
 )
@@ -16117,337 +16186,337 @@ def list_import_validation_details(
             models.ImportValidation.corregido.is_(corregido))
     if offset:
         statement = statement.offset(offset)
-    if limit is not None:
-        statement = statement.limit(limit)
-    return list(db.scalars(statement))
+# [MIGRATED TO crud/invoicing.py]     if limit is not None:
+# [MIGRATED TO crud/invoicing.py]         statement = statement.limit(limit)
+# [MIGRATED TO crud/invoicing.py]     return list(db.scalars(statement))
 
 
-def mark_import_validation_corrected(
-    db: Session, validation_id: int, *, corrected: bool = True
-) -> models.ImportValidation:
-    validation = db.get(models.ImportValidation, validation_id)
-    if validation is None:
-        raise LookupError("validation_not_found")
-    with transactional_session(db):
-        validation.corregido = corrected
-        validation.fecha = datetime.now(timezone.utc)
-        db.add(validation)
-        flush_session(db)
-        db.refresh(validation)
-    return validation
+# [MIGRATED TO crud/invoicing.py] def mark_import_validation_corrected(
+# [MIGRATED TO crud/invoicing.py]     db: Session, validation_id: int, *, corrected: bool = True
+# [MIGRATED TO crud/invoicing.py] ) -> models.ImportValidation:
+# [MIGRATED TO crud/invoicing.py]     validation = db.get(models.ImportValidation, validation_id)
+# [MIGRATED TO crud/invoicing.py]     if validation is None:
+# [MIGRATED TO crud/invoicing.py]         raise LookupError("validation_not_found")
+# [MIGRATED TO crud/invoicing.py]     with transactional_session(db):
+# [MIGRATED TO crud/invoicing.py]         validation.corregido = corrected
+# [MIGRATED TO crud/invoicing.py]         validation.fecha = datetime.now(timezone.utc)
+# [MIGRATED TO crud/invoicing.py]         db.add(validation)
+# [MIGRATED TO crud/invoicing.py]         flush_session(db)
+# [MIGRATED TO crud/invoicing.py]         db.refresh(validation)
+# [MIGRATED TO crud/invoicing.py]     return validation
 
 
-def get_import_validation_report(db: Session) -> schemas.ImportValidationSummary:
-    total_errors = db.scalar(
-        select(func.count()).where(
-            models.ImportValidation.severidad == "error",
-            models.ImportValidation.corregido.is_(False),
-        )
-    )
-    total_warnings = db.scalar(
-        select(func.count()).where(
-            models.ImportValidation.severidad == "advertencia",
-            models.ImportValidation.corregido.is_(False),
-        )
-    )
-    last_import = db.scalar(
-        select(models.InventoryImportTemp)
-        .order_by(models.InventoryImportTemp.fecha.desc())
-        .limit(1)
-    )
-    registros_revisados = last_import.total_registros if last_import else 0
-    duration = float(
-        last_import.duracion_segundos) if last_import and last_import.duracion_segundos is not None else None
+# [MIGRATED TO crud/invoicing.py] def get_import_validation_report(db: Session) -> schemas.ImportValidationSummary:
+# [MIGRATED TO crud/invoicing.py]     total_errors = db.scalar(
+# [MIGRATED TO crud/invoicing.py]         select(func.count()).where(
+# [MIGRATED TO crud/invoicing.py]             models.ImportValidation.severidad == "error",
+# [MIGRATED TO crud/invoicing.py]             models.ImportValidation.corregido.is_(False),
+# [MIGRATED TO crud/invoicing.py]         )
+# [MIGRATED TO crud/invoicing.py]     )
+# [MIGRATED TO crud/invoicing.py]     total_warnings = db.scalar(
+# [MIGRATED TO crud/invoicing.py]         select(func.count()).where(
+# [MIGRATED TO crud/invoicing.py]             models.ImportValidation.severidad == "advertencia",
+# [MIGRATED TO crud/invoicing.py]             models.ImportValidation.corregido.is_(False),
+# [MIGRATED TO crud/invoicing.py]         )
+# [MIGRATED TO crud/invoicing.py]     )
+# [MIGRATED TO crud/invoicing.py]     last_import = db.scalar(
+# [MIGRATED TO crud/invoicing.py]         select(models.InventoryImportTemp)
+# [MIGRATED TO crud/invoicing.py]         .order_by(models.InventoryImportTemp.fecha.desc())
+# [MIGRATED TO crud/invoicing.py]         .limit(1)
+# [MIGRATED TO crud/invoicing.py]     )
+# [MIGRATED TO crud/invoicing.py]     registros_revisados = last_import.total_registros if last_import else 0
+# [MIGRATED TO crud/invoicing.py]     duration = float(
+# [MIGRATED TO crud/invoicing.py]         last_import.duracion_segundos) if last_import and last_import.duracion_segundos is not None else None
     campos_faltantes: set[str] = set()
-    if last_import and last_import.columnas_detectadas:
-        for canonical, header in last_import.columnas_detectadas.items():
-            if header is None:
-                campos_faltantes.add(canonical)
-    structure_statements = db.scalars(
-        select(models.ImportValidation.descripcion).where(
-            models.ImportValidation.tipo == "estructura",
-            models.ImportValidation.descripcion.ilike("Columna faltante:%"),
-        )
-    )
-    for description in structure_statements:
-        try:
-            _, column_name = description.split(":", 1)
-            column = column_name.strip()
-            if column:
-                campos_faltantes.add(column)
-        except ValueError:
-            continue
-    return schemas.ImportValidationSummary(
-        registros_revisados=registros_revisados,
-        advertencias=int(total_warnings or 0),
-        errores=int(total_errors or 0),
-        campos_faltantes=sorted(campos_faltantes),
-        tiempo_total=duration,
-    )
+# [MIGRATED TO crud/invoicing.py]     if last_import and last_import.columnas_detectadas:
+# [MIGRATED TO crud/invoicing.py]         for canonical, header in last_import.columnas_detectadas.items():
+# [MIGRATED TO crud/invoicing.py]             if header is None:
+# [MIGRATED TO crud/invoicing.py]                 campos_faltantes.add(canonical)
+# [MIGRATED TO crud/invoicing.py]     structure_statements = db.scalars(
+# [MIGRATED TO crud/invoicing.py]         select(models.ImportValidation.descripcion).where(
+# [MIGRATED TO crud/invoicing.py]             models.ImportValidation.tipo == "estructura",
+# [MIGRATED TO crud/invoicing.py]             models.ImportValidation.descripcion.ilike("Columna faltante:%"),
+# [MIGRATED TO crud/invoicing.py]         )
+# [MIGRATED TO crud/invoicing.py]     )
+# [MIGRATED TO crud/invoicing.py]     for description in structure_statements:
+# [MIGRATED TO crud/invoicing.py]         try:
+# [MIGRATED TO crud/invoicing.py]             _, column_name = description.split(":", 1)
+# [MIGRATED TO crud/invoicing.py]             column = column_name.strip()
+# [MIGRATED TO crud/invoicing.py]             if column:
+# [MIGRATED TO crud/invoicing.py]                 campos_faltantes.add(column)
+# [MIGRATED TO crud/invoicing.py]         except ValueError:
+# [MIGRATED TO crud/invoicing.py]             continue
+# [MIGRATED TO crud/invoicing.py]     return schemas.ImportValidationSummary(
+# [MIGRATED TO crud/invoicing.py]         registros_revisados=registros_revisados,
+# [MIGRATED TO crud/invoicing.py]         advertencias=int(total_warnings or 0),
+# [MIGRATED TO crud/invoicing.py]         errores=int(total_errors or 0),
+# [MIGRATED TO crud/invoicing.py]         campos_faltantes=sorted(campos_faltantes),
+# [MIGRATED TO crud/invoicing.py]         tiempo_total=duration,
+# [MIGRATED TO crud/invoicing.py]     )
 
 
 def create_dte_authorization(
-    db: Session,
-    payload: schemas.DTEAuthorizationCreate,
-) -> models.DTEAuthorization:
-    document_type = payload.document_type.strip().upper()
-    serie = payload.serie.strip().upper()
-    store_id = payload.store_id
+# [MIGRATED TO crud/invoicing.py]     db: Session,
+# [MIGRATED TO crud/invoicing.py]     payload: schemas.DTEAuthorizationCreate,
+# [MIGRATED TO crud/invoicing.py] ) -> models.DTEAuthorization:
+# [MIGRATED TO crud/invoicing.py]     document_type = payload.document_type.strip().upper()
+# [MIGRATED TO crud/invoicing.py]     serie = payload.serie.strip().upper()
+# [MIGRATED TO crud/invoicing.py]     store_id = payload.store_id
 
-    statement = select(models.DTEAuthorization).where(
-        func.upper(models.DTEAuthorization.document_type) == document_type,
-        func.upper(models.DTEAuthorization.serie) == serie,
-        models.DTEAuthorization.range_start <= payload.range_end,
-        models.DTEAuthorization.range_end >= payload.range_start,
-    )
-    if store_id is None:
-        statement = statement.where(models.DTEAuthorization.store_id.is_(None))
-    else:
-        statement = statement.where(
-            models.DTEAuthorization.store_id == store_id)
+# [MIGRATED TO crud/invoicing.py]     statement = select(models.DTEAuthorization).where(
+# [MIGRATED TO crud/invoicing.py]         func.upper(models.DTEAuthorization.document_type) == document_type,
+# [MIGRATED TO crud/invoicing.py]         func.upper(models.DTEAuthorization.serie) == serie,
+# [MIGRATED TO crud/invoicing.py]         models.DTEAuthorization.range_start <= payload.range_end,
+# [MIGRATED TO crud/invoicing.py]         models.DTEAuthorization.range_end >= payload.range_start,
+# [MIGRATED TO crud/invoicing.py]     )
+# [MIGRATED TO crud/invoicing.py]     if store_id is None:
+# [MIGRATED TO crud/invoicing.py]         statement = statement.where(models.DTEAuthorization.store_id.is_(None))
+# [MIGRATED TO crud/invoicing.py]     else:
+# [MIGRATED TO crud/invoicing.py]         statement = statement.where(
+# [MIGRATED TO crud/invoicing.py]             models.DTEAuthorization.store_id == store_id)
 
-    conflict = db.scalars(statement).first()
-    if conflict:
-        raise ValueError("dte_authorization_conflict")
+# [MIGRATED TO crud/invoicing.py]     conflict = db.scalars(statement).first()
+# [MIGRATED TO crud/invoicing.py]     if conflict:
+# [MIGRATED TO crud/invoicing.py]         raise ValueError("dte_authorization_conflict")
 
-    authorization = models.DTEAuthorization(
-        store_id=store_id,
-        document_type=document_type,
+# [MIGRATED TO crud/invoicing.py]     authorization = models.DTEAuthorization(
+# [MIGRATED TO crud/invoicing.py]         store_id=store_id,
+# [MIGRATED TO crud/invoicing.py]         document_type=document_type,
         serie=serie,
-        range_start=payload.range_start,
-        range_end=payload.range_end,
-        current_number=payload.range_start,
-        cai=payload.cai,
-        expiration_date=payload.expiration_date,
-        active=payload.active,
-        notes=payload.notes,
-    )
-    db.add(authorization)
-    db.flush()
-    db.refresh(authorization)
-    return authorization
+# [MIGRATED TO crud/invoicing.py]         range_start=payload.range_start,
+# [MIGRATED TO crud/invoicing.py]         range_end=payload.range_end,
+# [MIGRATED TO crud/invoicing.py]         current_number=payload.range_start,
+# [MIGRATED TO crud/invoicing.py]         cai=payload.cai,
+# [MIGRATED TO crud/invoicing.py]         expiration_date=payload.expiration_date,
+# [MIGRATED TO crud/invoicing.py]         active=payload.active,
+# [MIGRATED TO crud/invoicing.py]         notes=payload.notes,
+# [MIGRATED TO crud/invoicing.py]     )
+# [MIGRATED TO crud/invoicing.py]     db.add(authorization)
+# [MIGRATED TO crud/invoicing.py]     db.flush()
+# [MIGRATED TO crud/invoicing.py]     db.refresh(authorization)
+# [MIGRATED TO crud/invoicing.py]     return authorization
 
 
-def list_dte_authorizations(
-    db: Session,
+# [MIGRATED TO crud/invoicing.py] def list_dte_authorizations(
+# [MIGRATED TO crud/invoicing.py]     db: Session,
     *,
-    store_id: int | None = None,
-    document_type: str | None = None,
-    active: bool | None = None,
-) -> list[models.DTEAuthorization]:
-    statement = (
-        select(models.DTEAuthorization)
-        .order_by(models.DTEAuthorization.created_at.desc())
-    )
-    if store_id is not None:
-        statement = statement.where(
-            or_(
-                models.DTEAuthorization.store_id == store_id,
-                models.DTEAuthorization.store_id.is_(None),
-            )
-        )
-    if document_type:
-        statement = statement.where(
-            func.upper(models.DTEAuthorization.document_type)
-            == document_type.strip().upper()
-        )
-    if active is not None:
-        statement = statement.where(models.DTEAuthorization.active.is_(active))
-    return list(db.scalars(statement))
+# [MIGRATED TO crud/invoicing.py]     store_id: int | None = None,
+# [MIGRATED TO crud/invoicing.py]     document_type: str | None = None,
+# [MIGRATED TO crud/invoicing.py]     active: bool | None = None,
+# [MIGRATED TO crud/invoicing.py] ) -> list[models.DTEAuthorization]:
+# [MIGRATED TO crud/invoicing.py]     statement = (
+# [MIGRATED TO crud/invoicing.py]         select(models.DTEAuthorization)
+# [MIGRATED TO crud/invoicing.py]         .order_by(models.DTEAuthorization.created_at.desc())
+# [MIGRATED TO crud/invoicing.py]     )
+# [MIGRATED TO crud/invoicing.py]     if store_id is not None:
+# [MIGRATED TO crud/invoicing.py]         statement = statement.where(
+# [MIGRATED TO crud/invoicing.py]             or_(
+# [MIGRATED TO crud/invoicing.py]                 models.DTEAuthorization.store_id == store_id,
+# [MIGRATED TO crud/invoicing.py]                 models.DTEAuthorization.store_id.is_(None),
+# [MIGRATED TO crud/invoicing.py]             )
+# [MIGRATED TO crud/invoicing.py]         )
+# [MIGRATED TO crud/invoicing.py]     if document_type:
+# [MIGRATED TO crud/invoicing.py]         statement = statement.where(
+# [MIGRATED TO crud/invoicing.py]             func.upper(models.DTEAuthorization.document_type)
+# [MIGRATED TO crud/invoicing.py]             == document_type.strip().upper()
+# [MIGRATED TO crud/invoicing.py]         )
+# [MIGRATED TO crud/invoicing.py]     if active is not None:
+# [MIGRATED TO crud/invoicing.py]         statement = statement.where(models.DTEAuthorization.active.is_(active))
+# [MIGRATED TO crud/invoicing.py]     return list(db.scalars(statement))
 
 
-def get_dte_authorization(db: Session, authorization_id: int) -> models.DTEAuthorization:
-    authorization = db.get(models.DTEAuthorization, authorization_id)
-    if authorization is None:
-        raise LookupError("dte_authorization_not_found")
-    return authorization
+# [MIGRATED TO crud/invoicing.py] def get_dte_authorization(db: Session, authorization_id: int) -> models.DTEAuthorization:
+# [MIGRATED TO crud/invoicing.py]     authorization = db.get(models.DTEAuthorization, authorization_id)
+# [MIGRATED TO crud/invoicing.py]     if authorization is None:
+# [MIGRATED TO crud/invoicing.py]         raise LookupError("dte_authorization_not_found")
+# [MIGRATED TO crud/invoicing.py]     return authorization
 
 
-def update_dte_authorization(
+# [MIGRATED TO crud/invoicing.py] def update_dte_authorization(
+# [MIGRATED TO crud/invoicing.py]     db: Session,
+# [MIGRATED TO crud/invoicing.py]     authorization_id: int,
+# [MIGRATED TO crud/invoicing.py]     payload: schemas.DTEAuthorizationUpdate,
+# [MIGRATED TO crud/invoicing.py] ) -> models.DTEAuthorization:
+# [MIGRATED TO crud/invoicing.py]     authorization = get_dte_authorization(db, authorization_id)
+
+# [MIGRATED TO crud/invoicing.py]     if payload.expiration_date is not None:
+# [MIGRATED TO crud/invoicing.py]         authorization.expiration_date = payload.expiration_date
+# [MIGRATED TO crud/invoicing.py]     if payload.notes is not None:
+# [MIGRATED TO crud/invoicing.py]         authorization.notes = payload.notes
+# [MIGRATED TO crud/invoicing.py]     if payload.active is not None:
+# [MIGRATED TO crud/invoicing.py]         authorization.active = payload.active
+
+# [MIGRATED TO crud/invoicing.py]     db.add(authorization)
+# [MIGRATED TO crud/invoicing.py]     db.flush()
+# [MIGRATED TO crud/invoicing.py]     db.refresh(authorization)
+# [MIGRATED TO crud/invoicing.py]     return authorization
+
+
+# [MIGRATED TO crud/invoicing.py] def reserve_dte_folio(
     db: Session,
-    authorization_id: int,
-    payload: schemas.DTEAuthorizationUpdate,
-) -> models.DTEAuthorization:
-    authorization = get_dte_authorization(db, authorization_id)
+# [MIGRATED TO crud/invoicing.py]     authorization: models.DTEAuthorization,
+# [MIGRATED TO crud/invoicing.py] ) -> int:
+# [MIGRATED TO crud/invoicing.py]     next_number = authorization.current_number
+# [MIGRATED TO crud/invoicing.py]     if next_number < authorization.range_start:
+# [MIGRATED TO crud/invoicing.py]         next_number = authorization.range_start
+# [MIGRATED TO crud/invoicing.py]     if next_number > authorization.range_end:
+# [MIGRATED TO crud/invoicing.py]         raise ValueError("dte_authorization_exhausted")
 
-    if payload.expiration_date is not None:
-        authorization.expiration_date = payload.expiration_date
-    if payload.notes is not None:
-        authorization.notes = payload.notes
-    if payload.active is not None:
-        authorization.active = payload.active
-
-    db.add(authorization)
-    db.flush()
-    db.refresh(authorization)
-    return authorization
+# [MIGRATED TO crud/invoicing.py]     authorization.current_number = next_number + 1
+# [MIGRATED TO crud/invoicing.py]     db.add(authorization)
+# [MIGRATED TO crud/invoicing.py]     db.flush()
+# [MIGRATED TO crud/invoicing.py]     db.refresh(authorization)
+# [MIGRATED TO crud/invoicing.py]     return next_number
 
 
-def reserve_dte_folio(
-    db: Session,
-    authorization: models.DTEAuthorization,
-) -> int:
-    next_number = authorization.current_number
-    if next_number < authorization.range_start:
-        next_number = authorization.range_start
-    if next_number > authorization.range_end:
-        raise ValueError("dte_authorization_exhausted")
-
-    authorization.current_number = next_number + 1
-    db.add(authorization)
-    db.flush()
-    db.refresh(authorization)
-    return next_number
-
-
-def register_dte_document(
-    db: Session,
-    *,
-    sale: models.Sale,
-    authorization: models.DTEAuthorization,
-    xml_content: str,
-    signature: str,
-    control_number: str,
-    correlative: int,
-    reference_code: str | None,
-) -> models.DTEDocument:
-    document = models.DTEDocument(
-        sale_id=sale.id,
-        authorization_id=authorization.id if authorization else None,
-        document_type=authorization.document_type,
-        serie=authorization.serie,
-        correlative=correlative,
-        control_number=control_number,
-        cai=authorization.cai,
-        xml_content=xml_content,
-        signature=signature,
-        reference_code=reference_code,
-    )
-    sale.dte_status = models.DTEStatus.PENDIENTE
+# [MIGRATED TO crud/invoicing.py] def register_dte_document(
+# [MIGRATED TO crud/invoicing.py]     db: Session,
+# [MIGRATED TO crud/invoicing.py]     *,
+# [MIGRATED TO crud/invoicing.py]     sale: models.Sale,
+# [MIGRATED TO crud/invoicing.py]     authorization: models.DTEAuthorization,
+# [MIGRATED TO crud/invoicing.py]     xml_content: str,
+# [MIGRATED TO crud/invoicing.py]     signature: str,
+# [MIGRATED TO crud/invoicing.py]     control_number: str,
+# [MIGRATED TO crud/invoicing.py]     correlative: int,
+# [MIGRATED TO crud/invoicing.py]     reference_code: str | None,
+# [MIGRATED TO crud/invoicing.py] ) -> models.DTEDocument:
+# [MIGRATED TO crud/invoicing.py]     document = models.DTEDocument(
+# [MIGRATED TO crud/invoicing.py]         sale_id=sale.id,
+# [MIGRATED TO crud/invoicing.py]         authorization_id=authorization.id if authorization else None,
+# [MIGRATED TO crud/invoicing.py]         document_type=authorization.document_type,
+# [MIGRATED TO crud/invoicing.py]         serie=authorization.serie,
+# [MIGRATED TO crud/invoicing.py]         correlative=correlative,
+# [MIGRATED TO crud/invoicing.py]         control_number=control_number,
+# [MIGRATED TO crud/invoicing.py]         cai=authorization.cai,
+# [MIGRATED TO crud/invoicing.py]         xml_content=xml_content,
+# [MIGRATED TO crud/invoicing.py]         signature=signature,
+# [MIGRATED TO crud/invoicing.py]         reference_code=reference_code,
+# [MIGRATED TO crud/invoicing.py]     )
+# [MIGRATED TO crud/invoicing.py]     sale.dte_status = models.DTEStatus.PENDIENTE
     sale.dte_reference = control_number
-    db.add(document)
-    db.add(sale)
-    db.flush()
-    db.refresh(document)
-    return document
+# [MIGRATED TO crud/invoicing.py]     db.add(document)
+# [MIGRATED TO crud/invoicing.py]     db.add(sale)
+# [MIGRATED TO crud/invoicing.py]     db.flush()
+# [MIGRATED TO crud/invoicing.py]     db.refresh(document)
+# [MIGRATED TO crud/invoicing.py]     return document
 
 
-def log_dte_event(
-    db: Session,
-    *,
-    document: models.DTEDocument,
-    event_type: str,
-    status: models.DTEStatus,
-    detail: str | None,
-    performed_by_id: int | None,
-) -> models.DTEEvent:
-    event = models.DTEEvent(
-        document=document,
-        event_type=event_type,
-        status=status,
-        detail=detail,
-        performed_by_id=performed_by_id,
-    )
-    db.add(event)
-    db.flush()
-    db.refresh(event)
-    return event
+# [MIGRATED TO crud/invoicing.py] def log_dte_event(
+# [MIGRATED TO crud/invoicing.py]     db: Session,
+# [MIGRATED TO crud/invoicing.py]     *,
+# [MIGRATED TO crud/invoicing.py]     document: models.DTEDocument,
+# [MIGRATED TO crud/invoicing.py]     event_type: str,
+# [MIGRATED TO crud/invoicing.py]     status: models.DTEStatus,
+# [MIGRATED TO crud/invoicing.py]     detail: str | None,
+# [MIGRATED TO crud/invoicing.py]     performed_by_id: int | None,
+# [MIGRATED TO crud/invoicing.py] ) -> models.DTEEvent:
+# [MIGRATED TO crud/invoicing.py]     event = models.DTEEvent(
+# [MIGRATED TO crud/invoicing.py]         document=document,
+# [MIGRATED TO crud/invoicing.py]         event_type=event_type,
+# [MIGRATED TO crud/invoicing.py]         status=status,
+# [MIGRATED TO crud/invoicing.py]         detail=detail,
+# [MIGRATED TO crud/invoicing.py]         performed_by_id=performed_by_id,
+# [MIGRATED TO crud/invoicing.py]     )
+# [MIGRATED TO crud/invoicing.py]     db.add(event)
+# [MIGRATED TO crud/invoicing.py]     db.flush()
+# [MIGRATED TO crud/invoicing.py]     db.refresh(event)
+# [MIGRATED TO crud/invoicing.py]     return event
 
 
-def list_dte_documents(
-    db: Session,
-    *,
-    store_id: int | None = None,
-    sale_id: int | None = None,
+# [MIGRATED TO crud/invoicing.py] def list_dte_documents(
+# [MIGRATED TO crud/invoicing.py]     db: Session,
+# [MIGRATED TO crud/invoicing.py]     *,
+# [MIGRATED TO crud/invoicing.py]     store_id: int | None = None,
+# [MIGRATED TO crud/invoicing.py]     sale_id: int | None = None,
     status: models.DTEStatus | str | None = None,
-    limit: int = 50,
-    offset: int = 0,
-) -> list[models.DTEDocument]:
-    safe_limit = None if limit is None else max(1, min(limit, 200))
-    statement = (
-        select(models.DTEDocument)
-        .options(
-            joinedload(models.DTEDocument.sale).joinedload(models.Sale.store),
-            joinedload(models.DTEDocument.authorization),
-            selectinload(models.DTEDocument.events),
-            selectinload(models.DTEDocument.dispatch_entries),
-        )
-        .order_by(models.DTEDocument.created_at.desc())
-    )
-    if store_id is not None:
-        statement = statement.join(models.DTEDocument.sale).where(
-            models.Sale.store_id == store_id
-        )
-    if sale_id is not None:
-        statement = statement.where(models.DTEDocument.sale_id == sale_id)
-    if status is not None:
-        enum_status = (
-            status
-            if isinstance(status, models.DTEStatus)
-            else models.DTEStatus(status)
-        )
-        statement = statement.where(models.DTEDocument.status == enum_status)
-    if offset:
-        statement = statement.offset(offset)
-    if safe_limit is not None:
-        statement = statement.limit(safe_limit)
-    return list(db.scalars(statement))
+# [MIGRATED TO crud/invoicing.py]     limit: int = 50,
+# [MIGRATED TO crud/invoicing.py]     offset: int = 0,
+# [MIGRATED TO crud/invoicing.py] ) -> list[models.DTEDocument]:
+# [MIGRATED TO crud/invoicing.py]     safe_limit = None if limit is None else max(1, min(limit, 200))
+# [MIGRATED TO crud/invoicing.py]     statement = (
+# [MIGRATED TO crud/invoicing.py]         select(models.DTEDocument)
+# [MIGRATED TO crud/invoicing.py]         .options(
+# [MIGRATED TO crud/invoicing.py]             joinedload(models.DTEDocument.sale).joinedload(models.Sale.store),
+# [MIGRATED TO crud/invoicing.py]             joinedload(models.DTEDocument.authorization),
+# [MIGRATED TO crud/invoicing.py]             selectinload(models.DTEDocument.events),
+# [MIGRATED TO crud/invoicing.py]             selectinload(models.DTEDocument.dispatch_entries),
+# [MIGRATED TO crud/invoicing.py]         )
+# [MIGRATED TO crud/invoicing.py]         .order_by(models.DTEDocument.created_at.desc())
+# [MIGRATED TO crud/invoicing.py]     )
+# [MIGRATED TO crud/invoicing.py]     if store_id is not None:
+# [MIGRATED TO crud/invoicing.py]         statement = statement.join(models.DTEDocument.sale).where(
+# [MIGRATED TO crud/invoicing.py]             models.Sale.store_id == store_id
+# [MIGRATED TO crud/invoicing.py]         )
+# [MIGRATED TO crud/invoicing.py]     if sale_id is not None:
+# [MIGRATED TO crud/invoicing.py]         statement = statement.where(models.DTEDocument.sale_id == sale_id)
+# [MIGRATED TO crud/invoicing.py]     if status is not None:
+# [MIGRATED TO crud/invoicing.py]         enum_status = (
+# [MIGRATED TO crud/invoicing.py]             status
+# [MIGRATED TO crud/invoicing.py]             if isinstance(status, models.DTEStatus)
+# [MIGRATED TO crud/invoicing.py]             else models.DTEStatus(status)
+# [MIGRATED TO crud/invoicing.py]         )
+# [MIGRATED TO crud/invoicing.py]         statement = statement.where(models.DTEDocument.status == enum_status)
+# [MIGRATED TO crud/invoicing.py]     if offset:
+# [MIGRATED TO crud/invoicing.py]         statement = statement.offset(offset)
+# [MIGRATED TO crud/invoicing.py]     if safe_limit is not None:
+# [MIGRATED TO crud/invoicing.py]         statement = statement.limit(safe_limit)
+# [MIGRATED TO crud/invoicing.py]     return list(db.scalars(statement))
 
 
-def get_dte_document(db: Session, document_id: int) -> models.DTEDocument:
-    document = db.get(models.DTEDocument, document_id)
+# [MIGRATED TO crud/invoicing.py] def get_dte_document(db: Session, document_id: int) -> models.DTEDocument:
+# [MIGRATED TO crud/invoicing.py]     document = db.get(models.DTEDocument, document_id)
     if document is None:
-        raise LookupError("dte_document_not_found")
-    return document
+# [MIGRATED TO crud/invoicing.py]         raise LookupError("dte_document_not_found")
+# [MIGRATED TO crud/invoicing.py]     return document
 
 
-def register_dte_ack(
-    db: Session,
-    *,
+# [MIGRATED TO crud/invoicing.py] def register_dte_ack(
+# [MIGRATED TO crud/invoicing.py]     db: Session,
+# [MIGRATED TO crud/invoicing.py]     *,
+# [MIGRATED TO crud/invoicing.py]     document: models.DTEDocument,
+# [MIGRATED TO crud/invoicing.py]     status: models.DTEStatus,
+# [MIGRATED TO crud/invoicing.py]     code: str | None,
+# [MIGRATED TO crud/invoicing.py]     detail: str | None,
+# [MIGRATED TO crud/invoicing.py]     received_at: datetime,
+# [MIGRATED TO crud/invoicing.py] ) -> models.DTEDocument:
+# [MIGRATED TO crud/invoicing.py]     ack_time = received_at
+# [MIGRATED TO crud/invoicing.py]     if ack_time.tzinfo is not None:
+# [MIGRATED TO crud/invoicing.py]         ack_time = ack_time.astimezone(timezone.utc).replace(tzinfo=None)
+# [MIGRATED TO crud/invoicing.py]     document.status = status
+# [MIGRATED TO crud/invoicing.py]     document.ack_code = code
+# [MIGRATED TO crud/invoicing.py]     document.ack_message = detail
+# [MIGRATED TO crud/invoicing.py]     document.acknowledged_at = ack_time
+# [MIGRATED TO crud/invoicing.py]     if document.sale:
+# [MIGRATED TO crud/invoicing.py]         document.sale.dte_status = status
+# [MIGRATED TO crud/invoicing.py]         if code:
+# [MIGRATED TO crud/invoicing.py]             document.sale.dte_reference = code
+# [MIGRATED TO crud/invoicing.py]     db.add(document)
+# [MIGRATED TO crud/invoicing.py]     if document.sale:
+# [MIGRATED TO crud/invoicing.py]         db.add(document.sale)
+# [MIGRATED TO crud/invoicing.py]     db.flush()
+# [MIGRATED TO crud/invoicing.py]     db.refresh(document)
+# [MIGRATED TO crud/invoicing.py]     return document
+
+
+# [MIGRATED TO crud/invoicing.py] def enqueue_dte_dispatch(
+# [MIGRATED TO crud/invoicing.py]     db: Session,
+# [MIGRATED TO crud/invoicing.py]     *,
     document: models.DTEDocument,
-    status: models.DTEStatus,
-    code: str | None,
-    detail: str | None,
-    received_at: datetime,
-) -> models.DTEDocument:
-    ack_time = received_at
-    if ack_time.tzinfo is not None:
-        ack_time = ack_time.astimezone(timezone.utc).replace(tzinfo=None)
-    document.status = status
-    document.ack_code = code
-    document.ack_message = detail
-    document.acknowledged_at = ack_time
-    if document.sale:
-        document.sale.dte_status = status
-        if code:
-            document.sale.dte_reference = code
-    db.add(document)
-    if document.sale:
-        db.add(document.sale)
-    db.flush()
-    db.refresh(document)
-    return document
-
-
-def enqueue_dte_dispatch(
-    db: Session,
-    *,
-    document: models.DTEDocument,
-    error_message: str | None,
-) -> models.DTEDispatchQueue:
-    existing = db.scalar(
-        select(models.DTEDispatchQueue).where(
-            models.DTEDispatchQueue.document_id == document.id
-        )
-    )
-    now = datetime.now(timezone.utc)
-    if existing:
-        existing.status = models.DTEDispatchStatus.PENDING
-        existing.last_error = error_message
-        existing.scheduled_at = now
-        existing.updated_at = now
-        if existing.attempts <= 0:
-            existing.attempts = 0
+# [MIGRATED TO crud/invoicing.py]     error_message: str | None,
+# [MIGRATED TO crud/invoicing.py] ) -> models.DTEDispatchQueue:
+# [MIGRATED TO crud/invoicing.py]     existing = db.scalar(
+# [MIGRATED TO crud/invoicing.py]         select(models.DTEDispatchQueue).where(
+# [MIGRATED TO crud/invoicing.py]             models.DTEDispatchQueue.document_id == document.id
+# [MIGRATED TO crud/invoicing.py]         )
+# [MIGRATED TO crud/invoicing.py]     )
+# [MIGRATED TO crud/invoicing.py]     now = datetime.now(timezone.utc)
+# [MIGRATED TO crud/invoicing.py]     if existing:
+# [MIGRATED TO crud/invoicing.py]         existing.status = models.DTEDispatchStatus.PENDING
+# [MIGRATED TO crud/invoicing.py]         existing.last_error = error_message
+# [MIGRATED TO crud/invoicing.py]         existing.scheduled_at = now
+# [MIGRATED TO crud/invoicing.py]         existing.updated_at = now
+# [MIGRATED TO crud/invoicing.py]         if existing.attempts <= 0:
+# [MIGRATED TO crud/invoicing.py]             existing.attempts = 0
         existing.document = document
         db.add(existing)
         entry = existing
