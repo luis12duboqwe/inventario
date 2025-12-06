@@ -1544,3 +1544,30 @@ def register_inventory_movement(
         reference_type=reference_type,
         reference_id=reference_id,
     )
+
+
+__all__ = [
+    "build_inventory_snapshot",
+    "compute_inventory_metrics",
+    "count_inventory_import_history",
+    "create_inventory_import_record",
+    "create_inventory_movement",
+    "create_reservation",
+    "expire_reservations",
+    "get_inventory_current_report",
+    "get_inventory_integrity_report",
+    "get_inventory_movements_report",
+    "get_inventory_reservation",
+    "get_inventory_value_report",
+    "get_known_import_column_patterns",
+    "get_top_selling_products",
+    "invalidate_inventory_movements_cache",
+    "list_devices_below_minimum_thresholds",
+    "list_import_validations",
+    "list_inventory_import_history",
+    "list_inventory_reservations",
+    "list_inventory_summary",
+    "register_inventory_movement",
+    "release_reservation",
+    "renew_reservation",
+]

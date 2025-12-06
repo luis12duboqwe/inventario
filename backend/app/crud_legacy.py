@@ -51,6 +51,7 @@ from .services.sales import consume_supplier_batch
 from .services.inventory import calculate_inventory_valuation
 from .crud.audit import _attach_last_audit_trails, log_audit_event as _log_action, get_last_audit_entries
 from .crud.customers import _validate_customer_credit
+from .crud.loyalty import apply_loyalty_for_sale
 from backend.app.crud.users import (
     get_user,
     get_user_by_username,
@@ -15093,6 +15094,22 @@ def get_pos_config(db: Session, store_id: int) -> models.POSConfig:
     else:
         config.hardware_settings = normalized_hardware
     return config
+
+
+def _pos_config_payload(config: models.POSConfig) -> dict[str, Any]:
+    """Serializa la configuración POS para sincronización."""
+    return {
+        "id": config.id,
+        "store_id": config.store_id,
+        "invoice_prefix": config.invoice_prefix,
+        "receipt_header": config.receipt_header,
+        "receipt_footer": config.receipt_footer,
+        "printer_name": config.printer_name,
+        "hardware_settings": config.hardware_settings,
+        "promotions_config": config.promotions_config,
+        "tax_rate": float(config.tax_rate) if config.tax_rate else 0.0,
+        "auto_print": config.auto_print,
+    }
 
 
 def update_pos_config(

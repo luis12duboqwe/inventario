@@ -75,6 +75,19 @@ def trigger_sync(
         logger.exception(
             f"No fue posible completar la sincronización manual: {exc}"
         )
+        # Registrar el error antes de re-lanzar la excepción
+        session = crud.record_sync_session(
+            db,
+            store_id=store_id,
+            mode=models.SyncMode.MANUAL,
+            status=status,
+            triggered_by_id=current_user.id if current_user else None,
+            error_message=error_message,
+            processed_events=processed_events,
+            differences_detected=differences_count,
+        )
+        # Re-lanzar la excepción original para que el error handler la procese
+        raise
 
     session = crud.record_sync_session(
         db,
@@ -86,9 +99,6 @@ def trigger_sync(
         processed_events=processed_events,
         differences_detected=differences_count,
     )
-    if status is models.SyncStatus.FAILED:
-        raise HTTPException(
-            status_code=500, detail="No fue posible completar la sincronización")
     return session
 
 

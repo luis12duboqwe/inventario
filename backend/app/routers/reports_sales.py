@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime
 from io import StringIO
 from typing import Any, Dict, List, Optional
@@ -15,6 +16,8 @@ from ..config import settings
 # Si existen helpers en crud, podemos usarlos; de lo contrario devolvemos forma vacía válida.
 from .. import crud
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(
     prefix="/reports/sales",
     tags=["ventas"],
@@ -28,6 +31,8 @@ def _parse_date(d: Optional[str]) -> date:
     try:
         return datetime.strptime(d, "%Y-%m-%d").date()
     except Exception:
+        # NOTA: Captura amplia intencional. Cualquier error en parsing (ValueError,
+        # TypeError, etc.) se transforma en error HTTP 400 para validación de entrada.
         raise HTTPException(
             status_code=400, detail="Formato de fecha inválido, use YYYY-MM-DD")
 
@@ -82,9 +87,15 @@ def get_daily_sales(
                 target_date=target_date, store_id=store_id, payment_method=payment_method)
             if isinstance(data, dict):
                 payload.update(data)
-    except Exception:
-        # No rompemos el endpoint si hay problemas internos
-        pass
+    except Exception as exc:
+        # NOTA: Captura amplia intencional. Este endpoint debe devolver datos base
+        # incluso si la función de sumatorias falla (DB, permisos, datos corruptos).
+        # Garantiza que el UI siempre reciba estructura válida para reportes diarios.
+        logger.warning(
+            f"Error al obtener datos reales de ventas diarias: {exc}",
+            exc_info=True,
+            extra={"date": target_date, "store_id": store_id, "payment_method": payment_method}
+        )
 
     audit_event(None, 'view', 'reports.sales.daily', None, {
         'date': payload['date'],
@@ -151,7 +162,15 @@ def export_daily_sales_csv(
                 rows = [row]
         else:
             rows = [row]
-    except Exception:
+    except Exception as exc:
+        # NOTA: Captura amplia intencional. Exportación CSV debe completar
+        # incluso si el procesamiento de datos agregados falla. Fallback a fila básica
+        # garantiza que el usuario pueda descargar al menos los datos mínimos.
+        logger.warning(
+            f"Error al procesar datos para exportación CSV de ventas: {exc}",
+            exc_info=True,
+            extra={"date": target_date, "store_id": store_id}
+        )
         rows = [row]
 
     sio = StringIO()

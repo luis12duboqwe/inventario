@@ -1371,3 +1371,28 @@ def _fetch_purchase_records(
         record.items = items_list
 
     return results
+
+
+__all__ = [
+    "cancel_purchase_order",
+    "compute_purchase_suggestions",
+    "count_purchase_orders",
+    "count_purchase_records",
+    "count_purchase_vendors",
+    "create_purchase_order",
+    "create_purchase_order_from_suggestion",
+    "create_purchase_record",
+    "create_purchase_vendor",
+    "export_purchase_vendors_csv",
+    "get_purchase_order",
+    "get_purchase_statistics",
+    "get_purchase_vendor",
+    "list_purchase_orders",
+    "list_purchase_records",
+    "list_purchase_records_for_report",
+    "list_purchase_vendors",
+    "list_vendor_purchase_history",
+    "receive_purchase_order",
+    "set_purchase_vendor_status",
+    "update_purchase_vendor",
+]

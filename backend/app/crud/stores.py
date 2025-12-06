@@ -300,3 +300,16 @@ def recalculate_store_inventory_value(
     db.add(store_obj)
     flush_session(db)
     return normalized_total
+
+
+__all__ = [
+    "count_stores",
+    "create_store",
+    "ensure_store_by_name",
+    "get_store",
+    "get_store_by_name",
+    "list_stores",
+    "recalculate_store_inventory_value",
+    "soft_delete_store",
+    "update_store",
+]
