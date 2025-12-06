@@ -163,6 +163,79 @@ from .utils.payload_serializers import (
 
 logger = core_logger.bind(component=__name__)
 
+# ============================================================================
+# COMPATIBILITY ALIASES - POS Module Migration (Fase 2, Incremento 1)
+# ============================================================================
+# These aliases maintain backward compatibility after migrating POS functions
+# to backend/app/crud/pos.py. They will be removed in a future PR after
+# validation in production.
+#
+# Migration date: 2025-12-06
+# Target removal: After 30 days of production validation
+# ============================================================================
+
+from .crud import pos as _pos_module
+
+def resolve_device_for_pos(*args, **kwargs):
+    """DEPRECATED: Use crud.pos.resolve_device_for_pos. Alias for compatibility."""
+    return _pos_module.resolve_device_for_pos(*args, **kwargs)
+
+def get_cash_session(*args, **kwargs):
+    """DEPRECATED: Use crud.pos.get_cash_session. Alias for compatibility."""
+    return _pos_module.get_cash_session(*args, **kwargs)
+
+def get_open_cash_session(*args, **kwargs):
+    """DEPRECATED: Use crud.pos.get_open_cash_session. Alias for compatibility."""
+    return _pos_module.get_open_cash_session(*args, **kwargs)
+
+def get_last_cash_session_for_store(*args, **kwargs):
+    """DEPRECATED: Use crud.pos.get_last_cash_session_for_store. Alias for compatibility."""
+    return _pos_module.get_last_cash_session_for_store(*args, **kwargs)
+
+def paginate_cash_sessions(*args, **kwargs):
+    """DEPRECATED: Use crud.pos.paginate_cash_sessions. Alias for compatibility."""
+    return _pos_module.paginate_cash_sessions(*args, **kwargs)
+
+def open_cash_session(*args, **kwargs):
+    """DEPRECATED: Use crud.pos.open_cash_session. Alias for compatibility."""
+    return _pos_module.open_cash_session(*args, **kwargs)
+
+def close_cash_session(*args, **kwargs):
+    """DEPRECATED: Use crud.pos.close_cash_session. Alias for compatibility."""
+    return _pos_module.close_cash_session(*args, **kwargs)
+
+def get_pos_config(*args, **kwargs):
+    """DEPRECATED: Use crud.pos.get_pos_config. Alias for compatibility."""
+    return _pos_module.get_pos_config(*args, **kwargs)
+
+def update_pos_config(*args, **kwargs):
+    """DEPRECATED: Use crud.pos.update_pos_config. Alias for compatibility."""
+    return _pos_module.update_pos_config(*args, **kwargs)
+
+def get_pos_promotions(*args, **kwargs):
+    """DEPRECATED: Use crud.pos.get_pos_promotions. Alias for compatibility."""
+    return _pos_module.get_pos_promotions(*args, **kwargs)
+
+def update_pos_promotions(*args, **kwargs):
+    """DEPRECATED: Use crud.pos.update_pos_promotions. Alias for compatibility."""
+    return _pos_module.update_pos_promotions(*args, **kwargs)
+
+def save_pos_draft(*args, **kwargs):
+    """DEPRECATED: Use crud.pos.save_pos_draft. Alias for compatibility."""
+    return _pos_module.save_pos_draft(*args, **kwargs)
+
+def delete_pos_draft(*args, **kwargs):
+    """DEPRECATED: Use crud.pos.delete_pos_draft. Alias for compatibility."""
+    return _pos_module.delete_pos_draft(*args, **kwargs)
+
+def register_pos_sale(*args, **kwargs):
+    """DEPRECATED: Use crud.pos.register_pos_sale. Alias for compatibility."""
+    return _pos_module.register_pos_sale(*args, **kwargs)
+
+# ============================================================================
+# END OF POS COMPATIBILITY ALIASES
+# ============================================================================
+
 _INVENTORY_MOVEMENTS_CACHE: TTLCache[schemas.InventoryMovementsReport] = TTLCache(
     ttl_seconds=60.0
 )
@@ -3879,44 +3952,44 @@ def resolve_price_for_device(
     get_device_global(db, device_id)
     effective_date = reference_date or date.today()
 
-    validity_condition = and_(
-        or_(models.PriceList.valid_from.is_(None),
-            models.PriceList.valid_from <= effective_date),
-        or_(models.PriceList.valid_until.is_(None),
-            models.PriceList.valid_until >= effective_date),
-    )
+# [MIGRATED TO crud/pos.py]     validity_condition = and_(
+# [MIGRATED TO crud/pos.py]         or_(models.PriceList.valid_from.is_(None),
+# [MIGRATED TO crud/pos.py]             models.PriceList.valid_from <= effective_date),
+# [MIGRATED TO crud/pos.py]         or_(models.PriceList.valid_until.is_(None),
+# [MIGRATED TO crud/pos.py]             models.PriceList.valid_until >= effective_date),
+# [MIGRATED TO crud/pos.py]     )
 
-    statement = (
-        select(models.PriceListItem, models.PriceList)
-        .join(models.PriceList, models.PriceListItem.price_list_id == models.PriceList.id)
-        .where(models.PriceListItem.device_id == device_id)
-        .where(models.PriceListItem.is_deleted.is_(False))
-        .where(models.PriceList.is_active.is_(True))
-        .where(models.PriceList.is_deleted.is_(False))
-        .where(validity_condition)
-    )
+# [MIGRATED TO crud/pos.py]     statement = (
+# [MIGRATED TO crud/pos.py]         select(models.PriceListItem, models.PriceList)
+# [MIGRATED TO crud/pos.py]         .join(models.PriceList, models.PriceListItem.price_list_id == models.PriceList.id)
+# [MIGRATED TO crud/pos.py]         .where(models.PriceListItem.device_id == device_id)
+# [MIGRATED TO crud/pos.py]         .where(models.PriceListItem.is_deleted.is_(False))
+# [MIGRATED TO crud/pos.py]         .where(models.PriceList.is_active.is_(True))
+# [MIGRATED TO crud/pos.py]         .where(models.PriceList.is_deleted.is_(False))
+# [MIGRATED TO crud/pos.py]         .where(validity_condition)
+# [MIGRATED TO crud/pos.py]     )
 
-    results = db.execute(statement).all()
+# [MIGRATED TO crud/pos.py]     results = db.execute(statement).all()
 
-    def _priority(price_list: models.PriceList) -> int:
-        if (
-            store_id is not None
-            and customer_id is not None
-            and price_list.store_id == store_id
-            and price_list.customer_id == customer_id
-        ):
-            return 1
-        if (
-            customer_id is not None
-            and price_list.customer_id == customer_id
-            and price_list.store_id is None
-        ):
-            return 2
-        if (
-            store_id is not None
-            and price_list.store_id == store_id
-            and price_list.customer_id is None
-        ):
+# [MIGRATED TO crud/pos.py]     def _priority(price_list: models.PriceList) -> int:
+# [MIGRATED TO crud/pos.py]         if (
+# [MIGRATED TO crud/pos.py]             store_id is not None
+# [MIGRATED TO crud/pos.py]             and customer_id is not None
+# [MIGRATED TO crud/pos.py]             and price_list.store_id == store_id
+# [MIGRATED TO crud/pos.py]             and price_list.customer_id == customer_id
+# [MIGRATED TO crud/pos.py]         ):
+# [MIGRATED TO crud/pos.py]             return 1
+# [MIGRATED TO crud/pos.py]         if (
+# [MIGRATED TO crud/pos.py]             customer_id is not None
+# [MIGRATED TO crud/pos.py]             and price_list.customer_id == customer_id
+# [MIGRATED TO crud/pos.py]             and price_list.store_id is None
+# [MIGRATED TO crud/pos.py]         ):
+# [MIGRATED TO crud/pos.py]             return 2
+# [MIGRATED TO crud/pos.py]         if (
+# [MIGRATED TO crud/pos.py]             store_id is not None
+# [MIGRATED TO crud/pos.py]             and price_list.store_id == store_id
+# [MIGRATED TO crud/pos.py]             and price_list.customer_id is None
+# [MIGRATED TO crud/pos.py]         ):
             return 3
         if price_list.store_id is None and price_list.customer_id is None:
             return 4
@@ -14690,238 +14763,238 @@ def list_operations_history(
         .options(
             joinedload(models.Sale.store),
             joinedload(models.Sale.performed_by),
-        )
-        .where(
-            models.Sale.created_at >= start_dt,
-            models.Sale.created_at <= end_dt,
-        )
-    )
-    if store_id is not None:
-        sale_stmt = sale_stmt.where(models.Sale.store_id == store_id)
-    for sale in db.scalars(sale_stmt).unique():
-        if technician_id is not None and sale.performed_by_id != technician_id:
-            continue
-        register_technician(sale.performed_by)
-        records.append(
-            schemas.OperationHistoryEntry(
-                id=f"sale-{sale.id}",
-                operation_type=schemas.OperationHistoryType.SALE,
-                occurred_at=sale.created_at,
-                store_id=sale.store_id,
-                store_name=sale.store.name if sale.store else None,
-                technician_id=sale.performed_by_id,
-                technician_name=user_display_name(sale.performed_by),
-                reference=f"VNT-{sale.id}",
-                description="Venta registrada en POS",
-                amount=to_decimal(sale.total_amount),
-            )
-        )
+# [MIGRATED TO crud/pos.py]         )
+# [MIGRATED TO crud/pos.py]         .where(
+# [MIGRATED TO crud/pos.py]             models.Sale.created_at >= start_dt,
+# [MIGRATED TO crud/pos.py]             models.Sale.created_at <= end_dt,
+# [MIGRATED TO crud/pos.py]         )
+# [MIGRATED TO crud/pos.py]     )
+# [MIGRATED TO crud/pos.py]     if store_id is not None:
+# [MIGRATED TO crud/pos.py]         sale_stmt = sale_stmt.where(models.Sale.store_id == store_id)
+# [MIGRATED TO crud/pos.py]     for sale in db.scalars(sale_stmt).unique():
+# [MIGRATED TO crud/pos.py]         if technician_id is not None and sale.performed_by_id != technician_id:
+# [MIGRATED TO crud/pos.py]             continue
+# [MIGRATED TO crud/pos.py]         register_technician(sale.performed_by)
+# [MIGRATED TO crud/pos.py]         records.append(
+# [MIGRATED TO crud/pos.py]             schemas.OperationHistoryEntry(
+# [MIGRATED TO crud/pos.py]                 id=f"sale-{sale.id}",
+# [MIGRATED TO crud/pos.py]                 operation_type=schemas.OperationHistoryType.SALE,
+# [MIGRATED TO crud/pos.py]                 occurred_at=sale.created_at,
+# [MIGRATED TO crud/pos.py]                 store_id=sale.store_id,
+# [MIGRATED TO crud/pos.py]                 store_name=sale.store.name if sale.store else None,
+# [MIGRATED TO crud/pos.py]                 technician_id=sale.performed_by_id,
+# [MIGRATED TO crud/pos.py]                 technician_name=user_display_name(sale.performed_by),
+# [MIGRATED TO crud/pos.py]                 reference=f"VNT-{sale.id}",
+# [MIGRATED TO crud/pos.py]                 description="Venta registrada en POS",
+# [MIGRATED TO crud/pos.py]                 amount=to_decimal(sale.total_amount),
+# [MIGRATED TO crud/pos.py]             )
+# [MIGRATED TO crud/pos.py]         )
 
-    records.sort(key=lambda entry: entry.occurred_at, reverse=True)
-    paginated_records = records[offset:] if offset else records[:]
-    if limit is not None:
-        paginated_records = paginated_records[:limit]
+# [MIGRATED TO crud/pos.py]     records.sort(key=lambda entry: entry.occurred_at, reverse=True)
+# [MIGRATED TO crud/pos.py]     paginated_records = records[offset:] if offset else records[:]
+# [MIGRATED TO crud/pos.py]     if limit is not None:
+# [MIGRATED TO crud/pos.py]         paginated_records = paginated_records[:limit]
 
-    technician_ids = {
-        entry.technician_id
-        for entry in paginated_records
-        if entry.technician_id is not None and entry.technician_id in technicians
-    }
-    technicians_list = [
-        schemas.OperationHistoryTechnician(
-            id=tech_id, name=technicians[tech_id])
-        for tech_id in sorted(technician_ids, key=lambda ident: technicians[ident].lower())
-    ]
+# [MIGRATED TO crud/pos.py]     technician_ids = {
+# [MIGRATED TO crud/pos.py]         entry.technician_id
+# [MIGRATED TO crud/pos.py]         for entry in paginated_records
+# [MIGRATED TO crud/pos.py]         if entry.technician_id is not None and entry.technician_id in technicians
+# [MIGRATED TO crud/pos.py]     }
+# [MIGRATED TO crud/pos.py]     technicians_list = [
+# [MIGRATED TO crud/pos.py]         schemas.OperationHistoryTechnician(
+# [MIGRATED TO crud/pos.py]             id=tech_id, name=technicians[tech_id])
+# [MIGRATED TO crud/pos.py]         for tech_id in sorted(technician_ids, key=lambda ident: technicians[ident].lower())
+# [MIGRATED TO crud/pos.py]     ]
 
-    return schemas.OperationsHistoryResponse(
-        records=paginated_records,
-        technicians=technicians_list,
-    )
-
-
-def list_cash_sessions(
-    db: Session,
-    *,
-    store_id: int,
-    limit: int = 50,
-    offset: int = 0,
-) -> list[models.CashRegisterSession]:
-    statement = (
-        select(models.CashRegisterSession)
-        .where(models.CashRegisterSession.store_id == store_id)
-        .order_by(models.CashRegisterSession.opened_at.desc())
-        .offset(offset)
-        .limit(limit)
-    )
-    return list(db.scalars(statement).unique())
+# [MIGRATED TO crud/pos.py]     return schemas.OperationsHistoryResponse(
+# [MIGRATED TO crud/pos.py]         records=paginated_records,
+# [MIGRATED TO crud/pos.py]         technicians=technicians_list,
+# [MIGRATED TO crud/pos.py]     )
 
 
-def count_cash_sessions(db: Session, *, store_id: int) -> int:
-    statement = select(func.count()).select_from(models.CashRegisterSession).where(
-        models.CashRegisterSession.store_id == store_id
-    )
-    return int(db.scalar(statement) or 0)
+# [MIGRATED TO crud/pos.py] def list_cash_sessions(
+# [MIGRATED TO crud/pos.py]     db: Session,
+# [MIGRATED TO crud/pos.py]     *,
+# [MIGRATED TO crud/pos.py]     store_id: int,
+# [MIGRATED TO crud/pos.py]     limit: int = 50,
+# [MIGRATED TO crud/pos.py]     offset: int = 0,
+# [MIGRATED TO crud/pos.py] ) -> list[models.CashRegisterSession]:
+# [MIGRATED TO crud/pos.py]     statement = (
+# [MIGRATED TO crud/pos.py]         select(models.CashRegisterSession)
+# [MIGRATED TO crud/pos.py]         .where(models.CashRegisterSession.store_id == store_id)
+# [MIGRATED TO crud/pos.py]         .order_by(models.CashRegisterSession.opened_at.desc())
+# [MIGRATED TO crud/pos.py]         .offset(offset)
+# [MIGRATED TO crud/pos.py]         .limit(limit)
+# [MIGRATED TO crud/pos.py]     )
+# [MIGRATED TO crud/pos.py]     return list(db.scalars(statement).unique())
 
 
-def get_cash_session(db: Session, session_id: int) -> models.CashRegisterSession:
-    statement = select(models.CashRegisterSession).where(
-        models.CashRegisterSession.id == session_id)
-    try:
-        return db.scalars(statement).one()
-    except NoResultFound as exc:
-        raise LookupError("cash_session_not_found") from exc
+# [MIGRATED TO crud/pos.py] def count_cash_sessions(db: Session, *, store_id: int) -> int:
+# [MIGRATED TO crud/pos.py]     statement = select(func.count()).select_from(models.CashRegisterSession).where(
+# [MIGRATED TO crud/pos.py]         models.CashRegisterSession.store_id == store_id
+# [MIGRATED TO crud/pos.py]     )
+# [MIGRATED TO crud/pos.py]     return int(db.scalar(statement) or 0)
 
 
-def get_open_cash_session(db: Session, *, store_id: int) -> models.CashRegisterSession:
-    statement = (
-        select(models.CashRegisterSession)
-        .where(
-            models.CashRegisterSession.store_id == store_id,
-            models.CashRegisterSession.status == models.CashSessionStatus.ABIERTO,
-        )
-        .order_by(models.CashRegisterSession.opened_at.desc())
-    )
-    session = db.scalars(statement).first()
-    if session is None:
-        raise LookupError("cash_session_not_found")
-    return session
+# [MIGRATED TO crud/pos.py] def get_cash_session(db: Session, session_id: int) -> models.CashRegisterSession:
+# [MIGRATED TO crud/pos.py]     statement = select(models.CashRegisterSession).where(
+# [MIGRATED TO crud/pos.py]         models.CashRegisterSession.id == session_id)
+# [MIGRATED TO crud/pos.py]     try:
+# [MIGRATED TO crud/pos.py]         return db.scalars(statement).one()
+# [MIGRATED TO crud/pos.py]     except NoResultFound as exc:
+# [MIGRATED TO crud/pos.py]         raise LookupError("cash_session_not_found") from exc
 
 
-# // [PACK34-lookup]
-def get_last_cash_session_for_store(
-    db: Session, *, store_id: int
-) -> models.CashRegisterSession:
-    statement = (
-        select(models.CashRegisterSession)
-        .where(models.CashRegisterSession.store_id == store_id)
-        .order_by(models.CashRegisterSession.opened_at.desc())
-    )
-    session = db.scalars(statement).first()
-    if session is None:
-        raise LookupError("cash_session_not_found")
-    return session
+# [MIGRATED TO crud/pos.py] def get_open_cash_session(db: Session, *, store_id: int) -> models.CashRegisterSession:
+# [MIGRATED TO crud/pos.py]     statement = (
+# [MIGRATED TO crud/pos.py]         select(models.CashRegisterSession)
+# [MIGRATED TO crud/pos.py]         .where(
+# [MIGRATED TO crud/pos.py]             models.CashRegisterSession.store_id == store_id,
+# [MIGRATED TO crud/pos.py]             models.CashRegisterSession.status == models.CashSessionStatus.ABIERTO,
+# [MIGRATED TO crud/pos.py]         )
+# [MIGRATED TO crud/pos.py]         .order_by(models.CashRegisterSession.opened_at.desc())
+# [MIGRATED TO crud/pos.py]     )
+# [MIGRATED TO crud/pos.py]     session = db.scalars(statement).first()
+# [MIGRATED TO crud/pos.py]     if session is None:
+# [MIGRATED TO crud/pos.py]         raise LookupError("cash_session_not_found")
+# [MIGRATED TO crud/pos.py]     return session
 
 
-def paginate_cash_sessions(
-    db: Session,
-    *,
-    store_id: int,
-    page: int,
-    size: int,
-) -> tuple[int, list[models.CashRegisterSession]]:
-    total = count_cash_sessions(db, store_id=store_id)
-    offset = max(page - 1, 0) * size
-    sessions = list_cash_sessions(
-        db, store_id=store_id, limit=size, offset=offset)
-    return total, sessions
+# [MIGRATED TO crud/pos.py] # // [PACK34-lookup]
+# [MIGRATED TO crud/pos.py] def get_last_cash_session_for_store(
+# [MIGRATED TO crud/pos.py]     db: Session, *, store_id: int
+# [MIGRATED TO crud/pos.py] ) -> models.CashRegisterSession:
+# [MIGRATED TO crud/pos.py]     statement = (
+# [MIGRATED TO crud/pos.py]         select(models.CashRegisterSession)
+# [MIGRATED TO crud/pos.py]         .where(models.CashRegisterSession.store_id == store_id)
+# [MIGRATED TO crud/pos.py]         .order_by(models.CashRegisterSession.opened_at.desc())
+# [MIGRATED TO crud/pos.py]     )
+# [MIGRATED TO crud/pos.py]     session = db.scalars(statement).first()
+# [MIGRATED TO crud/pos.py]     if session is None:
+# [MIGRATED TO crud/pos.py]         raise LookupError("cash_session_not_found")
+# [MIGRATED TO crud/pos.py]     return session
 
 
-def open_cash_session(
-    db: Session,
-    payload: schemas.CashSessionOpenRequest,
-    *,
-    opened_by_id: int | None,
-    reason: str | None = None,
-) -> models.CashRegisterSession:
-    get_store(db, payload.store_id)
-    statement = select(models.CashRegisterSession).where(
-        models.CashRegisterSession.store_id == payload.store_id,
-        models.CashRegisterSession.status == models.CashSessionStatus.ABIERTO,
-    )
-    if db.scalars(statement).first() is not None:
-        raise ValueError("cash_session_already_open")
-
-    opening_amount = to_decimal(payload.opening_amount).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-    session = models.CashRegisterSession(
-        store_id=payload.store_id,
-        status=models.CashSessionStatus.ABIERTO,
-        opening_amount=opening_amount,
-        closing_amount=Decimal("0"),
-        expected_amount=opening_amount,
-        difference_amount=Decimal("0"),
-        payment_breakdown={},
-        notes=payload.notes,
-        opened_by_id=opened_by_id,
-    )
-    with transactional_session(db):
-        db.add(session)
-        flush_session(db)
-        db.refresh(session)
-
-        _log_action(
-            db,
-            action="cash_session_opened",
-            entity_type="cash_session",
-            entity_id=str(session.id),
-            performed_by_id=opened_by_id,
-            details=json.dumps(
-                {"store_id": session.store_id, "reason": reason}),
-        )
-        flush_session(db)
-        db.refresh(session)
-    return session
+# [MIGRATED TO crud/pos.py] def paginate_cash_sessions(
+# [MIGRATED TO crud/pos.py]     db: Session,
+# [MIGRATED TO crud/pos.py]     *,
+# [MIGRATED TO crud/pos.py]     store_id: int,
+# [MIGRATED TO crud/pos.py]     page: int,
+# [MIGRATED TO crud/pos.py]     size: int,
+# [MIGRATED TO crud/pos.py] ) -> tuple[int, list[models.CashRegisterSession]]:
+# [MIGRATED TO crud/pos.py]     total = count_cash_sessions(db, store_id=store_id)
+# [MIGRATED TO crud/pos.py]     offset = max(page - 1, 0) * size
+# [MIGRATED TO crud/pos.py]     sessions = list_cash_sessions(
+# [MIGRATED TO crud/pos.py]         db, store_id=store_id, limit=size, offset=offset)
+# [MIGRATED TO crud/pos.py]     return total, sessions
 
 
-def _cash_entries_totals(
-    db: Session,
-    *,
-    session_id: int,
-) -> tuple[Decimal, Decimal]:
-    """Resume los ingresos y egresos registrados en la sesión."""
+# [MIGRATED TO crud/pos.py] def open_cash_session(
+# [MIGRATED TO crud/pos.py]     db: Session,
+# [MIGRATED TO crud/pos.py]     payload: schemas.CashSessionOpenRequest,
+# [MIGRATED TO crud/pos.py]     *,
+# [MIGRATED TO crud/pos.py]     opened_by_id: int | None,
+# [MIGRATED TO crud/pos.py]     reason: str | None = None,
+# [MIGRATED TO crud/pos.py] ) -> models.CashRegisterSession:
+# [MIGRATED TO crud/pos.py]     get_store(db, payload.store_id)
+# [MIGRATED TO crud/pos.py]     statement = select(models.CashRegisterSession).where(
+# [MIGRATED TO crud/pos.py]         models.CashRegisterSession.store_id == payload.store_id,
+# [MIGRATED TO crud/pos.py]         models.CashRegisterSession.status == models.CashSessionStatus.ABIERTO,
+# [MIGRATED TO crud/pos.py]     )
+# [MIGRATED TO crud/pos.py]     if db.scalars(statement).first() is not None:
+# [MIGRATED TO crud/pos.py]         raise ValueError("cash_session_already_open")
 
-    entries_stmt = (
-        select(
-            models.CashRegisterEntry.entry_type,
-            func.coalesce(func.sum(models.CashRegisterEntry.amount), 0),
-        )
-        .where(models.CashRegisterEntry.session_id == session_id)
-        .group_by(models.CashRegisterEntry.entry_type)
-    )
-    incomes = Decimal("0")
-    expenses = Decimal("0")
-    for entry_type, total in db.execute(entries_stmt):
-        normalized_total = to_decimal(total).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
-        if entry_type == models.CashEntryType.INGRESO:
-            incomes = normalized_total
-        elif entry_type == models.CashEntryType.EGRESO:
-            expenses = normalized_total
-    return incomes, expenses
+# [MIGRATED TO crud/pos.py]     opening_amount = to_decimal(payload.opening_amount).quantize(
+# [MIGRATED TO crud/pos.py]         Decimal("0.01"), rounding=ROUND_HALF_UP
+# [MIGRATED TO crud/pos.py]     )
+# [MIGRATED TO crud/pos.py]     session = models.CashRegisterSession(
+# [MIGRATED TO crud/pos.py]         store_id=payload.store_id,
+# [MIGRATED TO crud/pos.py]         status=models.CashSessionStatus.ABIERTO,
+# [MIGRATED TO crud/pos.py]         opening_amount=opening_amount,
+# [MIGRATED TO crud/pos.py]         closing_amount=Decimal("0"),
+# [MIGRATED TO crud/pos.py]         expected_amount=opening_amount,
+# [MIGRATED TO crud/pos.py]         difference_amount=Decimal("0"),
+# [MIGRATED TO crud/pos.py]         payment_breakdown={},
+# [MIGRATED TO crud/pos.py]         notes=payload.notes,
+# [MIGRATED TO crud/pos.py]         opened_by_id=opened_by_id,
+# [MIGRATED TO crud/pos.py]     )
+# [MIGRATED TO crud/pos.py]     with transactional_session(db):
+# [MIGRATED TO crud/pos.py]         db.add(session)
+# [MIGRATED TO crud/pos.py]         flush_session(db)
+# [MIGRATED TO crud/pos.py]         db.refresh(session)
+
+# [MIGRATED TO crud/pos.py]         _log_action(
+# [MIGRATED TO crud/pos.py]             db,
+# [MIGRATED TO crud/pos.py]             action="cash_session_opened",
+# [MIGRATED TO crud/pos.py]             entity_type="cash_session",
+# [MIGRATED TO crud/pos.py]             entity_id=str(session.id),
+# [MIGRATED TO crud/pos.py]             performed_by_id=opened_by_id,
+# [MIGRATED TO crud/pos.py]             details=json.dumps(
+# [MIGRATED TO crud/pos.py]                 {"store_id": session.store_id, "reason": reason}),
+# [MIGRATED TO crud/pos.py]         )
+# [MIGRATED TO crud/pos.py]         flush_session(db)
+# [MIGRATED TO crud/pos.py]         db.refresh(session)
+# [MIGRATED TO crud/pos.py]     return session
 
 
-def close_cash_session(
-    db: Session,
-    payload: schemas.CashSessionCloseRequest,
-    *,
-    closed_by_id: int | None,
-    reason: str | None = None,
-) -> models.CashRegisterSession:
-    session = get_cash_session(db, payload.session_id)
-    if session.status != models.CashSessionStatus.ABIERTO:
-        raise ValueError("cash_session_not_open")
+# [MIGRATED TO crud/pos.py] def _cash_entries_totals(
+# [MIGRATED TO crud/pos.py]     db: Session,
+# [MIGRATED TO crud/pos.py]     *,
+# [MIGRATED TO crud/pos.py]     session_id: int,
+# [MIGRATED TO crud/pos.py] ) -> tuple[Decimal, Decimal]:
+# [MIGRATED TO crud/pos.py]     """Resume los ingresos y egresos registrados en la sesión."""
 
-    sales_totals: dict[str, Decimal] = {}
-    totals_stmt = (
-        select(models.Sale.payment_method, func.sum(models.Sale.total_amount))
-        .where(models.Sale.cash_session_id == session.id)
-        .group_by(models.Sale.payment_method)
-    )
-    for method, total in db.execute(totals_stmt):
-        totals_value = to_decimal(total).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP)
-        sales_totals[method.value] = totals_value
+# [MIGRATED TO crud/pos.py]     entries_stmt = (
+# [MIGRATED TO crud/pos.py]         select(
+# [MIGRATED TO crud/pos.py]             models.CashRegisterEntry.entry_type,
+# [MIGRATED TO crud/pos.py]             func.coalesce(func.sum(models.CashRegisterEntry.amount), 0),
+# [MIGRATED TO crud/pos.py]         )
+# [MIGRATED TO crud/pos.py]         .where(models.CashRegisterEntry.session_id == session_id)
+# [MIGRATED TO crud/pos.py]         .group_by(models.CashRegisterEntry.entry_type)
+# [MIGRATED TO crud/pos.py]     )
+# [MIGRATED TO crud/pos.py]     incomes = Decimal("0")
+# [MIGRATED TO crud/pos.py]     expenses = Decimal("0")
+# [MIGRATED TO crud/pos.py]     for entry_type, total in db.execute(entries_stmt):
+# [MIGRATED TO crud/pos.py]         normalized_total = to_decimal(total).quantize(
+# [MIGRATED TO crud/pos.py]             Decimal("0.01"), rounding=ROUND_HALF_UP
+# [MIGRATED TO crud/pos.py]         )
+# [MIGRATED TO crud/pos.py]         if entry_type == models.CashEntryType.INGRESO:
+# [MIGRATED TO crud/pos.py]             incomes = normalized_total
+# [MIGRATED TO crud/pos.py]         elif entry_type == models.CashEntryType.EGRESO:
+# [MIGRATED TO crud/pos.py]             expenses = normalized_total
+# [MIGRATED TO crud/pos.py]     return incomes, expenses
 
-    session.closing_amount = to_decimal(payload.closing_amount).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-    session.closed_by_id = closed_by_id
-    session.closed_at = datetime.now(timezone.utc)
-    session.status = models.CashSessionStatus.CERRADO
-    breakdown_snapshot = dict(session.payment_breakdown or {})
-    for key, value in sales_totals.items():
+
+# [MIGRATED TO crud/pos.py] def close_cash_session(
+# [MIGRATED TO crud/pos.py]     db: Session,
+# [MIGRATED TO crud/pos.py]     payload: schemas.CashSessionCloseRequest,
+# [MIGRATED TO crud/pos.py]     *,
+# [MIGRATED TO crud/pos.py]     closed_by_id: int | None,
+# [MIGRATED TO crud/pos.py]     reason: str | None = None,
+# [MIGRATED TO crud/pos.py] ) -> models.CashRegisterSession:
+# [MIGRATED TO crud/pos.py]     session = get_cash_session(db, payload.session_id)
+# [MIGRATED TO crud/pos.py]     if session.status != models.CashSessionStatus.ABIERTO:
+# [MIGRATED TO crud/pos.py]         raise ValueError("cash_session_not_open")
+
+# [MIGRATED TO crud/pos.py]     sales_totals: dict[str, Decimal] = {}
+# [MIGRATED TO crud/pos.py]     totals_stmt = (
+# [MIGRATED TO crud/pos.py]         select(models.Sale.payment_method, func.sum(models.Sale.total_amount))
+# [MIGRATED TO crud/pos.py]         .where(models.Sale.cash_session_id == session.id)
+# [MIGRATED TO crud/pos.py]         .group_by(models.Sale.payment_method)
+# [MIGRATED TO crud/pos.py]     )
+# [MIGRATED TO crud/pos.py]     for method, total in db.execute(totals_stmt):
+# [MIGRATED TO crud/pos.py]         totals_value = to_decimal(total).quantize(
+# [MIGRATED TO crud/pos.py]             Decimal("0.01"), rounding=ROUND_HALF_UP)
+# [MIGRATED TO crud/pos.py]         sales_totals[method.value] = totals_value
+
+# [MIGRATED TO crud/pos.py]     session.closing_amount = to_decimal(payload.closing_amount).quantize(
+# [MIGRATED TO crud/pos.py]         Decimal("0.01"), rounding=ROUND_HALF_UP
+# [MIGRATED TO crud/pos.py]     )
+# [MIGRATED TO crud/pos.py]     session.closed_by_id = closed_by_id
+# [MIGRATED TO crud/pos.py]     session.closed_at = datetime.now(timezone.utc)
+# [MIGRATED TO crud/pos.py]     session.status = models.CashSessionStatus.CERRADO
+# [MIGRATED TO crud/pos.py]     breakdown_snapshot = dict(session.payment_breakdown or {})
+# [MIGRATED TO crud/pos.py]     for key, value in sales_totals.items():
         breakdown_snapshot[key] = float(value)
 
     for method_key, reported_amount in payload.payment_breakdown.items():
@@ -14992,162 +15065,162 @@ def close_cash_session(
         )
         flush_session(db)
         db.refresh(session)
-    return session
+# [MIGRATED TO crud/pos.py]     return session
 
 
-def record_cash_entry(
-    db: Session,
-    payload: schemas.CashRegisterEntryCreate,
-    *,
-    created_by_id: int | None,
-    reason: str | None = None,
-) -> models.CashRegisterEntry:
-    session = get_cash_session(db, payload.session_id)
-    if session.status != models.CashSessionStatus.ABIERTO:
-        raise ValueError("cash_session_not_open")
+# [MIGRATED TO crud/pos.py] def record_cash_entry(
+# [MIGRATED TO crud/pos.py]     db: Session,
+# [MIGRATED TO crud/pos.py]     payload: schemas.CashRegisterEntryCreate,
+# [MIGRATED TO crud/pos.py]     *,
+# [MIGRATED TO crud/pos.py]     created_by_id: int | None,
+# [MIGRATED TO crud/pos.py]     reason: str | None = None,
+# [MIGRATED TO crud/pos.py] ) -> models.CashRegisterEntry:
+# [MIGRATED TO crud/pos.py]     session = get_cash_session(db, payload.session_id)
+# [MIGRATED TO crud/pos.py]     if session.status != models.CashSessionStatus.ABIERTO:
+# [MIGRATED TO crud/pos.py]         raise ValueError("cash_session_not_open")
 
-    amount = to_decimal(payload.amount).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
+# [MIGRATED TO crud/pos.py]     amount = to_decimal(payload.amount).quantize(
+# [MIGRATED TO crud/pos.py]         Decimal("0.01"), rounding=ROUND_HALF_UP
+# [MIGRATED TO crud/pos.py]     )
 
-    entry = models.CashRegisterEntry(
-        session_id=session.id,
-        entry_type=payload.entry_type,
-        amount=amount,
-        reason=payload.reason,
-        notes=payload.notes,
-        created_by_id=created_by_id,
-    )
+# [MIGRATED TO crud/pos.py]     entry = models.CashRegisterEntry(
+# [MIGRATED TO crud/pos.py]         session_id=session.id,
+# [MIGRATED TO crud/pos.py]         entry_type=payload.entry_type,
+# [MIGRATED TO crud/pos.py]         amount=amount,
+# [MIGRATED TO crud/pos.py]         reason=payload.reason,
+# [MIGRATED TO crud/pos.py]         notes=payload.notes,
+# [MIGRATED TO crud/pos.py]         created_by_id=created_by_id,
+# [MIGRATED TO crud/pos.py]     )
 
-    with transactional_session(db):
-        db.add(entry)
+# [MIGRATED TO crud/pos.py]     with transactional_session(db):
+# [MIGRATED TO crud/pos.py]         db.add(entry)
 
-        expected_delta = amount if payload.entry_type == models.CashEntryType.INGRESO else -amount
-        session.expected_amount = (
-            session.expected_amount + expected_delta
-        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        db.add(session)
-        flush_session(db)
-        db.refresh(entry)
-        db.refresh(session)
+# [MIGRATED TO crud/pos.py]         expected_delta = amount if payload.entry_type == models.CashEntryType.INGRESO else -amount
+# [MIGRATED TO crud/pos.py]         session.expected_amount = (
+# [MIGRATED TO crud/pos.py]             session.expected_amount + expected_delta
+# [MIGRATED TO crud/pos.py]         ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+# [MIGRATED TO crud/pos.py]         db.add(session)
+# [MIGRATED TO crud/pos.py]         flush_session(db)
+# [MIGRATED TO crud/pos.py]         db.refresh(entry)
+# [MIGRATED TO crud/pos.py]         db.refresh(session)
 
-        _log_action(
-            db,
-            action="cash_entry_recorded",
-            entity_type="cash_session",
-            entity_id=str(session.id),
-            performed_by_id=created_by_id,
-            details=json.dumps(
-                {
-                    "entry_type": payload.entry_type,
-                    "amount": float(amount),
-                    "reason": payload.reason,
-                    "notes": payload.notes,
-                    "reason_header": reason,
-                }
-            ),
-        )
-        flush_session(db)
-        db.refresh(entry)
-    return entry
-
-
-def list_cash_entries(
-    db: Session,
-    *,
-    session_id: int,
-) -> list[models.CashRegisterEntry]:
-    statement = (
-        select(models.CashRegisterEntry)
-        .where(models.CashRegisterEntry.session_id == session_id)
-        .order_by(models.CashRegisterEntry.created_at.desc())
-    )
-    return list(db.scalars(statement))
+# [MIGRATED TO crud/pos.py]         _log_action(
+# [MIGRATED TO crud/pos.py]             db,
+# [MIGRATED TO crud/pos.py]             action="cash_entry_recorded",
+# [MIGRATED TO crud/pos.py]             entity_type="cash_session",
+# [MIGRATED TO crud/pos.py]             entity_id=str(session.id),
+# [MIGRATED TO crud/pos.py]             performed_by_id=created_by_id,
+# [MIGRATED TO crud/pos.py]             details=json.dumps(
+# [MIGRATED TO crud/pos.py]                 {
+# [MIGRATED TO crud/pos.py]                     "entry_type": payload.entry_type,
+# [MIGRATED TO crud/pos.py]                     "amount": float(amount),
+# [MIGRATED TO crud/pos.py]                     "reason": payload.reason,
+# [MIGRATED TO crud/pos.py]                     "notes": payload.notes,
+# [MIGRATED TO crud/pos.py]                     "reason_header": reason,
+# [MIGRATED TO crud/pos.py]                 }
+# [MIGRATED TO crud/pos.py]             ),
+# [MIGRATED TO crud/pos.py]         )
+# [MIGRATED TO crud/pos.py]         flush_session(db)
+# [MIGRATED TO crud/pos.py]         db.refresh(entry)
+# [MIGRATED TO crud/pos.py]     return entry
 
 
-def get_pos_config(db: Session, store_id: int) -> models.POSConfig:
-    store = get_store(db, store_id)
-    statement = select(models.POSConfig).where(
-        models.POSConfig.store_id == store_id)
-    config = db.scalars(statement).first()
-    if config is None:
-        prefix = store.name[:3].upper() if store.name else "POS"
-        generated_prefix = f"{prefix}-{store_id:03d}"[:12]
-        config = models.POSConfig(
-            store_id=store_id, invoice_prefix=generated_prefix)
-        with transactional_session(db):
-            db.add(config)
-            flush_session(db)
-            db.refresh(config)
-    else:
-        db.refresh(config)
-    normalized_hardware = normalize_hardware_settings(
-        config.hardware_settings if isinstance(
-            config.hardware_settings, dict) else None
-    )
-    if config.hardware_settings != normalized_hardware:
-        with transactional_session(db):
-            config.hardware_settings = normalized_hardware
-            db.add(config)
-            flush_session(db)
-            db.refresh(config)
-    else:
-        config.hardware_settings = normalized_hardware
-    return config
+# [MIGRATED TO crud/pos.py] def list_cash_entries(
+# [MIGRATED TO crud/pos.py]     db: Session,
+# [MIGRATED TO crud/pos.py]     *,
+# [MIGRATED TO crud/pos.py]     session_id: int,
+# [MIGRATED TO crud/pos.py] ) -> list[models.CashRegisterEntry]:
+# [MIGRATED TO crud/pos.py]     statement = (
+# [MIGRATED TO crud/pos.py]         select(models.CashRegisterEntry)
+# [MIGRATED TO crud/pos.py]         .where(models.CashRegisterEntry.session_id == session_id)
+# [MIGRATED TO crud/pos.py]         .order_by(models.CashRegisterEntry.created_at.desc())
+# [MIGRATED TO crud/pos.py]     )
+# [MIGRATED TO crud/pos.py]     return list(db.scalars(statement))
 
 
-def _pos_config_payload(config: models.POSConfig) -> dict[str, Any]:
-    """Serializa la configuración POS para sincronización."""
-    return {
-        "id": config.id,
-        "store_id": config.store_id,
-        "invoice_prefix": config.invoice_prefix,
-        "receipt_header": config.receipt_header,
-        "receipt_footer": config.receipt_footer,
-        "printer_name": config.printer_name,
-        "hardware_settings": config.hardware_settings,
-        "promotions_config": config.promotions_config,
-        "tax_rate": float(config.tax_rate) if config.tax_rate else 0.0,
-        "auto_print": config.auto_print,
-    }
+# [MIGRATED TO crud/pos.py] def get_pos_config(db: Session, store_id: int) -> models.POSConfig:
+# [MIGRATED TO crud/pos.py]     store = get_store(db, store_id)
+# [MIGRATED TO crud/pos.py]     statement = select(models.POSConfig).where(
+# [MIGRATED TO crud/pos.py]         models.POSConfig.store_id == store_id)
+# [MIGRATED TO crud/pos.py]     config = db.scalars(statement).first()
+# [MIGRATED TO crud/pos.py]     if config is None:
+# [MIGRATED TO crud/pos.py]         prefix = store.name[:3].upper() if store.name else "POS"
+# [MIGRATED TO crud/pos.py]         generated_prefix = f"{prefix}-{store_id:03d}"[:12]
+# [MIGRATED TO crud/pos.py]         config = models.POSConfig(
+# [MIGRATED TO crud/pos.py]             store_id=store_id, invoice_prefix=generated_prefix)
+# [MIGRATED TO crud/pos.py]         with transactional_session(db):
+# [MIGRATED TO crud/pos.py]             db.add(config)
+# [MIGRATED TO crud/pos.py]             flush_session(db)
+# [MIGRATED TO crud/pos.py]             db.refresh(config)
+# [MIGRATED TO crud/pos.py]     else:
+# [MIGRATED TO crud/pos.py]         db.refresh(config)
+# [MIGRATED TO crud/pos.py]     normalized_hardware = normalize_hardware_settings(
+# [MIGRATED TO crud/pos.py]         config.hardware_settings if isinstance(
+# [MIGRATED TO crud/pos.py]             config.hardware_settings, dict) else None
+# [MIGRATED TO crud/pos.py]     )
+# [MIGRATED TO crud/pos.py]     if config.hardware_settings != normalized_hardware:
+# [MIGRATED TO crud/pos.py]         with transactional_session(db):
+# [MIGRATED TO crud/pos.py]             config.hardware_settings = normalized_hardware
+# [MIGRATED TO crud/pos.py]             db.add(config)
+# [MIGRATED TO crud/pos.py]             flush_session(db)
+# [MIGRATED TO crud/pos.py]             db.refresh(config)
+# [MIGRATED TO crud/pos.py]     else:
+# [MIGRATED TO crud/pos.py]         config.hardware_settings = normalized_hardware
+# [MIGRATED TO crud/pos.py]     return config
 
 
-def update_pos_config(
-    db: Session,
-    payload: schemas.POSConfigUpdate,
-    *,
-    updated_by_id: int | None,
-    reason: str | None = None,
-) -> models.POSConfig:
-    config = get_pos_config(db, payload.store_id)
-    with transactional_session(db):
-        config.tax_rate = to_decimal(payload.tax_rate).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
-        config.invoice_prefix = payload.invoice_prefix.strip().upper()
-        config.printer_name = payload.printer_name.strip() if payload.printer_name else None
-        config.printer_profile = (
-            payload.printer_profile.strip() if payload.printer_profile else None
-        )
-        config.quick_product_ids = payload.quick_product_ids
-        if payload.hardware_settings is not None:
-            config.hardware_settings = payload.hardware_settings.model_dump()
-        else:
-            config.hardware_settings = normalize_hardware_settings(
-                config.hardware_settings
-            )
-        # Persistir el tipo de documento por defecto dentro de hardware_settings (no hay columna dedicada)
-        if payload.default_document_type:
-            hw = dict(config.hardware_settings or {})
-            hw["default_document_type"] = payload.default_document_type
-            config.hardware_settings = hw
-        db.add(config)
-        flush_session(db)
-        db.refresh(config)
+# [MIGRATED TO crud/pos.py] def _pos_config_payload(config: models.POSConfig) -> dict[str, Any]:
+# [MIGRATED TO crud/pos.py]     """Serializa la configuración POS para sincronización."""
+# [MIGRATED TO crud/pos.py]     return {
+# [MIGRATED TO crud/pos.py]         "id": config.id,
+# [MIGRATED TO crud/pos.py]         "store_id": config.store_id,
+# [MIGRATED TO crud/pos.py]         "invoice_prefix": config.invoice_prefix,
+# [MIGRATED TO crud/pos.py]         "receipt_header": config.receipt_header,
+# [MIGRATED TO crud/pos.py]         "receipt_footer": config.receipt_footer,
+# [MIGRATED TO crud/pos.py]         "printer_name": config.printer_name,
+# [MIGRATED TO crud/pos.py]         "hardware_settings": config.hardware_settings,
+# [MIGRATED TO crud/pos.py]         "promotions_config": config.promotions_config,
+# [MIGRATED TO crud/pos.py]         "tax_rate": float(config.tax_rate) if config.tax_rate else 0.0,
+# [MIGRATED TO crud/pos.py]         "auto_print": config.auto_print,
+# [MIGRATED TO crud/pos.py]     }
 
-        _log_action(
-            db,
-            action="pos_config_update",
+
+# [MIGRATED TO crud/pos.py] def update_pos_config(
+# [MIGRATED TO crud/pos.py]     db: Session,
+# [MIGRATED TO crud/pos.py]     payload: schemas.POSConfigUpdate,
+# [MIGRATED TO crud/pos.py]     *,
+# [MIGRATED TO crud/pos.py]     updated_by_id: int | None,
+# [MIGRATED TO crud/pos.py]     reason: str | None = None,
+# [MIGRATED TO crud/pos.py] ) -> models.POSConfig:
+# [MIGRATED TO crud/pos.py]     config = get_pos_config(db, payload.store_id)
+# [MIGRATED TO crud/pos.py]     with transactional_session(db):
+# [MIGRATED TO crud/pos.py]         config.tax_rate = to_decimal(payload.tax_rate).quantize(
+# [MIGRATED TO crud/pos.py]             Decimal("0.01"), rounding=ROUND_HALF_UP
+# [MIGRATED TO crud/pos.py]         )
+# [MIGRATED TO crud/pos.py]         config.invoice_prefix = payload.invoice_prefix.strip().upper()
+# [MIGRATED TO crud/pos.py]         config.printer_name = payload.printer_name.strip() if payload.printer_name else None
+# [MIGRATED TO crud/pos.py]         config.printer_profile = (
+# [MIGRATED TO crud/pos.py]             payload.printer_profile.strip() if payload.printer_profile else None
+# [MIGRATED TO crud/pos.py]         )
+# [MIGRATED TO crud/pos.py]         config.quick_product_ids = payload.quick_product_ids
+# [MIGRATED TO crud/pos.py]         if payload.hardware_settings is not None:
+# [MIGRATED TO crud/pos.py]             config.hardware_settings = payload.hardware_settings.model_dump()
+# [MIGRATED TO crud/pos.py]         else:
+# [MIGRATED TO crud/pos.py]             config.hardware_settings = normalize_hardware_settings(
+# [MIGRATED TO crud/pos.py]                 config.hardware_settings
+# [MIGRATED TO crud/pos.py]             )
+# [MIGRATED TO crud/pos.py]         # Persistir el tipo de documento por defecto dentro de hardware_settings (no hay columna dedicada)
+# [MIGRATED TO crud/pos.py]         if payload.default_document_type:
+# [MIGRATED TO crud/pos.py]             hw = dict(config.hardware_settings or {})
+# [MIGRATED TO crud/pos.py]             hw["default_document_type"] = payload.default_document_type
+# [MIGRATED TO crud/pos.py]             config.hardware_settings = hw
+# [MIGRATED TO crud/pos.py]         db.add(config)
+# [MIGRATED TO crud/pos.py]         flush_session(db)
+# [MIGRATED TO crud/pos.py]         db.refresh(config)
+
+# [MIGRATED TO crud/pos.py]         _log_action(
+# [MIGRATED TO crud/pos.py]             db,
+# [MIGRATED TO crud/pos.py]             action="pos_config_update",
             entity_type="store",
             entity_id=str(payload.store_id),
             performed_by_id=updated_by_id,
@@ -15202,362 +15275,362 @@ def update_pos_promotions(
             entity_type="store",
             entity_id=str(payload.store_id),
             performed_by_id=updated_by_id,
-            details=json.dumps({
-                "reason": reason,
-                "volume": normalized.feature_flags.volume,
-                "combos": normalized.feature_flags.combos,
-                "coupons": normalized.feature_flags.coupons,
-            }),
-        )
-        enqueue_sync_outbox(
-            db,
-            entity_type="pos_config",
-            entity_id=str(payload.store_id),
-            operation="UPSERT",
-            payload=_pos_config_payload(config),
-        )
-    db.refresh(config)
-    return _build_pos_promotions_response(config)
+# [MIGRATED TO crud/pos.py]             details=json.dumps({
+# [MIGRATED TO crud/pos.py]                 "reason": reason,
+# [MIGRATED TO crud/pos.py]                 "volume": normalized.feature_flags.volume,
+# [MIGRATED TO crud/pos.py]                 "combos": normalized.feature_flags.combos,
+# [MIGRATED TO crud/pos.py]                 "coupons": normalized.feature_flags.coupons,
+# [MIGRATED TO crud/pos.py]             }),
+# [MIGRATED TO crud/pos.py]         )
+# [MIGRATED TO crud/pos.py]         enqueue_sync_outbox(
+# [MIGRATED TO crud/pos.py]             db,
+# [MIGRATED TO crud/pos.py]             entity_type="pos_config",
+# [MIGRATED TO crud/pos.py]             entity_id=str(payload.store_id),
+# [MIGRATED TO crud/pos.py]             operation="UPSERT",
+# [MIGRATED TO crud/pos.py]             payload=_pos_config_payload(config),
+# [MIGRATED TO crud/pos.py]         )
+# [MIGRATED TO crud/pos.py]     db.refresh(config)
+# [MIGRATED TO crud/pos.py]     return _build_pos_promotions_response(config)
 
 
-# // [PACK34-taxes]
-def list_pos_taxes(db: Session) -> list[schemas.POSTaxInfo]:
-    statement = (
-        select(models.POSConfig.tax_rate,
-               models.POSConfig.store_id, models.Store.name)
-        .join(models.Store, models.Store.id == models.POSConfig.store_id)
-        .order_by(models.POSConfig.tax_rate.desc())
-    )
-    taxes: list[schemas.POSTaxInfo] = []
-    seen_rates: set[str] = set()
-    for tax_rate, store_id, store_name in db.execute(statement):
-        normalized_rate = to_decimal(tax_rate).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
-        rate_key = f"{normalized_rate:.2f}"
-        if rate_key in seen_rates:
-            continue
-        seen_rates.add(rate_key)
-        label = store_name or f"Sucursal #{store_id}"
-        taxes.append(
-            schemas.POSTaxInfo(
-                code=f"POS-{rate_key.replace('.', '')}",
-                name=f"IVA {rate_key}% ({label})",
-                rate=normalized_rate,
-            )
-        )
-    if not taxes:
-        taxes.append(
-            schemas.POSTaxInfo(
-                code="POS-DEFAULT",
-                name="Impuesto estándar",
-                rate=Decimal("0"),
-            )
-        )
-    return taxes
+# [MIGRATED TO crud/pos.py] # // [PACK34-taxes]
+# [MIGRATED TO crud/pos.py] def list_pos_taxes(db: Session) -> list[schemas.POSTaxInfo]:
+# [MIGRATED TO crud/pos.py]     statement = (
+# [MIGRATED TO crud/pos.py]         select(models.POSConfig.tax_rate,
+# [MIGRATED TO crud/pos.py]                models.POSConfig.store_id, models.Store.name)
+# [MIGRATED TO crud/pos.py]         .join(models.Store, models.Store.id == models.POSConfig.store_id)
+# [MIGRATED TO crud/pos.py]         .order_by(models.POSConfig.tax_rate.desc())
+# [MIGRATED TO crud/pos.py]     )
+# [MIGRATED TO crud/pos.py]     taxes: list[schemas.POSTaxInfo] = []
+# [MIGRATED TO crud/pos.py]     seen_rates: set[str] = set()
+# [MIGRATED TO crud/pos.py]     for tax_rate, store_id, store_name in db.execute(statement):
+# [MIGRATED TO crud/pos.py]         normalized_rate = to_decimal(tax_rate).quantize(
+# [MIGRATED TO crud/pos.py]             Decimal("0.01"), rounding=ROUND_HALF_UP
+# [MIGRATED TO crud/pos.py]         )
+# [MIGRATED TO crud/pos.py]         rate_key = f"{normalized_rate:.2f}"
+# [MIGRATED TO crud/pos.py]         if rate_key in seen_rates:
+# [MIGRATED TO crud/pos.py]             continue
+# [MIGRATED TO crud/pos.py]         seen_rates.add(rate_key)
+# [MIGRATED TO crud/pos.py]         label = store_name or f"Sucursal #{store_id}"
+# [MIGRATED TO crud/pos.py]         taxes.append(
+# [MIGRATED TO crud/pos.py]             schemas.POSTaxInfo(
+# [MIGRATED TO crud/pos.py]                 code=f"POS-{rate_key.replace('.', '')}",
+# [MIGRATED TO crud/pos.py]                 name=f"IVA {rate_key}% ({label})",
+# [MIGRATED TO crud/pos.py]                 rate=normalized_rate,
+# [MIGRATED TO crud/pos.py]             )
+# [MIGRATED TO crud/pos.py]         )
+# [MIGRATED TO crud/pos.py]     if not taxes:
+# [MIGRATED TO crud/pos.py]         taxes.append(
+# [MIGRATED TO crud/pos.py]             schemas.POSTaxInfo(
+# [MIGRATED TO crud/pos.py]                 code="POS-DEFAULT",
+# [MIGRATED TO crud/pos.py]                 name="Impuesto estándar",
+# [MIGRATED TO crud/pos.py]                 rate=Decimal("0"),
+# [MIGRATED TO crud/pos.py]             )
+# [MIGRATED TO crud/pos.py]         )
+# [MIGRATED TO crud/pos.py]     return taxes
 
 
-def register_pos_config_access(
-    db: Session,
-    *,
-    store_id: int,
-    performed_by_id: int | None,
-    reason: str,
-) -> None:
-    details = json.dumps({"store_id": store_id, "reason": reason.strip()})
-    _log_action(
-        db,
-        action="pos_config_viewed",
-        entity_type="store",
-        entity_id=str(store_id),
-        performed_by_id=performed_by_id,
-        details=details,
-    )
+# [MIGRATED TO crud/pos.py] def register_pos_config_access(
+# [MIGRATED TO crud/pos.py]     db: Session,
+# [MIGRATED TO crud/pos.py]     *,
+# [MIGRATED TO crud/pos.py]     store_id: int,
+# [MIGRATED TO crud/pos.py]     performed_by_id: int | None,
+# [MIGRATED TO crud/pos.py]     reason: str,
+# [MIGRATED TO crud/pos.py] ) -> None:
+# [MIGRATED TO crud/pos.py]     details = json.dumps({"store_id": store_id, "reason": reason.strip()})
+# [MIGRATED TO crud/pos.py]     _log_action(
+# [MIGRATED TO crud/pos.py]         db,
+# [MIGRATED TO crud/pos.py]         action="pos_config_viewed",
+# [MIGRATED TO crud/pos.py]         entity_type="store",
+# [MIGRATED TO crud/pos.py]         entity_id=str(store_id),
+# [MIGRATED TO crud/pos.py]         performed_by_id=performed_by_id,
+# [MIGRATED TO crud/pos.py]         details=details,
+# [MIGRATED TO crud/pos.py]     )
 
 
-def save_pos_draft(
-    db: Session,
-    payload: schemas.POSSaleRequest,
-    *,
-    saved_by_id: int | None,
-    reason: str | None = None,
-) -> models.POSDraftSale:
-    get_store(db, payload.store_id)
-    draft: models.POSDraftSale
-    if payload.draft_id:
-        statement = select(models.POSDraftSale).where(
-            models.POSDraftSale.id == payload.draft_id)
-        draft = db.scalars(statement).first()
-        if draft is None:
-            raise LookupError("pos_draft_not_found")
-        draft.store_id = payload.store_id
-    else:
-        draft = models.POSDraftSale(store_id=payload.store_id)
-        db.add(draft)
+# [MIGRATED TO crud/pos.py] def save_pos_draft(
+# [MIGRATED TO crud/pos.py]     db: Session,
+# [MIGRATED TO crud/pos.py]     payload: schemas.POSSaleRequest,
+# [MIGRATED TO crud/pos.py]     *,
+# [MIGRATED TO crud/pos.py]     saved_by_id: int | None,
+# [MIGRATED TO crud/pos.py]     reason: str | None = None,
+# [MIGRATED TO crud/pos.py] ) -> models.POSDraftSale:
+# [MIGRATED TO crud/pos.py]     get_store(db, payload.store_id)
+# [MIGRATED TO crud/pos.py]     draft: models.POSDraftSale
+# [MIGRATED TO crud/pos.py]     if payload.draft_id:
+# [MIGRATED TO crud/pos.py]         statement = select(models.POSDraftSale).where(
+# [MIGRATED TO crud/pos.py]             models.POSDraftSale.id == payload.draft_id)
+# [MIGRATED TO crud/pos.py]         draft = db.scalars(statement).first()
+# [MIGRATED TO crud/pos.py]         if draft is None:
+# [MIGRATED TO crud/pos.py]             raise LookupError("pos_draft_not_found")
+# [MIGRATED TO crud/pos.py]         draft.store_id = payload.store_id
+# [MIGRATED TO crud/pos.py]     else:
+# [MIGRATED TO crud/pos.py]         draft = models.POSDraftSale(store_id=payload.store_id)
+# [MIGRATED TO crud/pos.py]         db.add(draft)
 
-    with transactional_session(db):
-        serialized = payload.model_dump(
-            mode="json",
-            exclude_none=True,
-            exclude={"confirm", "save_as_draft"},
-        )
-        draft.payload = serialized
-        db.add(draft)
-        flush_session(db)
-        db.refresh(draft)
+# [MIGRATED TO crud/pos.py]     with transactional_session(db):
+# [MIGRATED TO crud/pos.py]         serialized = payload.model_dump(
+# [MIGRATED TO crud/pos.py]             mode="json",
+# [MIGRATED TO crud/pos.py]             exclude_none=True,
+# [MIGRATED TO crud/pos.py]             exclude={"confirm", "save_as_draft"},
+# [MIGRATED TO crud/pos.py]         )
+# [MIGRATED TO crud/pos.py]         draft.payload = serialized
+# [MIGRATED TO crud/pos.py]         db.add(draft)
+# [MIGRATED TO crud/pos.py]         flush_session(db)
+# [MIGRATED TO crud/pos.py]         db.refresh(draft)
 
-        details = {"store_id": payload.store_id}
-        if reason:
-            details["reason"] = reason
-        _log_action(
-            db,
-            action="pos_draft_saved",
-            entity_type="pos_draft",
-            entity_id=str(draft.id),
-            performed_by_id=saved_by_id,
-            details=json.dumps(details),
-        )
-        flush_session(db)
-        db.refresh(draft)
-        enqueue_sync_outbox(
-            db,
-            entity_type="pos_draft",
-            entity_id=str(draft.id),
-            operation="UPSERT",
-            payload=_pos_draft_payload(draft),
-        )
-    return draft
-
-
-def delete_pos_draft(db: Session, draft_id: int, *, removed_by_id: int | None = None) -> None:
-    statement = select(models.POSDraftSale).where(
-        models.POSDraftSale.id == draft_id)
-    draft = db.scalars(statement).first()
-    if draft is None:
-        raise LookupError("pos_draft_not_found")
-    store_id = draft.store_id
-    with transactional_session(db):
-        db.delete(draft)
-        flush_session(db)
-        _log_action(
-            db,
-            action="pos_draft_removed",
-            entity_type="pos_draft",
-            entity_id=str(draft_id),
-            performed_by_id=removed_by_id,
-            details=json.dumps({"store_id": store_id}),
-        )
-        flush_session(db)
-        enqueue_sync_outbox(
-            db,
-            entity_type="pos_draft",
-            entity_id=str(draft_id),
-            operation="DELETE",
-            payload={"id": draft_id, "store_id": store_id},
-        )
+# [MIGRATED TO crud/pos.py]         details = {"store_id": payload.store_id}
+# [MIGRATED TO crud/pos.py]         if reason:
+# [MIGRATED TO crud/pos.py]             details["reason"] = reason
+# [MIGRATED TO crud/pos.py]         _log_action(
+# [MIGRATED TO crud/pos.py]             db,
+# [MIGRATED TO crud/pos.py]             action="pos_draft_saved",
+# [MIGRATED TO crud/pos.py]             entity_type="pos_draft",
+# [MIGRATED TO crud/pos.py]             entity_id=str(draft.id),
+# [MIGRATED TO crud/pos.py]             performed_by_id=saved_by_id,
+# [MIGRATED TO crud/pos.py]             details=json.dumps(details),
+# [MIGRATED TO crud/pos.py]         )
+# [MIGRATED TO crud/pos.py]         flush_session(db)
+# [MIGRATED TO crud/pos.py]         db.refresh(draft)
+# [MIGRATED TO crud/pos.py]         enqueue_sync_outbox(
+# [MIGRATED TO crud/pos.py]             db,
+# [MIGRATED TO crud/pos.py]             entity_type="pos_draft",
+# [MIGRATED TO crud/pos.py]             entity_id=str(draft.id),
+# [MIGRATED TO crud/pos.py]             operation="UPSERT",
+# [MIGRATED TO crud/pos.py]             payload=_pos_draft_payload(draft),
+# [MIGRATED TO crud/pos.py]         )
+# [MIGRATED TO crud/pos.py]     return draft
 
 
-def register_pos_sale(
-    db: Session,
-    payload: schemas.POSSaleRequest,
-    *,
-    performed_by_id: int,
-    reason: str | None = None,
-) -> tuple[models.Sale, list[str], dict[str, object] | None, schemas.POSLoyaltySaleSummary | None]:
-    if not payload.confirm:
-        raise ValueError("pos_confirmation_required")
+# [MIGRATED TO crud/pos.py] def delete_pos_draft(db: Session, draft_id: int, *, removed_by_id: int | None = None) -> None:
+# [MIGRATED TO crud/pos.py]     statement = select(models.POSDraftSale).where(
+# [MIGRATED TO crud/pos.py]         models.POSDraftSale.id == draft_id)
+# [MIGRATED TO crud/pos.py]     draft = db.scalars(statement).first()
+# [MIGRATED TO crud/pos.py]     if draft is None:
+# [MIGRATED TO crud/pos.py]         raise LookupError("pos_draft_not_found")
+# [MIGRATED TO crud/pos.py]     store_id = draft.store_id
+# [MIGRATED TO crud/pos.py]     with transactional_session(db):
+# [MIGRATED TO crud/pos.py]         db.delete(draft)
+# [MIGRATED TO crud/pos.py]         flush_session(db)
+# [MIGRATED TO crud/pos.py]         _log_action(
+# [MIGRATED TO crud/pos.py]             db,
+# [MIGRATED TO crud/pos.py]             action="pos_draft_removed",
+# [MIGRATED TO crud/pos.py]             entity_type="pos_draft",
+# [MIGRATED TO crud/pos.py]             entity_id=str(draft_id),
+# [MIGRATED TO crud/pos.py]             performed_by_id=removed_by_id,
+# [MIGRATED TO crud/pos.py]             details=json.dumps({"store_id": store_id}),
+# [MIGRATED TO crud/pos.py]         )
+# [MIGRATED TO crud/pos.py]         flush_session(db)
+# [MIGRATED TO crud/pos.py]         enqueue_sync_outbox(
+# [MIGRATED TO crud/pos.py]             db,
+# [MIGRATED TO crud/pos.py]             entity_type="pos_draft",
+# [MIGRATED TO crud/pos.py]             entity_id=str(draft_id),
+# [MIGRATED TO crud/pos.py]             operation="DELETE",
+# [MIGRATED TO crud/pos.py]             payload={"id": draft_id, "store_id": store_id},
+# [MIGRATED TO crud/pos.py]         )
 
-    config = get_pos_config(db, payload.store_id)
-    sale_payload = schemas.SaleCreate(
-        store_id=payload.store_id,
-        customer_id=payload.customer_id,
-        customer_name=payload.customer_name,
-        payment_method=payload.payment_method,
-        discount_percent=payload.discount_percent,
-        notes=payload.notes,
-        items=[
-            schemas.SaleItemCreate(
-                device_id=item.device_id,
-                quantity=item.quantity,
-                discount_percent=item.discount_percent,
-                unit_price_override=getattr(
-                    item, "unit_price_override", None),  # // [PACK34-pricing]
-            )
-            for item in payload.items
-        ],
-    )
-    tax_value = config.tax_rate if payload.apply_taxes else Decimal("0")
-    sale = create_sale(
-        db,
-        sale_payload,
-        performed_by_id=performed_by_id,
-        tax_rate=tax_value,
-        reason=reason,
-    )
-    # Reasignar la bitácora de creación a entidad POS para evitar duplicidad con 'sale'
-    with transactional_session(db):
-        audit_stmt = (
-            select(models.AuditLog)
-            .where(
-                models.AuditLog.action == "sale_registered",
-                models.AuditLog.entity_type == "sale",
-                models.AuditLog.entity_id == str(sale.id),
-            )
-            .order_by(models.AuditLog.created_at.desc())
-        )
-        audit_entry = db.scalars(audit_stmt).first()
-        if audit_entry is not None:
-            audit_entry.entity_type = "pos_sale"
-            db.add(audit_entry)
-            flush_session(db)
-    # Asignar tipo y número de documento para POS
-    hw = config.hardware_settings if isinstance(
-        config.hardware_settings, dict) else {}
-    default_doc = str(hw.get("default_document_type")
-                      or "TICKET").strip().upper() or "TICKET"
-    try:
-        doc_enum = models.POSDocumentType(default_doc)
-    except ValueError:
-        doc_enum = models.POSDocumentType.TICKET
-    document_number = f"{config.invoice_prefix}-{sale.id:06d}"
-    with transactional_session(db):
-        sale.document_type = doc_enum
-        sale.document_number = document_number
-        db.add(sale)
-        flush_session(db)
 
-    warnings: list[str] = []
-    loyalty_amount = Decimal("0")
-    if payload.payments:
-        for payment in payload.payments:
-            if payment.method == models.PaymentMethod.PUNTOS:
-                loyalty_amount += to_decimal(payment.amount)
-    elif payload.payment_breakdown:
-        puntos_key = models.PaymentMethod.PUNTOS.value
-        if puntos_key in payload.payment_breakdown:
-            loyalty_amount = to_decimal(payload.payment_breakdown[puntos_key])
-    loyalty_amount = quantize_currency(loyalty_amount)
-    loyalty_summary: schemas.POSLoyaltySaleSummary | None = None
-    for item in payload.items:
-        device = get_device(db, payload.store_id, item.device_id)
-        if device.quantity <= 0:
-            warnings.append(
-                f"{device.sku} sin existencias en la sucursal"
-            )
-        elif device.quantity <= 2:
-            warnings.append(
-                f"Stock bajo de {device.sku}: quedan {device.quantity} unidades"
-            )
+# [MIGRATED TO crud/pos.py] def register_pos_sale(
+# [MIGRATED TO crud/pos.py]     db: Session,
+# [MIGRATED TO crud/pos.py]     payload: schemas.POSSaleRequest,
+# [MIGRATED TO crud/pos.py]     *,
+# [MIGRATED TO crud/pos.py]     performed_by_id: int,
+# [MIGRATED TO crud/pos.py]     reason: str | None = None,
+# [MIGRATED TO crud/pos.py] ) -> tuple[models.Sale, list[str], dict[str, object] | None, schemas.POSLoyaltySaleSummary | None]:
+# [MIGRATED TO crud/pos.py]     if not payload.confirm:
+# [MIGRATED TO crud/pos.py]         raise ValueError("pos_confirmation_required")
 
-    if payload.draft_id:
-        try:
-            delete_pos_draft(db, payload.draft_id,
-                             removed_by_id=performed_by_id)
-        except LookupError:
-            logger.debug(
-                f"Borrador POS {payload.draft_id} no encontrado al confirmar la venta."
-            )
+# [MIGRATED TO crud/pos.py]     config = get_pos_config(db, payload.store_id)
+# [MIGRATED TO crud/pos.py]     sale_payload = schemas.SaleCreate(
+# [MIGRATED TO crud/pos.py]         store_id=payload.store_id,
+# [MIGRATED TO crud/pos.py]         customer_id=payload.customer_id,
+# [MIGRATED TO crud/pos.py]         customer_name=payload.customer_name,
+# [MIGRATED TO crud/pos.py]         payment_method=payload.payment_method,
+# [MIGRATED TO crud/pos.py]         discount_percent=payload.discount_percent,
+# [MIGRATED TO crud/pos.py]         notes=payload.notes,
+# [MIGRATED TO crud/pos.py]         items=[
+# [MIGRATED TO crud/pos.py]             schemas.SaleItemCreate(
+# [MIGRATED TO crud/pos.py]                 device_id=item.device_id,
+# [MIGRATED TO crud/pos.py]                 quantity=item.quantity,
+# [MIGRATED TO crud/pos.py]                 discount_percent=item.discount_percent,
+# [MIGRATED TO crud/pos.py]                 unit_price_override=getattr(
+# [MIGRATED TO crud/pos.py]                     item, "unit_price_override", None),  # // [PACK34-pricing]
+# [MIGRATED TO crud/pos.py]             )
+# [MIGRATED TO crud/pos.py]             for item in payload.items
+# [MIGRATED TO crud/pos.py]         ],
+# [MIGRATED TO crud/pos.py]     )
+# [MIGRATED TO crud/pos.py]     tax_value = config.tax_rate if payload.apply_taxes else Decimal("0")
+# [MIGRATED TO crud/pos.py]     sale = create_sale(
+# [MIGRATED TO crud/pos.py]         db,
+# [MIGRATED TO crud/pos.py]         sale_payload,
+# [MIGRATED TO crud/pos.py]         performed_by_id=performed_by_id,
+# [MIGRATED TO crud/pos.py]         tax_rate=tax_value,
+# [MIGRATED TO crud/pos.py]         reason=reason,
+# [MIGRATED TO crud/pos.py]     )
+# [MIGRATED TO crud/pos.py]     # Reasignar la bitácora de creación a entidad POS para evitar duplicidad con 'sale'
+# [MIGRATED TO crud/pos.py]     with transactional_session(db):
+# [MIGRATED TO crud/pos.py]         audit_stmt = (
+# [MIGRATED TO crud/pos.py]             select(models.AuditLog)
+# [MIGRATED TO crud/pos.py]             .where(
+# [MIGRATED TO crud/pos.py]                 models.AuditLog.action == "sale_registered",
+# [MIGRATED TO crud/pos.py]                 models.AuditLog.entity_type == "sale",
+# [MIGRATED TO crud/pos.py]                 models.AuditLog.entity_id == str(sale.id),
+# [MIGRATED TO crud/pos.py]             )
+# [MIGRATED TO crud/pos.py]             .order_by(models.AuditLog.created_at.desc())
+# [MIGRATED TO crud/pos.py]         )
+# [MIGRATED TO crud/pos.py]         audit_entry = db.scalars(audit_stmt).first()
+# [MIGRATED TO crud/pos.py]         if audit_entry is not None:
+# [MIGRATED TO crud/pos.py]             audit_entry.entity_type = "pos_sale"
+# [MIGRATED TO crud/pos.py]             db.add(audit_entry)
+# [MIGRATED TO crud/pos.py]             flush_session(db)
+# [MIGRATED TO crud/pos.py]     # Asignar tipo y número de documento para POS
+# [MIGRATED TO crud/pos.py]     hw = config.hardware_settings if isinstance(
+# [MIGRATED TO crud/pos.py]         config.hardware_settings, dict) else {}
+# [MIGRATED TO crud/pos.py]     default_doc = str(hw.get("default_document_type")
+# [MIGRATED TO crud/pos.py]                       or "TICKET").strip().upper() or "TICKET"
+# [MIGRATED TO crud/pos.py]     try:
+# [MIGRATED TO crud/pos.py]         doc_enum = models.POSDocumentType(default_doc)
+# [MIGRATED TO crud/pos.py]     except ValueError:
+# [MIGRATED TO crud/pos.py]         doc_enum = models.POSDocumentType.TICKET
+# [MIGRATED TO crud/pos.py]     document_number = f"{config.invoice_prefix}-{sale.id:06d}"
+# [MIGRATED TO crud/pos.py]     with transactional_session(db):
+# [MIGRATED TO crud/pos.py]         sale.document_type = doc_enum
+# [MIGRATED TO crud/pos.py]         sale.document_number = document_number
+# [MIGRATED TO crud/pos.py]         db.add(sale)
+# [MIGRATED TO crud/pos.py]         flush_session(db)
 
-    store_credit_redemptions: list[models.StoreCreditRedemption] = []
+# [MIGRATED TO crud/pos.py]     warnings: list[str] = []
+# [MIGRATED TO crud/pos.py]     loyalty_amount = Decimal("0")
+# [MIGRATED TO crud/pos.py]     if payload.payments:
+# [MIGRATED TO crud/pos.py]         for payment in payload.payments:
+# [MIGRATED TO crud/pos.py]             if payment.method == models.PaymentMethod.PUNTOS:
+# [MIGRATED TO crud/pos.py]                 loyalty_amount += to_decimal(payment.amount)
+# [MIGRATED TO crud/pos.py]     elif payload.payment_breakdown:
+# [MIGRATED TO crud/pos.py]         puntos_key = models.PaymentMethod.PUNTOS.value
+# [MIGRATED TO crud/pos.py]         if puntos_key in payload.payment_breakdown:
+# [MIGRATED TO crud/pos.py]             loyalty_amount = to_decimal(payload.payment_breakdown[puntos_key])
+# [MIGRATED TO crud/pos.py]     loyalty_amount = quantize_currency(loyalty_amount)
+# [MIGRATED TO crud/pos.py]     loyalty_summary: schemas.POSLoyaltySaleSummary | None = None
+# [MIGRATED TO crud/pos.py]     for item in payload.items:
+# [MIGRATED TO crud/pos.py]         device = get_device(db, payload.store_id, item.device_id)
+# [MIGRATED TO crud/pos.py]         if device.quantity <= 0:
+# [MIGRATED TO crud/pos.py]             warnings.append(
+# [MIGRATED TO crud/pos.py]                 f"{device.sku} sin existencias en la sucursal"
+# [MIGRATED TO crud/pos.py]             )
+# [MIGRATED TO crud/pos.py]         elif device.quantity <= 2:
+# [MIGRATED TO crud/pos.py]             warnings.append(
+# [MIGRATED TO crud/pos.py]                 f"Stock bajo de {device.sku}: quedan {device.quantity} unidades"
+# [MIGRATED TO crud/pos.py]             )
 
-    with transactional_session(db):
-        if payload.cash_session_id:
-            session = get_cash_session(db, payload.cash_session_id)
-            if session.status != models.CashSessionStatus.ABIERTO:
-                raise ValueError("cash_session_not_open")
-            sale.cash_session_id = session.id
-            db.add(sale)
-            flush_session(db)
-            if payload.payments:
-                breakdown = dict(session.payment_breakdown or {})
-                for payment in payload.payments:
-                    try:
-                        total_amount = Decimal(str(payment.amount))
-                    except (TypeError, ValueError):
-                        continue
-                    tip_value = Decimal("0")
-                    if getattr(payment, "tip_amount", None) is not None:
-                        tip_value = Decimal(str(payment.tip_amount))
-                        tip_key = f"propina_{payment.method.value}"
-                        breakdown[tip_key] = float(
-                            Decimal(str(breakdown.get(tip_key, 0))) + tip_value
-                        )
-                    collected_key = f"cobrado_{payment.method.value}"
-                    breakdown[collected_key] = float(
-                        Decimal(str(breakdown.get(collected_key, 0)))
-                        + total_amount
-                        + tip_value
-                    )
-                session.payment_breakdown = breakdown
-                db.add(session)
-                flush_session(db)
-            elif payload.payment_breakdown:
-                breakdown = dict(session.payment_breakdown or {})
-                for method_key, reported_amount in payload.payment_breakdown.items():
-                    try:
-                        method_enum = models.PaymentMethod(method_key)
-                    except ValueError:
-                        continue
-                    total_amount = to_decimal(reported_amount).quantize(
-                        Decimal("0.01"), rounding=ROUND_HALF_UP
-                    )
-                    if total_amount <= Decimal("0"):
-                        continue
-                    collected_key = f"cobrado_{method_enum.value}"
-                    breakdown[collected_key] = float(
-                        Decimal(str(breakdown.get(collected_key, 0)))
-                        + total_amount
-                    )
-                session.payment_breakdown = breakdown
-                db.add(session)
-                flush_session(db)
-        db.refresh(sale)
+# [MIGRATED TO crud/pos.py]     if payload.draft_id:
+# [MIGRATED TO crud/pos.py]         try:
+# [MIGRATED TO crud/pos.py]             delete_pos_draft(db, payload.draft_id,
+# [MIGRATED TO crud/pos.py]                              removed_by_id=performed_by_id)
+# [MIGRATED TO crud/pos.py]         except LookupError:
+# [MIGRATED TO crud/pos.py]             logger.debug(
+# [MIGRATED TO crud/pos.py]                 f"Borrador POS {payload.draft_id} no encontrado al confirmar la venta."
+# [MIGRATED TO crud/pos.py]             )
 
-    if payload.payment_breakdown:
-        store_credit_key = models.PaymentMethod.NOTA_CREDITO.value
-        breakdown_value = payload.payment_breakdown.get(store_credit_key)
-        if breakdown_value is not None:
-            store_credit_amount = to_decimal(breakdown_value).quantize(
-                Decimal("0.01"), rounding=ROUND_HALF_UP
-            )
-            if store_credit_amount > Decimal("0"):
-                if not sale.customer_id:
-                    raise ValueError("store_credit_requires_customer")
-                redemptions = redeem_store_credit_for_customer(
-                    db,
-                    customer_id=sale.customer_id,
-                    amount=store_credit_amount,
-                    sale_id=sale.id,
-                    notes=payload.notes,
-                    performed_by_id=performed_by_id,
-                    reason=reason,
-                )
-                store_credit_redemptions.extend(redemptions)
-                warnings.append(
-                    f"Se aplicó nota de crédito por ${format_currency(store_credit_amount)}"
-                )
+# [MIGRATED TO crud/pos.py]     store_credit_redemptions: list[models.StoreCreditRedemption] = []
 
-    loyalty_summary = apply_loyalty_for_sale(
-        db,
-        sale,
-        points_payment_amount=loyalty_amount,
-        performed_by_id=performed_by_id,
-        reason=reason,
-    )
+# [MIGRATED TO crud/pos.py]     with transactional_session(db):
+# [MIGRATED TO crud/pos.py]         if payload.cash_session_id:
+# [MIGRATED TO crud/pos.py]             session = get_cash_session(db, payload.cash_session_id)
+# [MIGRATED TO crud/pos.py]             if session.status != models.CashSessionStatus.ABIERTO:
+# [MIGRATED TO crud/pos.py]                 raise ValueError("cash_session_not_open")
+# [MIGRATED TO crud/pos.py]             sale.cash_session_id = session.id
+# [MIGRATED TO crud/pos.py]             db.add(sale)
+# [MIGRATED TO crud/pos.py]             flush_session(db)
+# [MIGRATED TO crud/pos.py]             if payload.payments:
+# [MIGRATED TO crud/pos.py]                 breakdown = dict(session.payment_breakdown or {})
+# [MIGRATED TO crud/pos.py]                 for payment in payload.payments:
+# [MIGRATED TO crud/pos.py]                     try:
+# [MIGRATED TO crud/pos.py]                         total_amount = Decimal(str(payment.amount))
+# [MIGRATED TO crud/pos.py]                     except (TypeError, ValueError):
+# [MIGRATED TO crud/pos.py]                         continue
+# [MIGRATED TO crud/pos.py]                     tip_value = Decimal("0")
+# [MIGRATED TO crud/pos.py]                     if getattr(payment, "tip_amount", None) is not None:
+# [MIGRATED TO crud/pos.py]                         tip_value = Decimal(str(payment.tip_amount))
+# [MIGRATED TO crud/pos.py]                         tip_key = f"propina_{payment.method.value}"
+# [MIGRATED TO crud/pos.py]                         breakdown[tip_key] = float(
+# [MIGRATED TO crud/pos.py]                             Decimal(str(breakdown.get(tip_key, 0))) + tip_value
+# [MIGRATED TO crud/pos.py]                         )
+# [MIGRATED TO crud/pos.py]                     collected_key = f"cobrado_{payment.method.value}"
+# [MIGRATED TO crud/pos.py]                     breakdown[collected_key] = float(
+# [MIGRATED TO crud/pos.py]                         Decimal(str(breakdown.get(collected_key, 0)))
+# [MIGRATED TO crud/pos.py]                         + total_amount
+# [MIGRATED TO crud/pos.py]                         + tip_value
+# [MIGRATED TO crud/pos.py]                     )
+# [MIGRATED TO crud/pos.py]                 session.payment_breakdown = breakdown
+# [MIGRATED TO crud/pos.py]                 db.add(session)
+# [MIGRATED TO crud/pos.py]                 flush_session(db)
+# [MIGRATED TO crud/pos.py]             elif payload.payment_breakdown:
+# [MIGRATED TO crud/pos.py]                 breakdown = dict(session.payment_breakdown or {})
+# [MIGRATED TO crud/pos.py]                 for method_key, reported_amount in payload.payment_breakdown.items():
+# [MIGRATED TO crud/pos.py]                     try:
+# [MIGRATED TO crud/pos.py]                         method_enum = models.PaymentMethod(method_key)
+# [MIGRATED TO crud/pos.py]                     except ValueError:
+# [MIGRATED TO crud/pos.py]                         continue
+# [MIGRATED TO crud/pos.py]                     total_amount = to_decimal(reported_amount).quantize(
+# [MIGRATED TO crud/pos.py]                         Decimal("0.01"), rounding=ROUND_HALF_UP
+# [MIGRATED TO crud/pos.py]                     )
+# [MIGRATED TO crud/pos.py]                     if total_amount <= Decimal("0"):
+# [MIGRATED TO crud/pos.py]                         continue
+# [MIGRATED TO crud/pos.py]                     collected_key = f"cobrado_{method_enum.value}"
+# [MIGRATED TO crud/pos.py]                     breakdown[collected_key] = float(
+# [MIGRATED TO crud/pos.py]                         Decimal(str(breakdown.get(collected_key, 0)))
+# [MIGRATED TO crud/pos.py]                         + total_amount
+# [MIGRATED TO crud/pos.py]                     )
+# [MIGRATED TO crud/pos.py]                 session.payment_breakdown = breakdown
+# [MIGRATED TO crud/pos.py]                 db.add(session)
+# [MIGRATED TO crud/pos.py]                 flush_session(db)
+# [MIGRATED TO crud/pos.py]         db.refresh(sale)
 
-    payments_applied_total = Decimal("0")
-    payment_outcomes: list[CustomerPaymentOutcome] = []
-    if (
-        payload.payments
-        and sale.customer_id
-        and sale.payment_method == models.PaymentMethod.CREDITO
-    ):
-        for payment in payload.payments:
-            payment_amount = to_decimal(payment.amount).quantize(
-                Decimal("0.01"), rounding=ROUND_HALF_UP
-            )
-            if payment_amount <= Decimal("0"):
-                continue
+# [MIGRATED TO crud/pos.py]     if payload.payment_breakdown:
+# [MIGRATED TO crud/pos.py]         store_credit_key = models.PaymentMethod.NOTA_CREDITO.value
+# [MIGRATED TO crud/pos.py]         breakdown_value = payload.payment_breakdown.get(store_credit_key)
+# [MIGRATED TO crud/pos.py]         if breakdown_value is not None:
+# [MIGRATED TO crud/pos.py]             store_credit_amount = to_decimal(breakdown_value).quantize(
+# [MIGRATED TO crud/pos.py]                 Decimal("0.01"), rounding=ROUND_HALF_UP
+# [MIGRATED TO crud/pos.py]             )
+# [MIGRATED TO crud/pos.py]             if store_credit_amount > Decimal("0"):
+# [MIGRATED TO crud/pos.py]                 if not sale.customer_id:
+# [MIGRATED TO crud/pos.py]                     raise ValueError("store_credit_requires_customer")
+# [MIGRATED TO crud/pos.py]                 redemptions = redeem_store_credit_for_customer(
+# [MIGRATED TO crud/pos.py]                     db,
+# [MIGRATED TO crud/pos.py]                     customer_id=sale.customer_id,
+# [MIGRATED TO crud/pos.py]                     amount=store_credit_amount,
+# [MIGRATED TO crud/pos.py]                     sale_id=sale.id,
+# [MIGRATED TO crud/pos.py]                     notes=payload.notes,
+# [MIGRATED TO crud/pos.py]                     performed_by_id=performed_by_id,
+# [MIGRATED TO crud/pos.py]                     reason=reason,
+# [MIGRATED TO crud/pos.py]                 )
+# [MIGRATED TO crud/pos.py]                 store_credit_redemptions.extend(redemptions)
+# [MIGRATED TO crud/pos.py]                 warnings.append(
+# [MIGRATED TO crud/pos.py]                     f"Se aplicó nota de crédito por ${format_currency(store_credit_amount)}"
+# [MIGRATED TO crud/pos.py]                 )
+
+# [MIGRATED TO crud/pos.py]     loyalty_summary = apply_loyalty_for_sale(
+# [MIGRATED TO crud/pos.py]         db,
+# [MIGRATED TO crud/pos.py]         sale,
+# [MIGRATED TO crud/pos.py]         points_payment_amount=loyalty_amount,
+# [MIGRATED TO crud/pos.py]         performed_by_id=performed_by_id,
+# [MIGRATED TO crud/pos.py]         reason=reason,
+# [MIGRATED TO crud/pos.py]     )
+
+# [MIGRATED TO crud/pos.py]     payments_applied_total = Decimal("0")
+# [MIGRATED TO crud/pos.py]     payment_outcomes: list[CustomerPaymentOutcome] = []
+# [MIGRATED TO crud/pos.py]     if (
+# [MIGRATED TO crud/pos.py]         payload.payments
+# [MIGRATED TO crud/pos.py]         and sale.customer_id
+# [MIGRATED TO crud/pos.py]         and sale.payment_method == models.PaymentMethod.CREDITO
+# [MIGRATED TO crud/pos.py]     ):
+# [MIGRATED TO crud/pos.py]         for payment in payload.payments:
+# [MIGRATED TO crud/pos.py]             payment_amount = to_decimal(payment.amount).quantize(
+# [MIGRATED TO crud/pos.py]                 Decimal("0.01"), rounding=ROUND_HALF_UP
+# [MIGRATED TO crud/pos.py]             )
+# [MIGRATED TO crud/pos.py]             if payment_amount <= Decimal("0"):
+# [MIGRATED TO crud/pos.py]                 continue
             method_value = (
                 payment.method.value
                 if isinstance(payment.method, models.PaymentMethod)
