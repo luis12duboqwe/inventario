@@ -236,6 +236,59 @@ def register_pos_sale(*args, **kwargs):
 # END OF POS COMPATIBILITY ALIASES
 # ============================================================================
 
+# ============================================================================
+# COMPATIBILITY ALIASES - Analytics Module Migration (Fase 2, Incremento 2)
+# ============================================================================
+# These aliases maintain backward compatibility after migrating Analytics functions
+# to backend/app/crud/analytics.py. They will be removed in a future PR after
+# validation in production.
+#
+# Migration date: 2025-12-06
+# Target removal: After 30 days of production validation
+# ============================================================================
+
+from .crud import analytics as _analytics_module
+
+def calculate_rotation_analytics(*args, **kwargs):
+    """DEPRECATED: Use crud.analytics.calculate_rotation_analytics. Alias for compatibility."""
+    return _analytics_module.calculate_rotation_analytics(*args, **kwargs)
+
+def calculate_aging_analytics(*args, **kwargs):
+    """DEPRECATED: Use crud.analytics.calculate_aging_analytics. Alias for compatibility."""
+    return _analytics_module.calculate_aging_analytics(*args, **kwargs)
+
+def calculate_stockout_forecast(*args, **kwargs):
+    """DEPRECATED: Use crud.analytics.calculate_stockout_forecast. Alias for compatibility."""
+    return _analytics_module.calculate_stockout_forecast(*args, **kwargs)
+
+def calculate_store_comparatives(*args, **kwargs):
+    """DEPRECATED: Use crud.analytics.calculate_store_comparatives. Alias for compatibility."""
+    return _analytics_module.calculate_store_comparatives(*args, **kwargs)
+
+def calculate_profit_margin(*args, **kwargs):
+    """DEPRECATED: Use crud.analytics.calculate_profit_margin. Alias for compatibility."""
+    return _analytics_module.calculate_profit_margin(*args, **kwargs)
+
+def calculate_sales_projection(*args, **kwargs):
+    """DEPRECATED: Use crud.analytics.calculate_sales_projection. Alias for compatibility."""
+    return _analytics_module.calculate_sales_projection(*args, **kwargs)
+
+def calculate_store_sales_forecast(*args, **kwargs):
+    """DEPRECATED: Use crud.analytics.calculate_store_sales_forecast. Alias for compatibility."""
+    return _analytics_module.calculate_store_sales_forecast(*args, **kwargs)
+
+def calculate_reorder_suggestions(*args, **kwargs):
+    """DEPRECATED: Use crud.analytics.calculate_reorder_suggestions. Alias for compatibility."""
+    return _analytics_module.calculate_reorder_suggestions(*args, **kwargs)
+
+def calculate_realtime_store_widget(*args, **kwargs):
+    """DEPRECATED: Use crud.analytics.calculate_realtime_store_widget. Alias for compatibility."""
+    return _analytics_module.calculate_realtime_store_widget(*args, **kwargs)
+
+# ============================================================================
+# END OF ANALYTICS COMPATIBILITY ALIASES
+# ============================================================================
+
 _INVENTORY_MOVEMENTS_CACHE: TTLCache[schemas.InventoryMovementsReport] = TTLCache(
     ttl_seconds=60.0
 )
@@ -6320,624 +6373,624 @@ def get_inactive_products_report(
             quantity=entry.quantity,
             valor_total_producto=to_decimal(entry.valor_total_producto),
             ultima_venta=entry.ultima_venta,
-            ultima_compra=entry.ultima_compra,
-            ultimo_movimiento=entry.ultimo_movimiento,
-            dias_sin_movimiento=entry.dias_sin_movimiento,
-            ventas_30_dias=entry.ventas_30_dias,
-            ventas_90_dias=entry.ventas_90_dias,
-            rotacion_30_dias=to_decimal(entry.rotacion_30_dias),
-            rotacion_90_dias=to_decimal(entry.rotacion_90_dias),
-            rotacion_total=to_decimal(entry.rotacion_total),
+# [MIGRATED TO crud/analytics.py]             ultima_compra=entry.ultima_compra,
+# [MIGRATED TO crud/analytics.py]             ultimo_movimiento=entry.ultimo_movimiento,
+# [MIGRATED TO crud/analytics.py]             dias_sin_movimiento=entry.dias_sin_movimiento,
+# [MIGRATED TO crud/analytics.py]             ventas_30_dias=entry.ventas_30_dias,
+# [MIGRATED TO crud/analytics.py]             ventas_90_dias=entry.ventas_90_dias,
+# [MIGRATED TO crud/analytics.py]             rotacion_30_dias=to_decimal(entry.rotacion_30_dias),
+# [MIGRATED TO crud/analytics.py]             rotacion_90_dias=to_decimal(entry.rotacion_90_dias),
+# [MIGRATED TO crud/analytics.py]             rotacion_total=to_decimal(entry.rotacion_total),
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]         for entry in paginated
+# [MIGRATED TO crud/analytics.py]     ]
+
+# [MIGRATED TO crud/analytics.py]     total_units = sum((entry.quantity for entry in filtered), 0)
+# [MIGRATED TO crud/analytics.py]     total_value = sum(
+# [MIGRATED TO crud/analytics.py]         (to_decimal(entry.valor_total_producto) for entry in filtered),
+# [MIGRATED TO crud/analytics.py]         Decimal("0"),
+# [MIGRATED TO crud/analytics.py]     )
+# [MIGRATED TO crud/analytics.py]     days_values = [
+# [MIGRATED TO crud/analytics.py]         int(entry.dias_sin_movimiento)
+# [MIGRATED TO crud/analytics.py]         for entry in filtered
+# [MIGRATED TO crud/analytics.py]         if entry.dias_sin_movimiento is not None
+# [MIGRATED TO crud/analytics.py]     ]
+# [MIGRATED TO crud/analytics.py]     average_days: float | None = None
+# [MIGRATED TO crud/analytics.py]     if days_values:
+# [MIGRATED TO crud/analytics.py]         average_days = round(sum(days_values) / len(days_values), 2)
+# [MIGRATED TO crud/analytics.py]     max_days: int | None = max(days_values) if days_values else None
+
+# [MIGRATED TO crud/analytics.py]     totals = schemas.InactiveProductReportTotals(
+# [MIGRATED TO crud/analytics.py]         total_products=len(filtered),
+# [MIGRATED TO crud/analytics.py]         total_units=total_units,
+# [MIGRATED TO crud/analytics.py]         total_value=total_value,
+# [MIGRATED TO crud/analytics.py]         average_days_without_movement=average_days,
+# [MIGRATED TO crud/analytics.py]         max_days_without_movement=max_days,
+# [MIGRATED TO crud/analytics.py]     )
+
+# [MIGRATED TO crud/analytics.py]     normalized_stores = sorted({int(store_id) for store_id in store_ids or []})
+# [MIGRATED TO crud/analytics.py]     normalized_categories = [
+# [MIGRATED TO crud/analytics.py]         category for category in categories or [] if category]
+
+# [MIGRATED TO crud/analytics.py]     filters = schemas.InactiveProductReportFilters(
+# [MIGRATED TO crud/analytics.py]         store_ids=normalized_stores,
+# [MIGRATED TO crud/analytics.py]         categories=normalized_categories,
+# [MIGRATED TO crud/analytics.py]         min_days_without_movement=min_days,
+# [MIGRATED TO crud/analytics.py]     )
+
+# [MIGRATED TO crud/analytics.py]     return schemas.InactiveProductReport(
+# [MIGRATED TO crud/analytics.py]         generated_at=datetime.now(timezone.utc),
+# [MIGRATED TO crud/analytics.py]         filters=filters,
+# [MIGRATED TO crud/analytics.py]         totals=totals,
+# [MIGRATED TO crud/analytics.py]         items=items,
+# [MIGRATED TO crud/analytics.py]     )
+
+
+# [MIGRATED TO crud/analytics.py] def calculate_rotation_analytics(
+# [MIGRATED TO crud/analytics.py]     db: Session,
+# [MIGRATED TO crud/analytics.py]     store_ids: Iterable[int] | None = None,
+# [MIGRATED TO crud/analytics.py]     *,
+# [MIGRATED TO crud/analytics.py]     date_from: date | None = None,
+# [MIGRATED TO crud/analytics.py]     date_to: date | None = None,
+# [MIGRATED TO crud/analytics.py]     category: str | None = None,
+# [MIGRATED TO crud/analytics.py]     supplier: str | None = None,
+# [MIGRATED TO crud/analytics.py]     limit: int | None = None,
+# [MIGRATED TO crud/analytics.py]     offset: int = 0,
+# [MIGRATED TO crud/analytics.py] ) -> list[dict[str, object]]:
+# [MIGRATED TO crud/analytics.py]     store_filter = normalize_store_ids(store_ids)
+# [MIGRATED TO crud/analytics.py]     start_dt, end_dt = normalize_date_range(date_from, date_to)
+# [MIGRATED TO crud/analytics.py]     category_expr = device_category_expr()
+
+# [MIGRATED TO crud/analytics.py]     device_stmt = (
+# [MIGRATED TO crud/analytics.py]         select(
+# [MIGRATED TO crud/analytics.py]             models.Device.id,
+# [MIGRATED TO crud/analytics.py]             models.Device.sku,
+# [MIGRATED TO crud/analytics.py]             models.Device.name,
+# [MIGRATED TO crud/analytics.py]             models.Store.id.label("store_id"),
+# [MIGRATED TO crud/analytics.py]             models.Store.name.label("store_name"),
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]         .join(models.Store, models.Store.id == models.Device.store_id)
+# [MIGRATED TO crud/analytics.py]         .order_by(models.Store.name.asc(), models.Device.name.asc())
+# [MIGRATED TO crud/analytics.py]     )
+# [MIGRATED TO crud/analytics.py]     if store_filter:
+# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.where(
+# [MIGRATED TO crud/analytics.py]             models.Device.store_id.in_(store_filter))
+# [MIGRATED TO crud/analytics.py]     if category:
+# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.where(category_expr == category)
+# [MIGRATED TO crud/analytics.py]     if supplier:
+# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.where(models.Device.proveedor == supplier)
+# [MIGRATED TO crud/analytics.py]     if offset:
+# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.offset(offset)
+# [MIGRATED TO crud/analytics.py]     if limit is not None:
+# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.limit(limit)
+
+# [MIGRATED TO crud/analytics.py]     device_rows = list(db.execute(device_stmt))
+# [MIGRATED TO crud/analytics.py]     if not device_rows:
+# [MIGRATED TO crud/analytics.py]         return []
+
+# [MIGRATED TO crud/analytics.py]     device_ids = [row.id for row in device_rows]
+
+# [MIGRATED TO crud/analytics.py]     sale_stats = (
+# [MIGRATED TO crud/analytics.py]         select(
+# [MIGRATED TO crud/analytics.py]             models.SaleItem.device_id,
+# [MIGRATED TO crud/analytics.py]             func.sum(models.SaleItem.quantity).label("sold_units"),
+# [MIGRATED TO crud/analytics.py]             models.Sale.store_id,
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]         .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
+# [MIGRATED TO crud/analytics.py]         .join(models.Device, models.Device.id == models.SaleItem.device_id)
+# [MIGRATED TO crud/analytics.py]         .group_by(models.SaleItem.device_id, models.Sale.store_id)
+# [MIGRATED TO crud/analytics.py]     )
+# [MIGRATED TO crud/analytics.py]     if store_filter:
+# [MIGRATED TO crud/analytics.py]         sale_stats = sale_stats.where(models.Sale.store_id.in_(store_filter))
+# [MIGRATED TO crud/analytics.py]     if device_ids:
+# [MIGRATED TO crud/analytics.py]         sale_stats = sale_stats.where(
+# [MIGRATED TO crud/analytics.py]             models.SaleItem.device_id.in_(device_ids))
+# [MIGRATED TO crud/analytics.py]     if start_dt:
+# [MIGRATED TO crud/analytics.py]         sale_stats = sale_stats.where(models.Sale.created_at >= start_dt)
+# [MIGRATED TO crud/analytics.py]     if end_dt:
+# [MIGRATED TO crud/analytics.py]         sale_stats = sale_stats.where(models.Sale.created_at <= end_dt)
+# [MIGRATED TO crud/analytics.py]     if category:
+# [MIGRATED TO crud/analytics.py]         sale_stats = sale_stats.where(category_expr == category)
+# [MIGRATED TO crud/analytics.py]     if supplier:
+# [MIGRATED TO crud/analytics.py]         sale_stats = sale_stats.where(models.Device.proveedor == supplier)
+
+# [MIGRATED TO crud/analytics.py]     purchase_stats = (
+# [MIGRATED TO crud/analytics.py]         select(
+# [MIGRATED TO crud/analytics.py]             models.PurchaseOrderItem.device_id,
+# [MIGRATED TO crud/analytics.py]             func.sum(models.PurchaseOrderItem.quantity_received).label(
+# [MIGRATED TO crud/analytics.py]                 "received_units"),
+# [MIGRATED TO crud/analytics.py]             models.PurchaseOrder.store_id,
         )
-        for entry in paginated
-    ]
+# [MIGRATED TO crud/analytics.py]         .join(models.PurchaseOrder, models.PurchaseOrder.id == models.PurchaseOrderItem.purchase_order_id)
+# [MIGRATED TO crud/analytics.py]         .join(models.Device, models.Device.id == models.PurchaseOrderItem.device_id)
+# [MIGRATED TO crud/analytics.py]         .group_by(models.PurchaseOrderItem.device_id, models.PurchaseOrder.store_id)
+# [MIGRATED TO crud/analytics.py]     )
+# [MIGRATED TO crud/analytics.py]     if store_filter:
+# [MIGRATED TO crud/analytics.py]         purchase_stats = purchase_stats.where(
+# [MIGRATED TO crud/analytics.py]             models.PurchaseOrder.store_id.in_(store_filter))
+# [MIGRATED TO crud/analytics.py]     if device_ids:
+# [MIGRATED TO crud/analytics.py]         purchase_stats = purchase_stats.where(
+# [MIGRATED TO crud/analytics.py]             models.PurchaseOrderItem.device_id.in_(device_ids)
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]     if start_dt:
+# [MIGRATED TO crud/analytics.py]         purchase_stats = purchase_stats.where(
+# [MIGRATED TO crud/analytics.py]             models.PurchaseOrder.created_at >= start_dt)
+# [MIGRATED TO crud/analytics.py]     if end_dt:
+# [MIGRATED TO crud/analytics.py]         purchase_stats = purchase_stats.where(
+# [MIGRATED TO crud/analytics.py]             models.PurchaseOrder.created_at <= end_dt)
+# [MIGRATED TO crud/analytics.py]     if category:
+# [MIGRATED TO crud/analytics.py]         purchase_stats = purchase_stats.where(category_expr == category)
+# [MIGRATED TO crud/analytics.py]     if supplier:
+# [MIGRATED TO crud/analytics.py]         purchase_stats = purchase_stats.where(
+# [MIGRATED TO crud/analytics.py]             models.Device.proveedor == supplier)
 
-    total_units = sum((entry.quantity for entry in filtered), 0)
-    total_value = sum(
-        (to_decimal(entry.valor_total_producto) for entry in filtered),
-        Decimal("0"),
-    )
-    days_values = [
-        int(entry.dias_sin_movimiento)
-        for entry in filtered
-        if entry.dias_sin_movimiento is not None
-    ]
-    average_days: float | None = None
-    if days_values:
-        average_days = round(sum(days_values) / len(days_values), 2)
-    max_days: int | None = max(days_values) if days_values else None
+# [MIGRATED TO crud/analytics.py]     sold_map = {
+# [MIGRATED TO crud/analytics.py]         row.device_id: int(row.sold_units or 0) for row in db.execute(sale_stats)
+# [MIGRATED TO crud/analytics.py]     }
+# [MIGRATED TO crud/analytics.py]     received_map = {
+# [MIGRATED TO crud/analytics.py]         row.device_id: int(row.received_units or 0)
+# [MIGRATED TO crud/analytics.py]         for row in db.execute(purchase_stats)
+# [MIGRATED TO crud/analytics.py]     }
 
-    totals = schemas.InactiveProductReportTotals(
-        total_products=len(filtered),
-        total_units=total_units,
-        total_value=total_value,
-        average_days_without_movement=average_days,
-        max_days_without_movement=max_days,
-    )
-
-    normalized_stores = sorted({int(store_id) for store_id in store_ids or []})
-    normalized_categories = [
-        category for category in categories or [] if category]
-
-    filters = schemas.InactiveProductReportFilters(
-        store_ids=normalized_stores,
-        categories=normalized_categories,
-        min_days_without_movement=min_days,
-    )
-
-    return schemas.InactiveProductReport(
-        generated_at=datetime.now(timezone.utc),
-        filters=filters,
-        totals=totals,
-        items=items,
-    )
+# [MIGRATED TO crud/analytics.py]     results: list[dict[str, object]] = []
+# [MIGRATED TO crud/analytics.py]     for row in device_rows:
+# [MIGRATED TO crud/analytics.py]         sold_units = sold_map.get(row.id, 0)
+# [MIGRATED TO crud/analytics.py]         received_units = received_map.get(row.id, 0)
+# [MIGRATED TO crud/analytics.py]         denominator = received_units if received_units > 0 else max(
+# [MIGRATED TO crud/analytics.py]             sold_units, 1)
+# [MIGRATED TO crud/analytics.py]         rotation_rate = sold_units / denominator if denominator else 0
+# [MIGRATED TO crud/analytics.py]         results.append(
+# [MIGRATED TO crud/analytics.py]             {
+# [MIGRATED TO crud/analytics.py]                 "store_id": row.store_id,
+# [MIGRATED TO crud/analytics.py]                 "store_name": row.store_name,
+# [MIGRATED TO crud/analytics.py]                 "device_id": row.id,
+# [MIGRATED TO crud/analytics.py]                 "sku": row.sku,
+# [MIGRATED TO crud/analytics.py]                 "name": row.name,
+# [MIGRATED TO crud/analytics.py]                 "sold_units": sold_units,
+# [MIGRATED TO crud/analytics.py]                 "received_units": received_units,
+# [MIGRATED TO crud/analytics.py]                 "rotation_rate": float(round(rotation_rate, 2)),
+# [MIGRATED TO crud/analytics.py]             }
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]     return results
 
 
-def calculate_rotation_analytics(
-    db: Session,
-    store_ids: Iterable[int] | None = None,
-    *,
-    date_from: date | None = None,
-    date_to: date | None = None,
-    category: str | None = None,
-    supplier: str | None = None,
-    limit: int | None = None,
-    offset: int = 0,
-) -> list[dict[str, object]]:
-    store_filter = normalize_store_ids(store_ids)
-    start_dt, end_dt = normalize_date_range(date_from, date_to)
-    category_expr = device_category_expr()
-
-    device_stmt = (
-        select(
-            models.Device.id,
+# [MIGRATED TO crud/analytics.py] def calculate_aging_analytics(
+# [MIGRATED TO crud/analytics.py]     db: Session,
+# [MIGRATED TO crud/analytics.py]     store_ids: Iterable[int] | None = None,
+# [MIGRATED TO crud/analytics.py]     *,
+# [MIGRATED TO crud/analytics.py]     date_from: date | None = None,
+# [MIGRATED TO crud/analytics.py]     date_to: date | None = None,
+# [MIGRATED TO crud/analytics.py]     category: str | None = None,
+# [MIGRATED TO crud/analytics.py]     supplier: str | None = None,
+# [MIGRATED TO crud/analytics.py]     limit: int | None = None,
+# [MIGRATED TO crud/analytics.py]     offset: int = 0,
+# [MIGRATED TO crud/analytics.py] ) -> list[dict[str, object]]:
+# [MIGRATED TO crud/analytics.py]     store_filter = normalize_store_ids(store_ids)
+# [MIGRATED TO crud/analytics.py]     now_date = datetime.now(timezone.utc).date()
+# [MIGRATED TO crud/analytics.py]     category_expr = device_category_expr()
+# [MIGRATED TO crud/analytics.py]     device_stmt = (
+# [MIGRATED TO crud/analytics.py]         select(
+# [MIGRATED TO crud/analytics.py]             models.Device.id,
             models.Device.sku,
-            models.Device.name,
-            models.Store.id.label("store_id"),
-            models.Store.name.label("store_name"),
-        )
-        .join(models.Store, models.Store.id == models.Device.store_id)
-        .order_by(models.Store.name.asc(), models.Device.name.asc())
-    )
-    if store_filter:
-        device_stmt = device_stmt.where(
-            models.Device.store_id.in_(store_filter))
-    if category:
-        device_stmt = device_stmt.where(category_expr == category)
-    if supplier:
-        device_stmt = device_stmt.where(models.Device.proveedor == supplier)
-    if offset:
-        device_stmt = device_stmt.offset(offset)
-    if limit is not None:
-        device_stmt = device_stmt.limit(limit)
+# [MIGRATED TO crud/analytics.py]             models.Device.name,
+# [MIGRATED TO crud/analytics.py]             models.Device.fecha_compra,
+# [MIGRATED TO crud/analytics.py]             models.Device.quantity,
+# [MIGRATED TO crud/analytics.py]             models.Store.id.label("store_id"),
+# [MIGRATED TO crud/analytics.py]             models.Store.name.label("store_name"),
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]         .join(models.Store, models.Store.id == models.Device.store_id)
+# [MIGRATED TO crud/analytics.py]         .order_by(
+# [MIGRATED TO crud/analytics.py]             models.Device.fecha_compra.is_(None),
+# [MIGRATED TO crud/analytics.py]             models.Device.fecha_compra.asc(),
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]     )
+# [MIGRATED TO crud/analytics.py]     if store_filter:
+# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.where(
+# [MIGRATED TO crud/analytics.py]             models.Device.store_id.in_(store_filter))
+# [MIGRATED TO crud/analytics.py]     if date_from:
+# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.where(
+# [MIGRATED TO crud/analytics.py]             models.Device.fecha_compra >= date_from)
+# [MIGRATED TO crud/analytics.py]     if date_to:
+# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.where(models.Device.fecha_compra <= date_to)
+# [MIGRATED TO crud/analytics.py]     if category:
+# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.where(category_expr == category)
+# [MIGRATED TO crud/analytics.py]     if supplier:
+# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.where(models.Device.proveedor == supplier)
 
-    device_rows = list(db.execute(device_stmt))
-    if not device_rows:
-        return []
+# [MIGRATED TO crud/analytics.py]     if offset:
+# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.offset(offset)
+# [MIGRATED TO crud/analytics.py]     if limit is not None:
+# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.limit(limit)
 
-    device_ids = [row.id for row in device_rows]
+# [MIGRATED TO crud/analytics.py]     device_rows = list(db.execute(device_stmt))
+# [MIGRATED TO crud/analytics.py]     if not device_rows:
+# [MIGRATED TO crud/analytics.py]         return []
 
-    sale_stats = (
-        select(
-            models.SaleItem.device_id,
-            func.sum(models.SaleItem.quantity).label("sold_units"),
-            models.Sale.store_id,
-        )
-        .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
-        .join(models.Device, models.Device.id == models.SaleItem.device_id)
-        .group_by(models.SaleItem.device_id, models.Sale.store_id)
-    )
-    if store_filter:
-        sale_stats = sale_stats.where(models.Sale.store_id.in_(store_filter))
-    if device_ids:
-        sale_stats = sale_stats.where(
-            models.SaleItem.device_id.in_(device_ids))
-    if start_dt:
-        sale_stats = sale_stats.where(models.Sale.created_at >= start_dt)
-    if end_dt:
-        sale_stats = sale_stats.where(models.Sale.created_at <= end_dt)
-    if category:
-        sale_stats = sale_stats.where(category_expr == category)
-    if supplier:
-        sale_stats = sale_stats.where(models.Device.proveedor == supplier)
-
-    purchase_stats = (
-        select(
-            models.PurchaseOrderItem.device_id,
-            func.sum(models.PurchaseOrderItem.quantity_received).label(
-                "received_units"),
-            models.PurchaseOrder.store_id,
-        )
-        .join(models.PurchaseOrder, models.PurchaseOrder.id == models.PurchaseOrderItem.purchase_order_id)
-        .join(models.Device, models.Device.id == models.PurchaseOrderItem.device_id)
-        .group_by(models.PurchaseOrderItem.device_id, models.PurchaseOrder.store_id)
-    )
-    if store_filter:
-        purchase_stats = purchase_stats.where(
-            models.PurchaseOrder.store_id.in_(store_filter))
-    if device_ids:
-        purchase_stats = purchase_stats.where(
-            models.PurchaseOrderItem.device_id.in_(device_ids)
-        )
-    if start_dt:
-        purchase_stats = purchase_stats.where(
-            models.PurchaseOrder.created_at >= start_dt)
-    if end_dt:
-        purchase_stats = purchase_stats.where(
-            models.PurchaseOrder.created_at <= end_dt)
-    if category:
-        purchase_stats = purchase_stats.where(category_expr == category)
-    if supplier:
-        purchase_stats = purchase_stats.where(
-            models.Device.proveedor == supplier)
-
-    sold_map = {
-        row.device_id: int(row.sold_units or 0) for row in db.execute(sale_stats)
-    }
-    received_map = {
-        row.device_id: int(row.received_units or 0)
-        for row in db.execute(purchase_stats)
-    }
-
-    results: list[dict[str, object]] = []
-    for row in device_rows:
-        sold_units = sold_map.get(row.id, 0)
-        received_units = received_map.get(row.id, 0)
-        denominator = received_units if received_units > 0 else max(
-            sold_units, 1)
-        rotation_rate = sold_units / denominator if denominator else 0
-        results.append(
-            {
-                "store_id": row.store_id,
-                "store_name": row.store_name,
-                "device_id": row.id,
-                "sku": row.sku,
-                "name": row.name,
-                "sold_units": sold_units,
-                "received_units": received_units,
-                "rotation_rate": float(round(rotation_rate, 2)),
-            }
-        )
-    return results
+# [MIGRATED TO crud/analytics.py]     metrics: list[dict[str, object]] = []
+# [MIGRATED TO crud/analytics.py]     for row in device_rows:
+# [MIGRATED TO crud/analytics.py]         purchase_date = row.fecha_compra
+# [MIGRATED TO crud/analytics.py]         days_in_stock = (now_date - purchase_date).days if purchase_date else 0
+# [MIGRATED TO crud/analytics.py]         metrics.append(
+# [MIGRATED TO crud/analytics.py]             {
+# [MIGRATED TO crud/analytics.py]                 "device_id": row.id,
+# [MIGRATED TO crud/analytics.py]                 "sku": row.sku,
+# [MIGRATED TO crud/analytics.py]                 "name": row.name,
+# [MIGRATED TO crud/analytics.py]                 "store_id": row.store_id,
+# [MIGRATED TO crud/analytics.py]                 "store_name": row.store_name,
+# [MIGRATED TO crud/analytics.py]                 "days_in_stock": max(days_in_stock, 0),
+# [MIGRATED TO crud/analytics.py]                 "quantity": int(row.quantity or 0),
+# [MIGRATED TO crud/analytics.py]             }
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]     metrics.sort(key=lambda item: item["days_in_stock"], reverse=True)
+# [MIGRATED TO crud/analytics.py]     return metrics
 
 
-def calculate_aging_analytics(
-    db: Session,
-    store_ids: Iterable[int] | None = None,
-    *,
-    date_from: date | None = None,
-    date_to: date | None = None,
-    category: str | None = None,
-    supplier: str | None = None,
-    limit: int | None = None,
-    offset: int = 0,
-) -> list[dict[str, object]]:
-    store_filter = normalize_store_ids(store_ids)
-    now_date = datetime.now(timezone.utc).date()
-    category_expr = device_category_expr()
-    device_stmt = (
-        select(
-            models.Device.id,
-            models.Device.sku,
-            models.Device.name,
-            models.Device.fecha_compra,
-            models.Device.quantity,
-            models.Store.id.label("store_id"),
-            models.Store.name.label("store_name"),
-        )
-        .join(models.Store, models.Store.id == models.Device.store_id)
-        .order_by(
-            models.Device.fecha_compra.is_(None),
-            models.Device.fecha_compra.asc(),
-        )
-    )
-    if store_filter:
-        device_stmt = device_stmt.where(
-            models.Device.store_id.in_(store_filter))
-    if date_from:
-        device_stmt = device_stmt.where(
-            models.Device.fecha_compra >= date_from)
-    if date_to:
-        device_stmt = device_stmt.where(models.Device.fecha_compra <= date_to)
-    if category:
-        device_stmt = device_stmt.where(category_expr == category)
-    if supplier:
-        device_stmt = device_stmt.where(models.Device.proveedor == supplier)
+# [MIGRATED TO crud/analytics.py] def calculate_stockout_forecast(
+# [MIGRATED TO crud/analytics.py]     db: Session,
+# [MIGRATED TO crud/analytics.py]     store_ids: Iterable[int] | None = None,
+# [MIGRATED TO crud/analytics.py]     *,
+# [MIGRATED TO crud/analytics.py]     date_from: date | None = None,
+# [MIGRATED TO crud/analytics.py]     date_to: date | None = None,
+# [MIGRATED TO crud/analytics.py]     category: str | None = None,
+# [MIGRATED TO crud/analytics.py]     supplier: str | None = None,
+# [MIGRATED TO crud/analytics.py]     limit: int | None = None,
+# [MIGRATED TO crud/analytics.py]     offset: int = 0,
+# [MIGRATED TO crud/analytics.py] ) -> list[dict[str, object]]:
+# [MIGRATED TO crud/analytics.py]     store_filter = normalize_store_ids(store_ids)
+# [MIGRATED TO crud/analytics.py]     start_dt, end_dt = normalize_date_range(date_from, date_to)
+# [MIGRATED TO crud/analytics.py]     category_expr = device_category_expr()
 
-    if offset:
-        device_stmt = device_stmt.offset(offset)
-    if limit is not None:
-        device_stmt = device_stmt.limit(limit)
+# [MIGRATED TO crud/analytics.py]     device_stmt = (
+# [MIGRATED TO crud/analytics.py]         select(
+# [MIGRATED TO crud/analytics.py]             models.Device.id,
+# [MIGRATED TO crud/analytics.py]             models.Device.sku,
+# [MIGRATED TO crud/analytics.py]             models.Device.name,
+# [MIGRATED TO crud/analytics.py]             models.Device.quantity,
+# [MIGRATED TO crud/analytics.py]             models.Device.minimum_stock,
+# [MIGRATED TO crud/analytics.py]             models.Device.reorder_point,
+# [MIGRATED TO crud/analytics.py]             models.Store.id.label("store_id"),
+# [MIGRATED TO crud/analytics.py]             models.Store.name.label("store_name"),
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]         .join(models.Store, models.Store.id == models.Device.store_id)
+# [MIGRATED TO crud/analytics.py]         .order_by(models.Store.name.asc(), models.Device.name.asc())
+# [MIGRATED TO crud/analytics.py]     )
+# [MIGRATED TO crud/analytics.py]     if store_filter:
+# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.where(
+# [MIGRATED TO crud/analytics.py]             models.Device.store_id.in_(store_filter))
+# [MIGRATED TO crud/analytics.py]     if category:
+# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.where(category_expr == category)
+# [MIGRATED TO crud/analytics.py]     if supplier:
+# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.where(models.Device.proveedor == supplier)
+# [MIGRATED TO crud/analytics.py]     if offset:
+# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.offset(offset)
+# [MIGRATED TO crud/analytics.py]     if limit is not None:
+# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.limit(limit)
 
-    device_rows = list(db.execute(device_stmt))
-    if not device_rows:
-        return []
+# [MIGRATED TO crud/analytics.py]     device_rows = list(db.execute(device_stmt))
+# [MIGRATED TO crud/analytics.py]     if not device_rows:
+# [MIGRATED TO crud/analytics.py]         return []
 
-    metrics: list[dict[str, object]] = []
-    for row in device_rows:
-        purchase_date = row.fecha_compra
-        days_in_stock = (now_date - purchase_date).days if purchase_date else 0
-        metrics.append(
-            {
-                "device_id": row.id,
-                "sku": row.sku,
-                "name": row.name,
-                "store_id": row.store_id,
-                "store_name": row.store_name,
-                "days_in_stock": max(days_in_stock, 0),
-                "quantity": int(row.quantity or 0),
-            }
-        )
-    metrics.sort(key=lambda item: item["days_in_stock"], reverse=True)
-    return metrics
+# [MIGRATED TO crud/analytics.py]     device_ids = [row.id for row in device_rows]
 
+# [MIGRATED TO crud/analytics.py]     sales_summary_stmt = (
+# [MIGRATED TO crud/analytics.py]         select(
+# [MIGRATED TO crud/analytics.py]             models.SaleItem.device_id,
+# [MIGRATED TO crud/analytics.py]             models.Sale.store_id,
+# [MIGRATED TO crud/analytics.py]             func.sum(models.SaleItem.quantity).label("sold_units"),
+# [MIGRATED TO crud/analytics.py]             func.min(models.Sale.created_at).label("first_sale"),
+# [MIGRATED TO crud/analytics.py]             func.max(models.Sale.created_at).label("last_sale"),
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]         .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
+# [MIGRATED TO crud/analytics.py]         .join(models.Device, models.Device.id == models.SaleItem.device_id)
+# [MIGRATED TO crud/analytics.py]         .group_by(models.SaleItem.device_id, models.Sale.store_id)
+# [MIGRATED TO crud/analytics.py]     )
+# [MIGRATED TO crud/analytics.py]     if store_filter:
+# [MIGRATED TO crud/analytics.py]         sales_summary_stmt = sales_summary_stmt.where(
+# [MIGRATED TO crud/analytics.py]             models.Sale.store_id.in_(store_filter))
+# [MIGRATED TO crud/analytics.py]     if device_ids:
+# [MIGRATED TO crud/analytics.py]         sales_summary_stmt = sales_summary_stmt.where(
+# [MIGRATED TO crud/analytics.py]             models.SaleItem.device_id.in_(device_ids)
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]     if start_dt:
+# [MIGRATED TO crud/analytics.py]         sales_summary_stmt = sales_summary_stmt.where(
+# [MIGRATED TO crud/analytics.py]             models.Sale.created_at >= start_dt)
+# [MIGRATED TO crud/analytics.py]     if end_dt:
+# [MIGRATED TO crud/analytics.py]         sales_summary_stmt = sales_summary_stmt.where(
+# [MIGRATED TO crud/analytics.py]             models.Sale.created_at <= end_dt)
+# [MIGRATED TO crud/analytics.py]     if category:
+# [MIGRATED TO crud/analytics.py]         sales_summary_stmt = sales_summary_stmt.where(
+# [MIGRATED TO crud/analytics.py]             category_expr == category)
+# [MIGRATED TO crud/analytics.py]     if supplier:
+# [MIGRATED TO crud/analytics.py]         sales_summary_stmt = sales_summary_stmt.where(
+# [MIGRATED TO crud/analytics.py]             models.Device.proveedor == supplier)
 
-def calculate_stockout_forecast(
-    db: Session,
-    store_ids: Iterable[int] | None = None,
-    *,
-    date_from: date | None = None,
-    date_to: date | None = None,
-    category: str | None = None,
-    supplier: str | None = None,
-    limit: int | None = None,
-    offset: int = 0,
-) -> list[dict[str, object]]:
-    store_filter = normalize_store_ids(store_ids)
-    start_dt, end_dt = normalize_date_range(date_from, date_to)
-    category_expr = device_category_expr()
+# [MIGRATED TO crud/analytics.py]     day_column = func.date(models.Sale.created_at)
+# [MIGRATED TO crud/analytics.py]     daily_sales_stmt = (
+# [MIGRATED TO crud/analytics.py]         select(
+# [MIGRATED TO crud/analytics.py]             models.SaleItem.device_id,
+# [MIGRATED TO crud/analytics.py]             day_column.label("day"),
+# [MIGRATED TO crud/analytics.py]             func.sum(models.SaleItem.quantity).label("sold_units"),
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]         .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
+# [MIGRATED TO crud/analytics.py]         .join(models.Device, models.Device.id == models.SaleItem.device_id)
+# [MIGRATED TO crud/analytics.py]         .group_by(models.SaleItem.device_id, day_column)
+# [MIGRATED TO crud/analytics.py]     )
+# [MIGRATED TO crud/analytics.py]     if store_filter:
+# [MIGRATED TO crud/analytics.py]         daily_sales_stmt = daily_sales_stmt.where(
+# [MIGRATED TO crud/analytics.py]             models.Sale.store_id.in_(store_filter))
+# [MIGRATED TO crud/analytics.py]     if device_ids:
+# [MIGRATED TO crud/analytics.py]         daily_sales_stmt = daily_sales_stmt.where(
+# [MIGRATED TO crud/analytics.py]             models.SaleItem.device_id.in_(device_ids)
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]     if start_dt:
+# [MIGRATED TO crud/analytics.py]         daily_sales_stmt = daily_sales_stmt.where(
+# [MIGRATED TO crud/analytics.py]             models.Sale.created_at >= start_dt)
+# [MIGRATED TO crud/analytics.py]     if end_dt:
+# [MIGRATED TO crud/analytics.py]         daily_sales_stmt = daily_sales_stmt.where(
+# [MIGRATED TO crud/analytics.py]             models.Sale.created_at <= end_dt)
+# [MIGRATED TO crud/analytics.py]     if category:
+# [MIGRATED TO crud/analytics.py]         daily_sales_stmt = daily_sales_stmt.where(category_expr == category)
+# [MIGRATED TO crud/analytics.py]     if supplier:
+# [MIGRATED TO crud/analytics.py]         daily_sales_stmt = daily_sales_stmt.where(
+# [MIGRATED TO crud/analytics.py]             models.Device.proveedor == supplier)
 
-    device_stmt = (
-        select(
-            models.Device.id,
-            models.Device.sku,
-            models.Device.name,
-            models.Device.quantity,
-            models.Device.minimum_stock,
-            models.Device.reorder_point,
-            models.Store.id.label("store_id"),
-            models.Store.name.label("store_name"),
-        )
-        .join(models.Store, models.Store.id == models.Device.store_id)
-        .order_by(models.Store.name.asc(), models.Device.name.asc())
-    )
-    if store_filter:
-        device_stmt = device_stmt.where(
-            models.Device.store_id.in_(store_filter))
-    if category:
-        device_stmt = device_stmt.where(category_expr == category)
-    if supplier:
-        device_stmt = device_stmt.where(models.Device.proveedor == supplier)
-    if offset:
-        device_stmt = device_stmt.offset(offset)
-    if limit is not None:
-        device_stmt = device_stmt.limit(limit)
+# [MIGRATED TO crud/analytics.py]     sales_map: dict[int, dict[str, object]] = {}
+# [MIGRATED TO crud/analytics.py]     for row in db.execute(sales_summary_stmt):
+# [MIGRATED TO crud/analytics.py]         sales_map[row.device_id] = {
+# [MIGRATED TO crud/analytics.py]             "sold_units": int(row.sold_units or 0),
+# [MIGRATED TO crud/analytics.py]             "first_sale": row.first_sale,
+# [MIGRATED TO crud/analytics.py]             "last_sale": row.last_sale,
+# [MIGRATED TO crud/analytics.py]             "store_id": int(row.store_id),
+# [MIGRATED TO crud/analytics.py]         }
 
-    device_rows = list(db.execute(device_stmt))
-    if not device_rows:
-        return []
+# [MIGRATED TO crud/analytics.py]     daily_sales_map: defaultdict[int,
+# [MIGRATED TO crud/analytics.py]                                  list[tuple[datetime, float]]] = defaultdict(list)
+# [MIGRATED TO crud/analytics.py]     for row in db.execute(daily_sales_stmt):
+# [MIGRATED TO crud/analytics.py]         day: datetime | None = row.day
+# [MIGRATED TO crud/analytics.py]         if day is None:
+# [MIGRATED TO crud/analytics.py]             continue
+# [MIGRATED TO crud/analytics.py]         daily_sales_map[row.device_id].append(
+# [MIGRATED TO crud/analytics.py]             (day, float(row.sold_units or 0)))
 
-    device_ids = [row.id for row in device_rows]
-
-    sales_summary_stmt = (
-        select(
-            models.SaleItem.device_id,
-            models.Sale.store_id,
-            func.sum(models.SaleItem.quantity).label("sold_units"),
-            func.min(models.Sale.created_at).label("first_sale"),
-            func.max(models.Sale.created_at).label("last_sale"),
-        )
-        .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
-        .join(models.Device, models.Device.id == models.SaleItem.device_id)
-        .group_by(models.SaleItem.device_id, models.Sale.store_id)
-    )
-    if store_filter:
-        sales_summary_stmt = sales_summary_stmt.where(
-            models.Sale.store_id.in_(store_filter))
-    if device_ids:
-        sales_summary_stmt = sales_summary_stmt.where(
-            models.SaleItem.device_id.in_(device_ids)
-        )
-    if start_dt:
-        sales_summary_stmt = sales_summary_stmt.where(
-            models.Sale.created_at >= start_dt)
-    if end_dt:
-        sales_summary_stmt = sales_summary_stmt.where(
-            models.Sale.created_at <= end_dt)
-    if category:
-        sales_summary_stmt = sales_summary_stmt.where(
-            category_expr == category)
-    if supplier:
-        sales_summary_stmt = sales_summary_stmt.where(
-            models.Device.proveedor == supplier)
-
-    day_column = func.date(models.Sale.created_at)
-    daily_sales_stmt = (
-        select(
-            models.SaleItem.device_id,
-            day_column.label("day"),
-            func.sum(models.SaleItem.quantity).label("sold_units"),
-        )
-        .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
-        .join(models.Device, models.Device.id == models.SaleItem.device_id)
-        .group_by(models.SaleItem.device_id, day_column)
-    )
-    if store_filter:
-        daily_sales_stmt = daily_sales_stmt.where(
-            models.Sale.store_id.in_(store_filter))
-    if device_ids:
-        daily_sales_stmt = daily_sales_stmt.where(
-            models.SaleItem.device_id.in_(device_ids)
-        )
-    if start_dt:
-        daily_sales_stmt = daily_sales_stmt.where(
-            models.Sale.created_at >= start_dt)
-    if end_dt:
-        daily_sales_stmt = daily_sales_stmt.where(
-            models.Sale.created_at <= end_dt)
-    if category:
-        daily_sales_stmt = daily_sales_stmt.where(category_expr == category)
-    if supplier:
-        daily_sales_stmt = daily_sales_stmt.where(
-            models.Device.proveedor == supplier)
-
-    sales_map: dict[int, dict[str, object]] = {}
-    for row in db.execute(sales_summary_stmt):
-        sales_map[row.device_id] = {
-            "sold_units": int(row.sold_units or 0),
-            "first_sale": row.first_sale,
-            "last_sale": row.last_sale,
-            "store_id": int(row.store_id),
-        }
-
-    daily_sales_map: defaultdict[int,
-                                 list[tuple[datetime, float]]] = defaultdict(list)
-    for row in db.execute(daily_sales_stmt):
-        day: datetime | None = row.day
-        if day is None:
-            continue
-        daily_sales_map[row.device_id].append(
-            (day, float(row.sold_units or 0)))
-
-    metrics: list[dict[str, object]] = []
-    for row in device_rows:
-        stats = sales_map.get(row.id)
-        quantity = int(row.quantity or 0)
-        daily_points_raw = sorted(
-            daily_sales_map.get(row.id, []), key=lambda item: item[0]
-        )
-        points = [(float(index), value)
-                  for index, (_, value) in enumerate(daily_points_raw)]
-        slope, intercept, r_squared = linear_regression(points)
-        historical_avg = (
-            sum(value for _, value in daily_points_raw) / len(daily_points_raw)
-            if daily_points_raw
-            else 0.0
-        )
-        predicted_next = max(0.0, slope * len(points) +
-                             intercept) if points else 0.0
+# [MIGRATED TO crud/analytics.py]     metrics: list[dict[str, object]] = []
+# [MIGRATED TO crud/analytics.py]     for row in device_rows:
+# [MIGRATED TO crud/analytics.py]         stats = sales_map.get(row.id)
+# [MIGRATED TO crud/analytics.py]         quantity = int(row.quantity or 0)
+# [MIGRATED TO crud/analytics.py]         daily_points_raw = sorted(
+# [MIGRATED TO crud/analytics.py]             daily_sales_map.get(row.id, []), key=lambda item: item[0]
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]         points = [(float(index), value)
+# [MIGRATED TO crud/analytics.py]                   for index, (_, value) in enumerate(daily_points_raw)]
+# [MIGRATED TO crud/analytics.py]         slope, intercept, r_squared = linear_regression(points)
+# [MIGRATED TO crud/analytics.py]         historical_avg = (
+# [MIGRATED TO crud/analytics.py]             sum(value for _, value in daily_points_raw) / len(daily_points_raw)
+# [MIGRATED TO crud/analytics.py]             if daily_points_raw
+# [MIGRATED TO crud/analytics.py]             else 0.0
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]         predicted_next = max(0.0, slope * len(points) +
+# [MIGRATED TO crud/analytics.py]                              intercept) if points else 0.0
         expected_daily = max(historical_avg, predicted_next)
 
-        if stats is None:
-            sold_units = 0
-        else:
-            sold_units = int(stats.get("sold_units", 0))
+# [MIGRATED TO crud/analytics.py]         if stats is None:
+# [MIGRATED TO crud/analytics.py]             sold_units = 0
+# [MIGRATED TO crud/analytics.py]         else:
+# [MIGRATED TO crud/analytics.py]             sold_units = int(stats.get("sold_units", 0))
 
-        if expected_daily <= 0:
-            projected_days: int | None = None
-        else:
-            projected_days = max(int(math.ceil(quantity / expected_daily)), 0)
+# [MIGRATED TO crud/analytics.py]         if expected_daily <= 0:
+# [MIGRATED TO crud/analytics.py]             projected_days: int | None = None
+# [MIGRATED TO crud/analytics.py]         else:
+# [MIGRATED TO crud/analytics.py]             projected_days = max(int(math.ceil(quantity / expected_daily)), 0)
 
-        if slope > 0.25:
-            trend_label = "acelerando"
-        elif slope < -0.25:
-            trend_label = "desacelerando"
-        else:
-            trend_label = "estable"
+# [MIGRATED TO crud/analytics.py]         if slope > 0.25:
+# [MIGRATED TO crud/analytics.py]             trend_label = "acelerando"
+# [MIGRATED TO crud/analytics.py]         elif slope < -0.25:
+# [MIGRATED TO crud/analytics.py]             trend_label = "desacelerando"
+# [MIGRATED TO crud/analytics.py]         else:
+# [MIGRATED TO crud/analytics.py]             trend_label = "estable"
 
-        alert_level: str | None
-        if projected_days is None:
-            alert_level = None
-        elif projected_days <= 3:
-            alert_level = "critical"
-        elif projected_days <= 7:
-            alert_level = "warning"
-        else:
-            alert_level = "ok"
+# [MIGRATED TO crud/analytics.py]         alert_level: str | None
+# [MIGRATED TO crud/analytics.py]         if projected_days is None:
+# [MIGRATED TO crud/analytics.py]             alert_level = None
+# [MIGRATED TO crud/analytics.py]         elif projected_days <= 3:
+# [MIGRATED TO crud/analytics.py]             alert_level = "critical"
+# [MIGRATED TO crud/analytics.py]         elif projected_days <= 7:
+# [MIGRATED TO crud/analytics.py]             alert_level = "warning"
+# [MIGRATED TO crud/analytics.py]         else:
+# [MIGRATED TO crud/analytics.py]             alert_level = "ok"
 
-        metrics.append(
-            {
-                "device_id": row.id,
-                "sku": row.sku,
-                "name": row.name,
-                "store_id": row.store_id,
-                "store_name": row.store_name,
-                "average_daily_sales": round(float(expected_daily), 2),
-                "projected_days": projected_days,
-                "quantity": quantity,
-                "minimum_stock": int(getattr(row, "minimum_stock", 0) or 0),
-                "reorder_point": int(getattr(row, "reorder_point", 0) or 0),
-                "trend": trend_label,
-                "trend_score": round(float(slope), 4),
-                "confidence": round(float(r_squared), 3),
-                "alert_level": alert_level,
-                "sold_units": sold_units,
-            }
-        )
+# [MIGRATED TO crud/analytics.py]         metrics.append(
+# [MIGRATED TO crud/analytics.py]             {
+# [MIGRATED TO crud/analytics.py]                 "device_id": row.id,
+# [MIGRATED TO crud/analytics.py]                 "sku": row.sku,
+# [MIGRATED TO crud/analytics.py]                 "name": row.name,
+# [MIGRATED TO crud/analytics.py]                 "store_id": row.store_id,
+# [MIGRATED TO crud/analytics.py]                 "store_name": row.store_name,
+# [MIGRATED TO crud/analytics.py]                 "average_daily_sales": round(float(expected_daily), 2),
+# [MIGRATED TO crud/analytics.py]                 "projected_days": projected_days,
+# [MIGRATED TO crud/analytics.py]                 "quantity": quantity,
+# [MIGRATED TO crud/analytics.py]                 "minimum_stock": int(getattr(row, "minimum_stock", 0) or 0),
+# [MIGRATED TO crud/analytics.py]                 "reorder_point": int(getattr(row, "reorder_point", 0) or 0),
+# [MIGRATED TO crud/analytics.py]                 "trend": trend_label,
+# [MIGRATED TO crud/analytics.py]                 "trend_score": round(float(slope), 4),
+# [MIGRATED TO crud/analytics.py]                 "confidence": round(float(r_squared), 3),
+# [MIGRATED TO crud/analytics.py]                 "alert_level": alert_level,
+# [MIGRATED TO crud/analytics.py]                 "sold_units": sold_units,
+# [MIGRATED TO crud/analytics.py]             }
+# [MIGRATED TO crud/analytics.py]         )
 
-    metrics.sort(key=lambda item: (
-        item["projected_days"] is None, item["projected_days"] or 0))
-    return metrics
+# [MIGRATED TO crud/analytics.py]     metrics.sort(key=lambda item: (
+# [MIGRATED TO crud/analytics.py]         item["projected_days"] is None, item["projected_days"] or 0))
+# [MIGRATED TO crud/analytics.py]     return metrics
 
 
-def calculate_store_comparatives(
-    db: Session,
-    store_ids: Iterable[int] | None = None,
-    *,
-    date_from: date | None = None,
-    date_to: date | None = None,
-    category: str | None = None,
-    supplier: str | None = None,
-    limit: int | None = None,
-    offset: int = 0,
-) -> list[dict[str, object]]:
-    store_filter = normalize_store_ids(store_ids)
-    start_dt, end_dt = normalize_date_range(date_from, date_to)
-    category_expr = device_category_expr()
+# [MIGRATED TO crud/analytics.py] def calculate_store_comparatives(
+# [MIGRATED TO crud/analytics.py]     db: Session,
+# [MIGRATED TO crud/analytics.py]     store_ids: Iterable[int] | None = None,
+# [MIGRATED TO crud/analytics.py]     *,
+# [MIGRATED TO crud/analytics.py]     date_from: date | None = None,
+# [MIGRATED TO crud/analytics.py]     date_to: date | None = None,
+# [MIGRATED TO crud/analytics.py]     category: str | None = None,
+# [MIGRATED TO crud/analytics.py]     supplier: str | None = None,
+# [MIGRATED TO crud/analytics.py]     limit: int | None = None,
+# [MIGRATED TO crud/analytics.py]     offset: int = 0,
+# [MIGRATED TO crud/analytics.py] ) -> list[dict[str, object]]:
+# [MIGRATED TO crud/analytics.py]     store_filter = normalize_store_ids(store_ids)
+# [MIGRATED TO crud/analytics.py]     start_dt, end_dt = normalize_date_range(date_from, date_to)
+# [MIGRATED TO crud/analytics.py]     category_expr = device_category_expr()
 
-    inventory_stmt = (
-        select(
-            models.Store.id,
-            models.Store.name,
-            func.coalesce(func.count(models.Device.id),
-                          0).label("device_count"),
-            func.coalesce(func.sum(models.Device.quantity),
-                          0).label("total_units"),
-            func.coalesce(
-                func.sum(models.Device.quantity * models.Device.unit_price),
-                0,
-            ).label("inventory_value"),
-        )
-        .outerjoin(models.Device, models.Device.store_id == models.Store.id)
-        .group_by(models.Store.id)
-        .order_by(models.Store.name.asc())
-    )
-    if store_filter:
-        inventory_stmt = inventory_stmt.where(
-            models.Store.id.in_(store_filter))
-    if category:
-        inventory_stmt = inventory_stmt.where(category_expr == category)
-    if supplier:
-        inventory_stmt = inventory_stmt.where(
-            models.Device.proveedor == supplier)
-    if offset:
-        inventory_stmt = inventory_stmt.offset(offset)
-    if limit is not None:
-        inventory_stmt = inventory_stmt.limit(limit)
+# [MIGRATED TO crud/analytics.py]     inventory_stmt = (
+# [MIGRATED TO crud/analytics.py]         select(
+# [MIGRATED TO crud/analytics.py]             models.Store.id,
+# [MIGRATED TO crud/analytics.py]             models.Store.name,
+# [MIGRATED TO crud/analytics.py]             func.coalesce(func.count(models.Device.id),
+# [MIGRATED TO crud/analytics.py]                           0).label("device_count"),
+# [MIGRATED TO crud/analytics.py]             func.coalesce(func.sum(models.Device.quantity),
+# [MIGRATED TO crud/analytics.py]                           0).label("total_units"),
+# [MIGRATED TO crud/analytics.py]             func.coalesce(
+# [MIGRATED TO crud/analytics.py]                 func.sum(models.Device.quantity * models.Device.unit_price),
+# [MIGRATED TO crud/analytics.py]                 0,
+# [MIGRATED TO crud/analytics.py]             ).label("inventory_value"),
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]         .outerjoin(models.Device, models.Device.store_id == models.Store.id)
+# [MIGRATED TO crud/analytics.py]         .group_by(models.Store.id)
+# [MIGRATED TO crud/analytics.py]         .order_by(models.Store.name.asc())
+# [MIGRATED TO crud/analytics.py]     )
+# [MIGRATED TO crud/analytics.py]     if store_filter:
+# [MIGRATED TO crud/analytics.py]         inventory_stmt = inventory_stmt.where(
+# [MIGRATED TO crud/analytics.py]             models.Store.id.in_(store_filter))
+# [MIGRATED TO crud/analytics.py]     if category:
+# [MIGRATED TO crud/analytics.py]         inventory_stmt = inventory_stmt.where(category_expr == category)
+# [MIGRATED TO crud/analytics.py]     if supplier:
+# [MIGRATED TO crud/analytics.py]         inventory_stmt = inventory_stmt.where(
+# [MIGRATED TO crud/analytics.py]             models.Device.proveedor == supplier)
+# [MIGRATED TO crud/analytics.py]     if offset:
+# [MIGRATED TO crud/analytics.py]         inventory_stmt = inventory_stmt.offset(offset)
+# [MIGRATED TO crud/analytics.py]     if limit is not None:
+# [MIGRATED TO crud/analytics.py]         inventory_stmt = inventory_stmt.limit(limit)
 
-    inventory_rows = list(db.execute(inventory_stmt))
-    if not inventory_rows:
-        return []
+# [MIGRATED TO crud/analytics.py]     inventory_rows = list(db.execute(inventory_stmt))
+# [MIGRATED TO crud/analytics.py]     if not inventory_rows:
+# [MIGRATED TO crud/analytics.py]         return []
 
-    store_ids_window = [int(row.id) for row in inventory_rows]
+# [MIGRATED TO crud/analytics.py]     store_ids_window = [int(row.id) for row in inventory_rows]
 
-    rotation = calculate_rotation_analytics(
-        db,
-        store_ids=store_ids_window,
-        date_from=date_from,
-        date_to=date_to,
-        category=category,
-        supplier=supplier,
-        limit=None,
-        offset=0,
-    )
-    aging = calculate_aging_analytics(
-        db,
-        store_ids=store_ids_window,
-        date_from=date_from,
-        date_to=date_to,
-        category=category,
-        supplier=supplier,
-        limit=None,
-        offset=0,
-    )
+# [MIGRATED TO crud/analytics.py]     rotation = calculate_rotation_analytics(
+# [MIGRATED TO crud/analytics.py]         db,
+# [MIGRATED TO crud/analytics.py]         store_ids=store_ids_window,
+# [MIGRATED TO crud/analytics.py]         date_from=date_from,
+# [MIGRATED TO crud/analytics.py]         date_to=date_to,
+# [MIGRATED TO crud/analytics.py]         category=category,
+# [MIGRATED TO crud/analytics.py]         supplier=supplier,
+# [MIGRATED TO crud/analytics.py]         limit=None,
+# [MIGRATED TO crud/analytics.py]         offset=0,
+# [MIGRATED TO crud/analytics.py]     )
+# [MIGRATED TO crud/analytics.py]     aging = calculate_aging_analytics(
+# [MIGRATED TO crud/analytics.py]         db,
+# [MIGRATED TO crud/analytics.py]         store_ids=store_ids_window,
+# [MIGRATED TO crud/analytics.py]         date_from=date_from,
+# [MIGRATED TO crud/analytics.py]         date_to=date_to,
+# [MIGRATED TO crud/analytics.py]         category=category,
+# [MIGRATED TO crud/analytics.py]         supplier=supplier,
+# [MIGRATED TO crud/analytics.py]         limit=None,
+# [MIGRATED TO crud/analytics.py]         offset=0,
+# [MIGRATED TO crud/analytics.py]     )
 
-    rotation_totals: dict[int, tuple[float, int]] = {}
-    aging_totals: dict[int, tuple[float, int]] = {}
+# [MIGRATED TO crud/analytics.py]     rotation_totals: dict[int, tuple[float, int]] = {}
+# [MIGRATED TO crud/analytics.py]     aging_totals: dict[int, tuple[float, int]] = {}
 
-    for item in rotation:
-        store_id = int(item["store_id"])
-        total, count = rotation_totals.get(store_id, (0.0, 0))
-        rotation_totals[store_id] = (
-            total + float(item["rotation_rate"]), count + 1)
+# [MIGRATED TO crud/analytics.py]     for item in rotation:
+# [MIGRATED TO crud/analytics.py]         store_id = int(item["store_id"])
+# [MIGRATED TO crud/analytics.py]         total, count = rotation_totals.get(store_id, (0.0, 0))
+# [MIGRATED TO crud/analytics.py]         rotation_totals[store_id] = (
+# [MIGRATED TO crud/analytics.py]             total + float(item["rotation_rate"]), count + 1)
 
-    for item in aging:
-        store_id_value = item.get("store_id")
-        if store_id_value is None:
-            continue
-        store_id = int(store_id_value)
-        total, count = aging_totals.get(store_id, (0.0, 0))
-        aging_totals[store_id] = (
-            total + float(item["days_in_stock"]), count + 1)
+# [MIGRATED TO crud/analytics.py]     for item in aging:
+# [MIGRATED TO crud/analytics.py]         store_id_value = item.get("store_id")
+# [MIGRATED TO crud/analytics.py]         if store_id_value is None:
+# [MIGRATED TO crud/analytics.py]             continue
+# [MIGRATED TO crud/analytics.py]         store_id = int(store_id_value)
+# [MIGRATED TO crud/analytics.py]         total, count = aging_totals.get(store_id, (0.0, 0))
+# [MIGRATED TO crud/analytics.py]         aging_totals[store_id] = (
+# [MIGRATED TO crud/analytics.py]             total + float(item["days_in_stock"]), count + 1)
 
-    rotation_avg = {
-        store_id: (total / count if count else 0.0)
-        for store_id, (total, count) in rotation_totals.items()
-    }
-    aging_avg = {
-        store_id: (total / count if count else 0.0)
-        for store_id, (total, count) in aging_totals.items()
-    }
+# [MIGRATED TO crud/analytics.py]     rotation_avg = {
+# [MIGRATED TO crud/analytics.py]         store_id: (total / count if count else 0.0)
+# [MIGRATED TO crud/analytics.py]         for store_id, (total, count) in rotation_totals.items()
+# [MIGRATED TO crud/analytics.py]     }
+# [MIGRATED TO crud/analytics.py]     aging_avg = {
+# [MIGRATED TO crud/analytics.py]         store_id: (total / count if count else 0.0)
+# [MIGRATED TO crud/analytics.py]         for store_id, (total, count) in aging_totals.items()
+# [MIGRATED TO crud/analytics.py]     }
 
     window_start = start_dt or (datetime.now(
-        timezone.utc) - timedelta(days=30))
-    sales_stmt = (
-        select(
-            models.Sale.store_id,
-            func.coalesce(func.count(models.Sale.id), 0).label("orders"),
-            func.coalesce(func.sum(models.Sale.total_amount),
-                          0).label("revenue"),
-        )
-        .join(models.SaleItem, models.SaleItem.sale_id == models.Sale.id)
-        .join(models.Device, models.Device.id == models.SaleItem.device_id)
-        .where(models.Sale.created_at >= window_start)
-        .group_by(models.Sale.store_id)
-    )
-    if store_ids_window:
-        sales_stmt = sales_stmt.where(
-            models.Sale.store_id.in_(store_ids_window))
-    if end_dt:
-        sales_stmt = sales_stmt.where(models.Sale.created_at <= end_dt)
-    if category:
-        sales_stmt = sales_stmt.where(category_expr == category)
-    if supplier:
-        sales_stmt = sales_stmt.where(models.Device.proveedor == supplier)
+# [MIGRATED TO crud/analytics.py]         timezone.utc) - timedelta(days=30))
+# [MIGRATED TO crud/analytics.py]     sales_stmt = (
+# [MIGRATED TO crud/analytics.py]         select(
+# [MIGRATED TO crud/analytics.py]             models.Sale.store_id,
+# [MIGRATED TO crud/analytics.py]             func.coalesce(func.count(models.Sale.id), 0).label("orders"),
+# [MIGRATED TO crud/analytics.py]             func.coalesce(func.sum(models.Sale.total_amount),
+# [MIGRATED TO crud/analytics.py]                           0).label("revenue"),
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]         .join(models.SaleItem, models.SaleItem.sale_id == models.Sale.id)
+# [MIGRATED TO crud/analytics.py]         .join(models.Device, models.Device.id == models.SaleItem.device_id)
+# [MIGRATED TO crud/analytics.py]         .where(models.Sale.created_at >= window_start)
+# [MIGRATED TO crud/analytics.py]         .group_by(models.Sale.store_id)
+# [MIGRATED TO crud/analytics.py]     )
+# [MIGRATED TO crud/analytics.py]     if store_ids_window:
+# [MIGRATED TO crud/analytics.py]         sales_stmt = sales_stmt.where(
+# [MIGRATED TO crud/analytics.py]             models.Sale.store_id.in_(store_ids_window))
+# [MIGRATED TO crud/analytics.py]     if end_dt:
+# [MIGRATED TO crud/analytics.py]         sales_stmt = sales_stmt.where(models.Sale.created_at <= end_dt)
+# [MIGRATED TO crud/analytics.py]     if category:
+# [MIGRATED TO crud/analytics.py]         sales_stmt = sales_stmt.where(category_expr == category)
+# [MIGRATED TO crud/analytics.py]     if supplier:
+# [MIGRATED TO crud/analytics.py]         sales_stmt = sales_stmt.where(models.Device.proveedor == supplier)
 
-    sales_map: dict[int, dict[str, Decimal]] = {}
-    for row in db.execute(sales_stmt):
-        sales_map[int(row.store_id)] = {
-            "orders": Decimal(row.orders or 0),
-            "revenue": Decimal(row.revenue or 0),
-        }
+# [MIGRATED TO crud/analytics.py]     sales_map: dict[int, dict[str, Decimal]] = {}
+# [MIGRATED TO crud/analytics.py]     for row in db.execute(sales_stmt):
+# [MIGRATED TO crud/analytics.py]         sales_map[int(row.store_id)] = {
+# [MIGRATED TO crud/analytics.py]             "orders": Decimal(row.orders or 0),
+# [MIGRATED TO crud/analytics.py]             "revenue": Decimal(row.revenue or 0),
+# [MIGRATED TO crud/analytics.py]         }
 
-    comparatives: list[dict[str, object]] = []
-    for row in inventory_rows:
-        store_id = int(row.id)
-        sales = sales_map.get(
-            store_id, {"orders": Decimal(0), "revenue": Decimal(0)})
-        comparatives.append(
-            {
-                "store_id": store_id,
-                "store_name": row.name,
-                "device_count": int(row.device_count or 0),
-                "total_units": int(row.total_units or 0),
-                "inventory_value": float(row.inventory_value or 0),
-                "average_rotation": round(rotation_avg.get(store_id, 0.0), 2),
-                "average_aging_days": round(aging_avg.get(store_id, 0.0), 1),
-                "sales_last_30_days": float(sales["revenue"]),
-                "sales_count_last_30_days": int(sales["orders"]),
-            }
-        )
+# [MIGRATED TO crud/analytics.py]     comparatives: list[dict[str, object]] = []
+# [MIGRATED TO crud/analytics.py]     for row in inventory_rows:
+# [MIGRATED TO crud/analytics.py]         store_id = int(row.id)
+# [MIGRATED TO crud/analytics.py]         sales = sales_map.get(
+# [MIGRATED TO crud/analytics.py]             store_id, {"orders": Decimal(0), "revenue": Decimal(0)})
+# [MIGRATED TO crud/analytics.py]         comparatives.append(
+# [MIGRATED TO crud/analytics.py]             {
+# [MIGRATED TO crud/analytics.py]                 "store_id": store_id,
+# [MIGRATED TO crud/analytics.py]                 "store_name": row.name,
+# [MIGRATED TO crud/analytics.py]                 "device_count": int(row.device_count or 0),
+# [MIGRATED TO crud/analytics.py]                 "total_units": int(row.total_units or 0),
+# [MIGRATED TO crud/analytics.py]                 "inventory_value": float(row.inventory_value or 0),
+# [MIGRATED TO crud/analytics.py]                 "average_rotation": round(rotation_avg.get(store_id, 0.0), 2),
+# [MIGRATED TO crud/analytics.py]                 "average_aging_days": round(aging_avg.get(store_id, 0.0), 1),
+# [MIGRATED TO crud/analytics.py]                 "sales_last_30_days": float(sales["revenue"]),
+# [MIGRATED TO crud/analytics.py]                 "sales_count_last_30_days": int(sales["orders"]),
+# [MIGRATED TO crud/analytics.py]             }
+# [MIGRATED TO crud/analytics.py]         )
 
-    comparatives.sort(key=lambda item: item["inventory_value"], reverse=True)
-    return comparatives
+# [MIGRATED TO crud/analytics.py]     comparatives.sort(key=lambda item: item["inventory_value"], reverse=True)
+# [MIGRATED TO crud/analytics.py]     return comparatives
 
 
-def calculate_profit_margin(
-    db: Session,
-    store_ids: Iterable[int] | None = None,
-    *,
-    date_from: date | None = None,
-    date_to: date | None = None,
-    category: str | None = None,
-    supplier: str | None = None,
-    limit: int | None = None,
-    offset: int = 0,
-) -> list[dict[str, object]]:
-    store_filter = normalize_store_ids(store_ids)
-    start_dt, end_dt = normalize_date_range(date_from, date_to)
-    category_expr = device_category_expr()
-    revenue_expr = func.coalesce(func.sum(models.SaleItem.total_line), 0)
+# [MIGRATED TO crud/analytics.py] def calculate_profit_margin(
+# [MIGRATED TO crud/analytics.py]     db: Session,
+# [MIGRATED TO crud/analytics.py]     store_ids: Iterable[int] | None = None,
+# [MIGRATED TO crud/analytics.py]     *,
+# [MIGRATED TO crud/analytics.py]     date_from: date | None = None,
+# [MIGRATED TO crud/analytics.py]     date_to: date | None = None,
+# [MIGRATED TO crud/analytics.py]     category: str | None = None,
+# [MIGRATED TO crud/analytics.py]     supplier: str | None = None,
+# [MIGRATED TO crud/analytics.py]     limit: int | None = None,
+# [MIGRATED TO crud/analytics.py]     offset: int = 0,
+# [MIGRATED TO crud/analytics.py] ) -> list[dict[str, object]]:
+# [MIGRATED TO crud/analytics.py]     store_filter = normalize_store_ids(store_ids)
+# [MIGRATED TO crud/analytics.py]     start_dt, end_dt = normalize_date_range(date_from, date_to)
+# [MIGRATED TO crud/analytics.py]     category_expr = device_category_expr()
+# [MIGRATED TO crud/analytics.py]     revenue_expr = func.coalesce(func.sum(models.SaleItem.total_line), 0)
     cost_expr = func.coalesce(
         func.sum(models.SaleItem.quantity * models.Device.costo_unitario),
         0,
@@ -7110,174 +7163,174 @@ def calculate_sales_by_category(
 def calculate_sales_timeseries(
     db: Session,
     store_ids: Iterable[int] | None = None,
-    *,
-    date_from: date | None = None,
-    date_to: date | None = None,
-    category: str | None = None,
-    supplier: str | None = None,
-    limit: int | None = None,
-    offset: int = 0,
-) -> list[dict[str, object]]:
-    store_filter = normalize_store_ids(store_ids)
-    start_dt, end_dt = normalize_date_range(date_from, date_to)
-    category_expr = device_category_expr()
-    stmt = (
-        select(
-            func.date(models.Sale.created_at).label("sale_date"),
-            func.coalesce(func.sum(models.SaleItem.total_line),
-                          0).label("revenue"),
-            func.count(func.distinct(models.Sale.id)).label("orders"),
-            func.coalesce(func.sum(models.SaleItem.quantity),
-                          0).label("units"),
-        )
-        .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
-        .join(models.Device, models.Device.id == models.SaleItem.device_id)
-        .group_by(func.date(models.Sale.created_at))
-        .order_by(func.date(models.Sale.created_at).asc())
-    )
-    if store_filter:
-        stmt = stmt.where(models.Sale.store_id.in_(store_filter))
-    if start_dt:
-        stmt = stmt.where(models.Sale.created_at >= start_dt)
-    if end_dt:
-        stmt = stmt.where(models.Sale.created_at <= end_dt)
-    if category:
-        stmt = stmt.where(category_expr == category)
-    if supplier:
-        stmt = stmt.where(models.Device.proveedor == supplier)
-    if offset:
-        stmt = stmt.offset(offset)
-    if limit is not None:
-        stmt = stmt.limit(limit)
+# [MIGRATED TO crud/analytics.py]     *,
+# [MIGRATED TO crud/analytics.py]     date_from: date | None = None,
+# [MIGRATED TO crud/analytics.py]     date_to: date | None = None,
+# [MIGRATED TO crud/analytics.py]     category: str | None = None,
+# [MIGRATED TO crud/analytics.py]     supplier: str | None = None,
+# [MIGRATED TO crud/analytics.py]     limit: int | None = None,
+# [MIGRATED TO crud/analytics.py]     offset: int = 0,
+# [MIGRATED TO crud/analytics.py] ) -> list[dict[str, object]]:
+# [MIGRATED TO crud/analytics.py]     store_filter = normalize_store_ids(store_ids)
+# [MIGRATED TO crud/analytics.py]     start_dt, end_dt = normalize_date_range(date_from, date_to)
+# [MIGRATED TO crud/analytics.py]     category_expr = device_category_expr()
+# [MIGRATED TO crud/analytics.py]     stmt = (
+# [MIGRATED TO crud/analytics.py]         select(
+# [MIGRATED TO crud/analytics.py]             func.date(models.Sale.created_at).label("sale_date"),
+# [MIGRATED TO crud/analytics.py]             func.coalesce(func.sum(models.SaleItem.total_line),
+# [MIGRATED TO crud/analytics.py]                           0).label("revenue"),
+# [MIGRATED TO crud/analytics.py]             func.count(func.distinct(models.Sale.id)).label("orders"),
+# [MIGRATED TO crud/analytics.py]             func.coalesce(func.sum(models.SaleItem.quantity),
+# [MIGRATED TO crud/analytics.py]                           0).label("units"),
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]         .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
+# [MIGRATED TO crud/analytics.py]         .join(models.Device, models.Device.id == models.SaleItem.device_id)
+# [MIGRATED TO crud/analytics.py]         .group_by(func.date(models.Sale.created_at))
+# [MIGRATED TO crud/analytics.py]         .order_by(func.date(models.Sale.created_at).asc())
+# [MIGRATED TO crud/analytics.py]     )
+# [MIGRATED TO crud/analytics.py]     if store_filter:
+# [MIGRATED TO crud/analytics.py]         stmt = stmt.where(models.Sale.store_id.in_(store_filter))
+# [MIGRATED TO crud/analytics.py]     if start_dt:
+# [MIGRATED TO crud/analytics.py]         stmt = stmt.where(models.Sale.created_at >= start_dt)
+# [MIGRATED TO crud/analytics.py]     if end_dt:
+# [MIGRATED TO crud/analytics.py]         stmt = stmt.where(models.Sale.created_at <= end_dt)
+# [MIGRATED TO crud/analytics.py]     if category:
+# [MIGRATED TO crud/analytics.py]         stmt = stmt.where(category_expr == category)
+# [MIGRATED TO crud/analytics.py]     if supplier:
+# [MIGRATED TO crud/analytics.py]         stmt = stmt.where(models.Device.proveedor == supplier)
+# [MIGRATED TO crud/analytics.py]     if offset:
+# [MIGRATED TO crud/analytics.py]         stmt = stmt.offset(offset)
+# [MIGRATED TO crud/analytics.py]     if limit is not None:
+# [MIGRATED TO crud/analytics.py]         stmt = stmt.limit(limit)
 
-    series: list[dict[str, object]] = []
-    for row in db.execute(stmt):
-        series.append(
-            {
-                "date": row.sale_date,
-                "revenue": float(row.revenue or 0),
-                "orders": int(row.orders or 0),
-                "units": int(row.units or 0),
-            }
-        )
-    return series
+# [MIGRATED TO crud/analytics.py]     series: list[dict[str, object]] = []
+# [MIGRATED TO crud/analytics.py]     for row in db.execute(stmt):
+# [MIGRATED TO crud/analytics.py]         series.append(
+# [MIGRATED TO crud/analytics.py]             {
+# [MIGRATED TO crud/analytics.py]                 "date": row.sale_date,
+# [MIGRATED TO crud/analytics.py]                 "revenue": float(row.revenue or 0),
+# [MIGRATED TO crud/analytics.py]                 "orders": int(row.orders or 0),
+# [MIGRATED TO crud/analytics.py]                 "units": int(row.units or 0),
+# [MIGRATED TO crud/analytics.py]             }
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]     return series
 
 
-def calculate_sales_projection(
-    db: Session,
-    store_ids: Iterable[int] | None = None,
-    *,
-    horizon_days: int = 30,
-    date_from: date | None = None,
-    date_to: date | None = None,
-    category: str | None = None,
-    supplier: str | None = None,
-    limit: int | None = None,
-    offset: int = 0,
-) -> list[dict[str, object]]:
-    store_filter = normalize_store_ids(store_ids)
-    start_dt, end_dt = normalize_date_range(date_from, date_to)
-    category_expr = device_category_expr()
-    lookback_days = max(horizon_days, 30)
-    since = start_dt or (datetime.now(timezone.utc) -
-                         timedelta(days=lookback_days))
+# [MIGRATED TO crud/analytics.py] def calculate_sales_projection(
+# [MIGRATED TO crud/analytics.py]     db: Session,
+# [MIGRATED TO crud/analytics.py]     store_ids: Iterable[int] | None = None,
+# [MIGRATED TO crud/analytics.py]     *,
+# [MIGRATED TO crud/analytics.py]     horizon_days: int = 30,
+# [MIGRATED TO crud/analytics.py]     date_from: date | None = None,
+# [MIGRATED TO crud/analytics.py]     date_to: date | None = None,
+# [MIGRATED TO crud/analytics.py]     category: str | None = None,
+# [MIGRATED TO crud/analytics.py]     supplier: str | None = None,
+# [MIGRATED TO crud/analytics.py]     limit: int | None = None,
+# [MIGRATED TO crud/analytics.py]     offset: int = 0,
+# [MIGRATED TO crud/analytics.py] ) -> list[dict[str, object]]:
+# [MIGRATED TO crud/analytics.py]     store_filter = normalize_store_ids(store_ids)
+# [MIGRATED TO crud/analytics.py]     start_dt, end_dt = normalize_date_range(date_from, date_to)
+# [MIGRATED TO crud/analytics.py]     category_expr = device_category_expr()
+# [MIGRATED TO crud/analytics.py]     lookback_days = max(horizon_days, 30)
+# [MIGRATED TO crud/analytics.py]     since = start_dt or (datetime.now(timezone.utc) -
+# [MIGRATED TO crud/analytics.py]                          timedelta(days=lookback_days))
 
-    store_stmt = select(models.Store.id, models.Store.name).order_by(
-        models.Store.name.asc())
-    if store_filter:
-        store_stmt = store_stmt.where(models.Store.id.in_(store_filter))
-    if offset:
-        store_stmt = store_stmt.offset(offset)
-    if limit is not None:
-        store_stmt = store_stmt.limit(limit)
+# [MIGRATED TO crud/analytics.py]     store_stmt = select(models.Store.id, models.Store.name).order_by(
+# [MIGRATED TO crud/analytics.py]         models.Store.name.asc())
+# [MIGRATED TO crud/analytics.py]     if store_filter:
+# [MIGRATED TO crud/analytics.py]         store_stmt = store_stmt.where(models.Store.id.in_(store_filter))
+# [MIGRATED TO crud/analytics.py]     if offset:
+# [MIGRATED TO crud/analytics.py]         store_stmt = store_stmt.offset(offset)
+# [MIGRATED TO crud/analytics.py]     if limit is not None:
+# [MIGRATED TO crud/analytics.py]         store_stmt = store_stmt.limit(limit)
 
-    store_rows = list(db.execute(store_stmt))
-    if not store_rows:
-        return []
+# [MIGRATED TO crud/analytics.py]     store_rows = list(db.execute(store_stmt))
+# [MIGRATED TO crud/analytics.py]     if not store_rows:
+# [MIGRATED TO crud/analytics.py]         return []
 
-    store_ids_window = [int(row.id) for row in store_rows]
+# [MIGRATED TO crud/analytics.py]     store_ids_window = [int(row.id) for row in store_rows]
 
-    day_bucket = func.date(models.Sale.created_at)
-    daily_stmt = (
-        select(
-            models.Store.id.label("store_id"),
-            models.Store.name.label("store_name"),
-            day_bucket.label("sale_day"),
-            func.coalesce(func.sum(models.SaleItem.quantity),
-                          0).label("units"),
-            func.coalesce(func.sum(models.SaleItem.total_line),
-                          0).label("revenue"),
-            func.coalesce(func.count(func.distinct(
-                models.Sale.id)), 0).label("orders"),
-        )
-        .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
-        .join(models.Store, models.Store.id == models.Sale.store_id)
-        .join(models.Device, models.Device.id == models.SaleItem.device_id)
-        .where(models.Sale.created_at >= since)
-        .group_by(
-            models.Store.id,
-            models.Store.name,
-            day_bucket,
-        )
-        .order_by(models.Store.name.asc())
-    )
-    daily_stmt = daily_stmt.where(models.Store.id.in_(store_ids_window))
-    if end_dt:
-        daily_stmt = daily_stmt.where(models.Sale.created_at <= end_dt)
-    if category:
-        daily_stmt = daily_stmt.where(category_expr == category)
-    if supplier:
-        daily_stmt = daily_stmt.where(models.Device.proveedor == supplier)
+# [MIGRATED TO crud/analytics.py]     day_bucket = func.date(models.Sale.created_at)
+# [MIGRATED TO crud/analytics.py]     daily_stmt = (
+# [MIGRATED TO crud/analytics.py]         select(
+# [MIGRATED TO crud/analytics.py]             models.Store.id.label("store_id"),
+# [MIGRATED TO crud/analytics.py]             models.Store.name.label("store_name"),
+# [MIGRATED TO crud/analytics.py]             day_bucket.label("sale_day"),
+# [MIGRATED TO crud/analytics.py]             func.coalesce(func.sum(models.SaleItem.quantity),
+# [MIGRATED TO crud/analytics.py]                           0).label("units"),
+# [MIGRATED TO crud/analytics.py]             func.coalesce(func.sum(models.SaleItem.total_line),
+# [MIGRATED TO crud/analytics.py]                           0).label("revenue"),
+# [MIGRATED TO crud/analytics.py]             func.coalesce(func.count(func.distinct(
+# [MIGRATED TO crud/analytics.py]                 models.Sale.id)), 0).label("orders"),
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]         .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
+# [MIGRATED TO crud/analytics.py]         .join(models.Store, models.Store.id == models.Sale.store_id)
+# [MIGRATED TO crud/analytics.py]         .join(models.Device, models.Device.id == models.SaleItem.device_id)
+# [MIGRATED TO crud/analytics.py]         .where(models.Sale.created_at >= since)
+# [MIGRATED TO crud/analytics.py]         .group_by(
+# [MIGRATED TO crud/analytics.py]             models.Store.id,
+# [MIGRATED TO crud/analytics.py]             models.Store.name,
+# [MIGRATED TO crud/analytics.py]             day_bucket,
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]         .order_by(models.Store.name.asc())
+# [MIGRATED TO crud/analytics.py]     )
+# [MIGRATED TO crud/analytics.py]     daily_stmt = daily_stmt.where(models.Store.id.in_(store_ids_window))
+# [MIGRATED TO crud/analytics.py]     if end_dt:
+# [MIGRATED TO crud/analytics.py]         daily_stmt = daily_stmt.where(models.Sale.created_at <= end_dt)
+# [MIGRATED TO crud/analytics.py]     if category:
+# [MIGRATED TO crud/analytics.py]         daily_stmt = daily_stmt.where(category_expr == category)
+# [MIGRATED TO crud/analytics.py]     if supplier:
+# [MIGRATED TO crud/analytics.py]         daily_stmt = daily_stmt.where(models.Device.proveedor == supplier)
 
-    stores_data: dict[int, dict[str, object]] = {}
-    for row in db.execute(daily_stmt):
-        store_entry = stores_data.setdefault(
-            int(row.store_id),
-            {
-                "store_name": row.store_name,
-                "daily": [],
-                "orders": 0,
-                "total_units": 0.0,
-                "total_revenue": 0.0,
-            },
-        )
-        day_value: datetime | None = row.sale_day
-        if day_value is None:
-            continue
-        units_value = float(row.units or 0)
-        revenue_value = float(row.revenue or 0)
-        orders_value = int(row.orders or 0)
-        store_entry["daily"].append(
-            {
-                "day": day_value,
-                "units": units_value,
-                "revenue": revenue_value,
-                "orders": orders_value,
-            }
-        )
-        store_entry["orders"] += orders_value
-        store_entry["total_units"] += units_value
-        store_entry["total_revenue"] += revenue_value
+# [MIGRATED TO crud/analytics.py]     stores_data: dict[int, dict[str, object]] = {}
+# [MIGRATED TO crud/analytics.py]     for row in db.execute(daily_stmt):
+# [MIGRATED TO crud/analytics.py]         store_entry = stores_data.setdefault(
+# [MIGRATED TO crud/analytics.py]             int(row.store_id),
+# [MIGRATED TO crud/analytics.py]             {
+# [MIGRATED TO crud/analytics.py]                 "store_name": row.store_name,
+# [MIGRATED TO crud/analytics.py]                 "daily": [],
+# [MIGRATED TO crud/analytics.py]                 "orders": 0,
+# [MIGRATED TO crud/analytics.py]                 "total_units": 0.0,
+# [MIGRATED TO crud/analytics.py]                 "total_revenue": 0.0,
+# [MIGRATED TO crud/analytics.py]             },
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]         day_value: datetime | None = row.sale_day
+# [MIGRATED TO crud/analytics.py]         if day_value is None:
+# [MIGRATED TO crud/analytics.py]             continue
+# [MIGRATED TO crud/analytics.py]         units_value = float(row.units or 0)
+# [MIGRATED TO crud/analytics.py]         revenue_value = float(row.revenue or 0)
+# [MIGRATED TO crud/analytics.py]         orders_value = int(row.orders or 0)
+# [MIGRATED TO crud/analytics.py]         store_entry["daily"].append(
+# [MIGRATED TO crud/analytics.py]             {
+# [MIGRATED TO crud/analytics.py]                 "day": day_value,
+# [MIGRATED TO crud/analytics.py]                 "units": units_value,
+# [MIGRATED TO crud/analytics.py]                 "revenue": revenue_value,
+# [MIGRATED TO crud/analytics.py]                 "orders": orders_value,
+# [MIGRATED TO crud/analytics.py]             }
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]         store_entry["orders"] += orders_value
+# [MIGRATED TO crud/analytics.py]         store_entry["total_units"] += units_value
+# [MIGRATED TO crud/analytics.py]         store_entry["total_revenue"] += revenue_value
 
-    projections: list[dict[str, object]] = []
-    for store_id, payload in stores_data.items():
-        daily_points = sorted(payload["daily"], key=lambda item: item["day"])
-        if not daily_points:
-            continue
+# [MIGRATED TO crud/analytics.py]     projections: list[dict[str, object]] = []
+# [MIGRATED TO crud/analytics.py]     for store_id, payload in stores_data.items():
+# [MIGRATED TO crud/analytics.py]         daily_points = sorted(payload["daily"], key=lambda item: item["day"])
+# [MIGRATED TO crud/analytics.py]         if not daily_points:
+# [MIGRATED TO crud/analytics.py]             continue
 
-        unit_points = [
-            (float(index), item["units"])
-            for index, item in enumerate(daily_points)
-        ]
-        revenue_points = [
-            (float(index), item["revenue"])
-            for index, item in enumerate(daily_points)
-        ]
-        slope_units, intercept_units, r2_units = linear_regression(
-            unit_points)
-        slope_revenue, intercept_revenue, r2_revenue = linear_regression(
-            revenue_points
-        )
+# [MIGRATED TO crud/analytics.py]         unit_points = [
+# [MIGRATED TO crud/analytics.py]             (float(index), item["units"])
+# [MIGRATED TO crud/analytics.py]             for index, item in enumerate(daily_points)
+# [MIGRATED TO crud/analytics.py]         ]
+# [MIGRATED TO crud/analytics.py]         revenue_points = [
+# [MIGRATED TO crud/analytics.py]             (float(index), item["revenue"])
+# [MIGRATED TO crud/analytics.py]             for index, item in enumerate(daily_points)
+# [MIGRATED TO crud/analytics.py]         ]
+# [MIGRATED TO crud/analytics.py]         slope_units, intercept_units, r2_units = linear_regression(
+# [MIGRATED TO crud/analytics.py]             unit_points)
+# [MIGRATED TO crud/analytics.py]         slope_revenue, intercept_revenue, r2_revenue = linear_regression(
+# [MIGRATED TO crud/analytics.py]             revenue_points
+# [MIGRATED TO crud/analytics.py]         )
         historical_avg_units = (
             payload["total_units"] / len(unit_points) if unit_points else 0.0
         )
@@ -7408,116 +7461,116 @@ def generate_analytics_alerts(
     for item in projections:
         trend = item.get("trend")
         trend_score = float(item.get("trend_score", 0))
-        if trend == "cayendo" and trend_score < -0.5:
-            level = "warning" if trend_score > -1.0 else "critical"
-            message = (
-                f"Ventas en {item['store_name']} muestran caída (tendencia {trend_score:.2f})"
-            )
-            alerts.append(
-                {
-                    "type": "sales",
-                    "level": level,
-                    "message": message,
-                    "store_id": item["store_id"],
-                    "store_name": item["store_name"],
-                    "device_id": None,
-                    "sku": None,
-                }
-            )
+# [MIGRATED TO crud/analytics.py]         if trend == "cayendo" and trend_score < -0.5:
+# [MIGRATED TO crud/analytics.py]             level = "warning" if trend_score > -1.0 else "critical"
+# [MIGRATED TO crud/analytics.py]             message = (
+# [MIGRATED TO crud/analytics.py]                 f"Ventas en {item['store_name']} muestran caída (tendencia {trend_score:.2f})"
+# [MIGRATED TO crud/analytics.py]             )
+# [MIGRATED TO crud/analytics.py]             alerts.append(
+# [MIGRATED TO crud/analytics.py]                 {
+# [MIGRATED TO crud/analytics.py]                     "type": "sales",
+# [MIGRATED TO crud/analytics.py]                     "level": level,
+# [MIGRATED TO crud/analytics.py]                     "message": message,
+# [MIGRATED TO crud/analytics.py]                     "store_id": item["store_id"],
+# [MIGRATED TO crud/analytics.py]                     "store_name": item["store_name"],
+# [MIGRATED TO crud/analytics.py]                     "device_id": None,
+# [MIGRATED TO crud/analytics.py]                     "sku": None,
+# [MIGRATED TO crud/analytics.py]                 }
+# [MIGRATED TO crud/analytics.py]             )
 
-    anomalies = detect_return_anomalies(
-        db,
-        store_ids=store_ids,
-        date_from=date_from,
-        date_to=date_to,
-        min_returns=3,
-        sigma_threshold=1.5,
-        limit=window,
-        offset=offset,
-    )
+# [MIGRATED TO crud/analytics.py]     anomalies = detect_return_anomalies(
+# [MIGRATED TO crud/analytics.py]         db,
+# [MIGRATED TO crud/analytics.py]         store_ids=store_ids,
+# [MIGRATED TO crud/analytics.py]         date_from=date_from,
+# [MIGRATED TO crud/analytics.py]         date_to=date_to,
+# [MIGRATED TO crud/analytics.py]         min_returns=3,
+# [MIGRATED TO crud/analytics.py]         sigma_threshold=1.5,
+# [MIGRATED TO crud/analytics.py]         limit=window,
+# [MIGRATED TO crud/analytics.py]         offset=offset,
+# [MIGRATED TO crud/analytics.py]     )
 
-    for anomaly in anomalies:
-        if not anomaly.get("is_anomalous"):
-            continue
-        alerts.append(
-            {
-                "type": "returns",
-                "level": "warning",
-                "message": (
-                    f"{anomaly['user_name'] or 'Usuario'} registra devoluciones inusuales"
-                    f" ({anomaly['return_count']} en la ventana)"
+# [MIGRATED TO crud/analytics.py]     for anomaly in anomalies:
+# [MIGRATED TO crud/analytics.py]         if not anomaly.get("is_anomalous"):
+# [MIGRATED TO crud/analytics.py]             continue
+# [MIGRATED TO crud/analytics.py]         alerts.append(
+# [MIGRATED TO crud/analytics.py]             {
+# [MIGRATED TO crud/analytics.py]                 "type": "returns",
+# [MIGRATED TO crud/analytics.py]                 "level": "warning",
+# [MIGRATED TO crud/analytics.py]                 "message": (
+# [MIGRATED TO crud/analytics.py]                     f"{anomaly['user_name'] or 'Usuario'} registra devoluciones inusuales"
+# [MIGRATED TO crud/analytics.py]                     f" ({anomaly['return_count']} en la ventana)"
                 ),
-                "store_id": None,
-                "store_name": "Global",
-                "device_id": None,
-                "sku": None,
-            }
-        )
+# [MIGRATED TO crud/analytics.py]                 "store_id": None,
+# [MIGRATED TO crud/analytics.py]                 "store_name": "Global",
+# [MIGRATED TO crud/analytics.py]                 "device_id": None,
+# [MIGRATED TO crud/analytics.py]                 "sku": None,
+# [MIGRATED TO crud/analytics.py]             }
+# [MIGRATED TO crud/analytics.py]         )
 
-    alerts.sort(key=lambda alert: (
-        alert["level"] != "critical", alert["level"] != "warning"))
-    if limit is None:
-        return alerts[offset:]
-    return alerts[offset: offset + limit]
-
-
-def calculate_store_sales_forecast(
-    db: Session,
-    *,
-    store_ids: Iterable[int] | None = None,
-    horizon_days: int = 14,
-    date_from: date | None = None,
-    date_to: date | None = None,
-    category: str | None = None,
-    supplier: str | None = None,
-    limit: int | None = None,
-    offset: int = 0,
-) -> list[dict[str, object]]:
-    projections = calculate_sales_projection(
-        db,
-        store_ids=store_ids,
-        date_from=date_from,
-        date_to=date_to,
-        category=category,
-        supplier=supplier,
-        horizon_days=horizon_days,
-        limit=limit,
-        offset=offset,
-    )
-    forecasts: list[dict[str, object]] = []
-    for item in projections:
-        forecasts.append(
-            {
-                "store_id": int(item["store_id"]),
-                "store_name": item["store_name"],
-                "average_daily_units": float(item.get("average_daily_units", 0)),
-                "projected_units": float(item.get("projected_units", 0)),
-                "projected_revenue": float(item.get("projected_revenue", 0)),
-                "trend": item.get("trend", "estable"),
-                "confidence": float(item.get("confidence", 0)),
-            }
-        )
-    return forecasts
+# [MIGRATED TO crud/analytics.py]     alerts.sort(key=lambda alert: (
+# [MIGRATED TO crud/analytics.py]         alert["level"] != "critical", alert["level"] != "warning"))
+# [MIGRATED TO crud/analytics.py]     if limit is None:
+# [MIGRATED TO crud/analytics.py]         return alerts[offset:]
+# [MIGRATED TO crud/analytics.py]     return alerts[offset: offset + limit]
 
 
-def calculate_reorder_suggestions(
-    db: Session,
-    *,
-    store_ids: Iterable[int] | None = None,
-    horizon_days: int = 7,
-    safety_days: int = 2,
-    date_from: date | None = None,
-    date_to: date | None = None,
-    category: str | None = None,
-    supplier: str | None = None,
-    limit: int | None = None,
-    offset: int = 0,
-) -> list[dict[str, object]]:
-    horizon = max(horizon_days, 1) + max(safety_days, 0)
-    forecast = calculate_stockout_forecast(
-        db,
-        store_ids=store_ids,
-        date_from=date_from,
+# [MIGRATED TO crud/analytics.py] def calculate_store_sales_forecast(
+# [MIGRATED TO crud/analytics.py]     db: Session,
+# [MIGRATED TO crud/analytics.py]     *,
+# [MIGRATED TO crud/analytics.py]     store_ids: Iterable[int] | None = None,
+# [MIGRATED TO crud/analytics.py]     horizon_days: int = 14,
+# [MIGRATED TO crud/analytics.py]     date_from: date | None = None,
+# [MIGRATED TO crud/analytics.py]     date_to: date | None = None,
+# [MIGRATED TO crud/analytics.py]     category: str | None = None,
+# [MIGRATED TO crud/analytics.py]     supplier: str | None = None,
+# [MIGRATED TO crud/analytics.py]     limit: int | None = None,
+# [MIGRATED TO crud/analytics.py]     offset: int = 0,
+# [MIGRATED TO crud/analytics.py] ) -> list[dict[str, object]]:
+# [MIGRATED TO crud/analytics.py]     projections = calculate_sales_projection(
+# [MIGRATED TO crud/analytics.py]         db,
+# [MIGRATED TO crud/analytics.py]         store_ids=store_ids,
+# [MIGRATED TO crud/analytics.py]         date_from=date_from,
+# [MIGRATED TO crud/analytics.py]         date_to=date_to,
+# [MIGRATED TO crud/analytics.py]         category=category,
+# [MIGRATED TO crud/analytics.py]         supplier=supplier,
+# [MIGRATED TO crud/analytics.py]         horizon_days=horizon_days,
+# [MIGRATED TO crud/analytics.py]         limit=limit,
+# [MIGRATED TO crud/analytics.py]         offset=offset,
+# [MIGRATED TO crud/analytics.py]     )
+# [MIGRATED TO crud/analytics.py]     forecasts: list[dict[str, object]] = []
+# [MIGRATED TO crud/analytics.py]     for item in projections:
+# [MIGRATED TO crud/analytics.py]         forecasts.append(
+# [MIGRATED TO crud/analytics.py]             {
+# [MIGRATED TO crud/analytics.py]                 "store_id": int(item["store_id"]),
+# [MIGRATED TO crud/analytics.py]                 "store_name": item["store_name"],
+# [MIGRATED TO crud/analytics.py]                 "average_daily_units": float(item.get("average_daily_units", 0)),
+# [MIGRATED TO crud/analytics.py]                 "projected_units": float(item.get("projected_units", 0)),
+# [MIGRATED TO crud/analytics.py]                 "projected_revenue": float(item.get("projected_revenue", 0)),
+# [MIGRATED TO crud/analytics.py]                 "trend": item.get("trend", "estable"),
+# [MIGRATED TO crud/analytics.py]                 "confidence": float(item.get("confidence", 0)),
+# [MIGRATED TO crud/analytics.py]             }
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]     return forecasts
+
+
+# [MIGRATED TO crud/analytics.py] def calculate_reorder_suggestions(
+# [MIGRATED TO crud/analytics.py]     db: Session,
+# [MIGRATED TO crud/analytics.py]     *,
+# [MIGRATED TO crud/analytics.py]     store_ids: Iterable[int] | None = None,
+# [MIGRATED TO crud/analytics.py]     horizon_days: int = 7,
+# [MIGRATED TO crud/analytics.py]     safety_days: int = 2,
+# [MIGRATED TO crud/analytics.py]     date_from: date | None = None,
+# [MIGRATED TO crud/analytics.py]     date_to: date | None = None,
+# [MIGRATED TO crud/analytics.py]     category: str | None = None,
+# [MIGRATED TO crud/analytics.py]     supplier: str | None = None,
+# [MIGRATED TO crud/analytics.py]     limit: int | None = None,
+# [MIGRATED TO crud/analytics.py]     offset: int = 0,
+# [MIGRATED TO crud/analytics.py] ) -> list[dict[str, object]]:
+# [MIGRATED TO crud/analytics.py]     horizon = max(horizon_days, 1) + max(safety_days, 0)
+# [MIGRATED TO crud/analytics.py]     forecast = calculate_stockout_forecast(
+# [MIGRATED TO crud/analytics.py]         db,
+# [MIGRATED TO crud/analytics.py]         store_ids=store_ids,
+# [MIGRATED TO crud/analytics.py]         date_from=date_from,
         date_to=date_to,
         category=category,
         supplier=supplier,
@@ -7599,158 +7652,158 @@ def detect_return_anomalies(
                        ).label("store_count"),
         )
         .join(models.Sale, models.Sale.id == models.SaleReturn.sale_id)
-        .join(models.Store, models.Store.id == models.Sale.store_id)
-        .join(models.User, models.User.id == models.SaleReturn.processed_by_id)
-        .group_by(models.User.id)
-        .order_by(models.User.username.asc())
-    )
-    if store_filter:
-        stmt = stmt.where(models.Sale.store_id.in_(store_filter))
-    if start_dt:
-        stmt = stmt.where(models.SaleReturn.created_at >= start_dt)
-    if end_dt:
-        stmt = stmt.where(models.SaleReturn.created_at <= end_dt)
-    if limit is not None:
-        stmt = stmt.limit(limit)
-    if offset:
-        stmt = stmt.offset(offset)
+# [MIGRATED TO crud/analytics.py]         .join(models.Store, models.Store.id == models.Sale.store_id)
+# [MIGRATED TO crud/analytics.py]         .join(models.User, models.User.id == models.SaleReturn.processed_by_id)
+# [MIGRATED TO crud/analytics.py]         .group_by(models.User.id)
+# [MIGRATED TO crud/analytics.py]         .order_by(models.User.username.asc())
+# [MIGRATED TO crud/analytics.py]     )
+# [MIGRATED TO crud/analytics.py]     if store_filter:
+# [MIGRATED TO crud/analytics.py]         stmt = stmt.where(models.Sale.store_id.in_(store_filter))
+# [MIGRATED TO crud/analytics.py]     if start_dt:
+# [MIGRATED TO crud/analytics.py]         stmt = stmt.where(models.SaleReturn.created_at >= start_dt)
+# [MIGRATED TO crud/analytics.py]     if end_dt:
+# [MIGRATED TO crud/analytics.py]         stmt = stmt.where(models.SaleReturn.created_at <= end_dt)
+# [MIGRATED TO crud/analytics.py]     if limit is not None:
+# [MIGRATED TO crud/analytics.py]         stmt = stmt.limit(limit)
+# [MIGRATED TO crud/analytics.py]     if offset:
+# [MIGRATED TO crud/analytics.py]         stmt = stmt.offset(offset)
 
-    rows = list(db.execute(stmt))
-    if not rows:
-        return []
+# [MIGRATED TO crud/analytics.py]     rows = list(db.execute(stmt))
+# [MIGRATED TO crud/analytics.py]     if not rows:
+# [MIGRATED TO crud/analytics.py]         return []
 
-    counts = [int(row.return_count or 0) for row in rows]
-    mean = sum(counts) / len(counts) if counts else 0.0
-    variance = sum((count - mean) ** 2 for count in counts) / \
-        len(counts) if counts else 0.0
-    std_dev = math.sqrt(variance)
-    threshold = max(float(min_returns), mean + sigma_threshold * std_dev)
+# [MIGRATED TO crud/analytics.py]     counts = [int(row.return_count or 0) for row in rows]
+# [MIGRATED TO crud/analytics.py]     mean = sum(counts) / len(counts) if counts else 0.0
+# [MIGRATED TO crud/analytics.py]     variance = sum((count - mean) ** 2 for count in counts) / \
+# [MIGRATED TO crud/analytics.py]         len(counts) if counts else 0.0
+# [MIGRATED TO crud/analytics.py]     std_dev = math.sqrt(variance)
+# [MIGRATED TO crud/analytics.py]     threshold = max(float(min_returns), mean + sigma_threshold * std_dev)
 
-    anomalies: list[dict[str, object]] = []
-    for row in rows:
-        count_value = int(row.return_count or 0)
-        total_units = int(row.units or 0)
-        if count_value < 1:
-            continue
-        z_score = (count_value - mean) / std_dev if std_dev > 0 else 0.0
-        is_anomalous = count_value >= threshold and count_value >= min_returns
-        anomalies.append(
-            {
-                "user_id": int(row.user_id),
-                "user_name": user_display_name(row) or row.username,
-                "return_count": count_value,
-                "total_units": total_units,
-                "last_return": row.last_return,
-                "store_count": int(row.store_count or 0),
-                "z_score": round(z_score, 2),
-                "threshold": round(threshold, 2),
-                "is_anomalous": is_anomalous,
-            }
-        )
+# [MIGRATED TO crud/analytics.py]     anomalies: list[dict[str, object]] = []
+# [MIGRATED TO crud/analytics.py]     for row in rows:
+# [MIGRATED TO crud/analytics.py]         count_value = int(row.return_count or 0)
+# [MIGRATED TO crud/analytics.py]         total_units = int(row.units or 0)
+# [MIGRATED TO crud/analytics.py]         if count_value < 1:
+# [MIGRATED TO crud/analytics.py]             continue
+# [MIGRATED TO crud/analytics.py]         z_score = (count_value - mean) / std_dev if std_dev > 0 else 0.0
+# [MIGRATED TO crud/analytics.py]         is_anomalous = count_value >= threshold and count_value >= min_returns
+# [MIGRATED TO crud/analytics.py]         anomalies.append(
+# [MIGRATED TO crud/analytics.py]             {
+# [MIGRATED TO crud/analytics.py]                 "user_id": int(row.user_id),
+# [MIGRATED TO crud/analytics.py]                 "user_name": user_display_name(row) or row.username,
+# [MIGRATED TO crud/analytics.py]                 "return_count": count_value,
+# [MIGRATED TO crud/analytics.py]                 "total_units": total_units,
+# [MIGRATED TO crud/analytics.py]                 "last_return": row.last_return,
+# [MIGRATED TO crud/analytics.py]                 "store_count": int(row.store_count or 0),
+# [MIGRATED TO crud/analytics.py]                 "z_score": round(z_score, 2),
+# [MIGRATED TO crud/analytics.py]                 "threshold": round(threshold, 2),
+# [MIGRATED TO crud/analytics.py]                 "is_anomalous": is_anomalous,
+# [MIGRATED TO crud/analytics.py]             }
+# [MIGRATED TO crud/analytics.py]         )
 
-    anomalies.sort(key=lambda item: item["return_count"], reverse=True)
-    return anomalies
+# [MIGRATED TO crud/analytics.py]     anomalies.sort(key=lambda item: item["return_count"], reverse=True)
+# [MIGRATED TO crud/analytics.py]     return anomalies
 
 
-def calculate_realtime_store_widget(
-    db: Session,
-    *,
-    store_ids: Iterable[int] | None = None,
-    category: str | None = None,
-    supplier: str | None = None,
-    low_stock_threshold: int = 5,
-    limit: int | None = None,
-    offset: int = 0,
-) -> list[dict[str, object]]:
-    store_filter = normalize_store_ids(store_ids)
-    category_expr = device_category_expr()
-    today_start = datetime.now(timezone.utc).replace(
-        hour=0, minute=0, second=0, microsecond=0)
+# [MIGRATED TO crud/analytics.py] def calculate_realtime_store_widget(
+# [MIGRATED TO crud/analytics.py]     db: Session,
+# [MIGRATED TO crud/analytics.py]     *,
+# [MIGRATED TO crud/analytics.py]     store_ids: Iterable[int] | None = None,
+# [MIGRATED TO crud/analytics.py]     category: str | None = None,
+# [MIGRATED TO crud/analytics.py]     supplier: str | None = None,
+# [MIGRATED TO crud/analytics.py]     low_stock_threshold: int = 5,
+# [MIGRATED TO crud/analytics.py]     limit: int | None = None,
+# [MIGRATED TO crud/analytics.py]     offset: int = 0,
+# [MIGRATED TO crud/analytics.py] ) -> list[dict[str, object]]:
+# [MIGRATED TO crud/analytics.py]     store_filter = normalize_store_ids(store_ids)
+# [MIGRATED TO crud/analytics.py]     category_expr = device_category_expr()
+# [MIGRATED TO crud/analytics.py]     today_start = datetime.now(timezone.utc).replace(
+# [MIGRATED TO crud/analytics.py]         hour=0, minute=0, second=0, microsecond=0)
 
-    stores_stmt = select(models.Store.id, models.Store.name,
-                         models.Store.inventory_value)
-    if store_filter:
-        stores_stmt = stores_stmt.where(models.Store.id.in_(store_filter))
-    stores_stmt = stores_stmt.order_by(models.Store.name.asc())
-    if offset:
-        stores_stmt = stores_stmt.offset(offset)
-    if limit is not None:
-        stores_stmt = stores_stmt.limit(limit)
+# [MIGRATED TO crud/analytics.py]     stores_stmt = select(models.Store.id, models.Store.name,
+# [MIGRATED TO crud/analytics.py]                          models.Store.inventory_value)
+# [MIGRATED TO crud/analytics.py]     if store_filter:
+# [MIGRATED TO crud/analytics.py]         stores_stmt = stores_stmt.where(models.Store.id.in_(store_filter))
+# [MIGRATED TO crud/analytics.py]     stores_stmt = stores_stmt.order_by(models.Store.name.asc())
+# [MIGRATED TO crud/analytics.py]     if offset:
+# [MIGRATED TO crud/analytics.py]         stores_stmt = stores_stmt.offset(offset)
+# [MIGRATED TO crud/analytics.py]     if limit is not None:
+# [MIGRATED TO crud/analytics.py]         stores_stmt = stores_stmt.limit(limit)
 
-    store_rows = list(db.execute(stores_stmt))
-    if not store_rows:
-        return []
+# [MIGRATED TO crud/analytics.py]     store_rows = list(db.execute(stores_stmt))
+# [MIGRATED TO crud/analytics.py]     if not store_rows:
+# [MIGRATED TO crud/analytics.py]         return []
 
-    store_ids_window = [int(row.id) for row in store_rows]
+# [MIGRATED TO crud/analytics.py]     store_ids_window = [int(row.id) for row in store_rows]
 
-    low_stock_stmt = (
-        select(models.Device.store_id, func.count(
-            models.Device.id).label("low_stock"))
-        .where(models.Device.quantity <= low_stock_threshold)
-        .group_by(models.Device.store_id)
-    )
-    if store_ids_window:
-        low_stock_stmt = low_stock_stmt.where(
-            models.Device.store_id.in_(store_ids_window)
-        )
-    if category:
-        low_stock_stmt = low_stock_stmt.where(category_expr == category)
-    if supplier:
-        low_stock_stmt = low_stock_stmt.where(
-            models.Device.proveedor == supplier)
+# [MIGRATED TO crud/analytics.py]     low_stock_stmt = (
+# [MIGRATED TO crud/analytics.py]         select(models.Device.store_id, func.count(
+# [MIGRATED TO crud/analytics.py]             models.Device.id).label("low_stock"))
+# [MIGRATED TO crud/analytics.py]         .where(models.Device.quantity <= low_stock_threshold)
+# [MIGRATED TO crud/analytics.py]         .group_by(models.Device.store_id)
+# [MIGRATED TO crud/analytics.py]     )
+# [MIGRATED TO crud/analytics.py]     if store_ids_window:
+# [MIGRATED TO crud/analytics.py]         low_stock_stmt = low_stock_stmt.where(
+# [MIGRATED TO crud/analytics.py]             models.Device.store_id.in_(store_ids_window)
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]     if category:
+# [MIGRATED TO crud/analytics.py]         low_stock_stmt = low_stock_stmt.where(category_expr == category)
+# [MIGRATED TO crud/analytics.py]     if supplier:
+# [MIGRATED TO crud/analytics.py]         low_stock_stmt = low_stock_stmt.where(
+# [MIGRATED TO crud/analytics.py]             models.Device.proveedor == supplier)
 
-    sales_today_stmt = (
-        select(
-            models.Store.id.label("store_id"),
-            func.coalesce(func.sum(models.SaleItem.total_line),
-                          0).label("revenue"),
-            func.max(models.Sale.created_at).label("last_sale_at"),
-        )
-        .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
-        .join(models.Store, models.Store.id == models.Sale.store_id)
-        .join(models.Device, models.Device.id == models.SaleItem.device_id)
-        .where(models.Sale.created_at >= today_start)
-        .group_by(models.Store.id)
-    )
-    if store_ids_window:
-        sales_today_stmt = sales_today_stmt.where(
-            models.Store.id.in_(store_ids_window))
-    if category:
-        sales_today_stmt = sales_today_stmt.where(category_expr == category)
-    if supplier:
-        sales_today_stmt = sales_today_stmt.where(
-            models.Device.proveedor == supplier)
+# [MIGRATED TO crud/analytics.py]     sales_today_stmt = (
+# [MIGRATED TO crud/analytics.py]         select(
+# [MIGRATED TO crud/analytics.py]             models.Store.id.label("store_id"),
+# [MIGRATED TO crud/analytics.py]             func.coalesce(func.sum(models.SaleItem.total_line),
+# [MIGRATED TO crud/analytics.py]                           0).label("revenue"),
+# [MIGRATED TO crud/analytics.py]             func.max(models.Sale.created_at).label("last_sale_at"),
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]         .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
+# [MIGRATED TO crud/analytics.py]         .join(models.Store, models.Store.id == models.Sale.store_id)
+# [MIGRATED TO crud/analytics.py]         .join(models.Device, models.Device.id == models.SaleItem.device_id)
+# [MIGRATED TO crud/analytics.py]         .where(models.Sale.created_at >= today_start)
+# [MIGRATED TO crud/analytics.py]         .group_by(models.Store.id)
+# [MIGRATED TO crud/analytics.py]     )
+# [MIGRATED TO crud/analytics.py]     if store_ids_window:
+# [MIGRATED TO crud/analytics.py]         sales_today_stmt = sales_today_stmt.where(
+# [MIGRATED TO crud/analytics.py]             models.Store.id.in_(store_ids_window))
+# [MIGRATED TO crud/analytics.py]     if category:
+# [MIGRATED TO crud/analytics.py]         sales_today_stmt = sales_today_stmt.where(category_expr == category)
+# [MIGRATED TO crud/analytics.py]     if supplier:
+# [MIGRATED TO crud/analytics.py]         sales_today_stmt = sales_today_stmt.where(
+# [MIGRATED TO crud/analytics.py]             models.Device.proveedor == supplier)
 
-    repairs_stmt = (
-        select(
-            models.RepairOrder.store_id,
-            func.count(models.RepairOrder.id).label("pending"),
-        )
-        .where(models.RepairOrder.status != models.RepairStatus.ENTREGADO)
-        .group_by(models.RepairOrder.store_id)
-    )
-    if store_ids_window:
-        repairs_stmt = repairs_stmt.where(
-            models.RepairOrder.store_id.in_(store_ids_window)
-        )
+# [MIGRATED TO crud/analytics.py]     repairs_stmt = (
+# [MIGRATED TO crud/analytics.py]         select(
+# [MIGRATED TO crud/analytics.py]             models.RepairOrder.store_id,
+# [MIGRATED TO crud/analytics.py]             func.count(models.RepairOrder.id).label("pending"),
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]         .where(models.RepairOrder.status != models.RepairStatus.ENTREGADO)
+# [MIGRATED TO crud/analytics.py]         .group_by(models.RepairOrder.store_id)
+# [MIGRATED TO crud/analytics.py]     )
+# [MIGRATED TO crud/analytics.py]     if store_ids_window:
+# [MIGRATED TO crud/analytics.py]         repairs_stmt = repairs_stmt.where(
+# [MIGRATED TO crud/analytics.py]             models.RepairOrder.store_id.in_(store_ids_window)
+# [MIGRATED TO crud/analytics.py]         )
 
-    sync_stmt = (
-        select(
-            models.SyncSession.store_id,
-            func.max(models.SyncSession.finished_at).label("last_sync"),
-        )
-        .group_by(models.SyncSession.store_id)
-    )
-    if store_ids_window:
-        sync_stmt = sync_stmt.where(
-            (models.SyncSession.store_id.is_(None))
-            | (models.SyncSession.store_id.in_(store_ids_window))
-        )
+# [MIGRATED TO crud/analytics.py]     sync_stmt = (
+# [MIGRATED TO crud/analytics.py]         select(
+# [MIGRATED TO crud/analytics.py]             models.SyncSession.store_id,
+# [MIGRATED TO crud/analytics.py]             func.max(models.SyncSession.finished_at).label("last_sync"),
+# [MIGRATED TO crud/analytics.py]         )
+# [MIGRATED TO crud/analytics.py]         .group_by(models.SyncSession.store_id)
+# [MIGRATED TO crud/analytics.py]     )
+# [MIGRATED TO crud/analytics.py]     if store_ids_window:
+# [MIGRATED TO crud/analytics.py]         sync_stmt = sync_stmt.where(
+# [MIGRATED TO crud/analytics.py]             (models.SyncSession.store_id.is_(None))
+# [MIGRATED TO crud/analytics.py]             | (models.SyncSession.store_id.in_(store_ids_window))
+# [MIGRATED TO crud/analytics.py]         )
 
-    low_stock_map = {
-        int(row.store_id): int(row.low_stock or 0)
-        for row in db.execute(low_stock_stmt)
-    }
+# [MIGRATED TO crud/analytics.py]     low_stock_map = {
+# [MIGRATED TO crud/analytics.py]         int(row.store_id): int(row.low_stock or 0)
+# [MIGRATED TO crud/analytics.py]         for row in db.execute(low_stock_stmt)
+# [MIGRATED TO crud/analytics.py]     }
     sales_today_map = {
         int(row.store_id): {
             "revenue": float(row.revenue or 0),
