@@ -1098,3 +1098,16 @@ def build_cash_close_report(
         expenses=float(expenses),
         closing_suggested=float(closing_suggested)
     )
+
+
+__all__ = [
+    "build_cash_close_report",
+    "build_sales_by_product_report",
+    "build_sales_summary_report",
+    "cancel_sale",
+    "create_sale",
+    "get_sale",
+    "list_sales",
+    "search_sales_history",
+    "update_sale",
+]

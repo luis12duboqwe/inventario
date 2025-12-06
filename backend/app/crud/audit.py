@@ -1308,3 +1308,25 @@ def build_global_report_dashboard(
         module_distribution=module_distribution,
         severity_distribution=severity_distribution,
     )
+
+
+__all__ = [
+    "AuditAcknowledgementConflict",
+    "AuditAcknowledgementError",
+    "AuditAcknowledgementNotFound",
+    "acknowledge_audit_alert",
+    "build_global_report_dashboard",
+    "build_global_report_overview",
+    "count_audit_logs",
+    "create_system_log",
+    "export_audit_logs_csv",
+    "get_audit_acknowledgements_map",
+    "get_last_audit_entries",
+    "get_persistent_audit_alerts",
+    "invalidate_persistent_audit_alerts_cache",
+    "list_audit_logs",
+    "list_system_errors",
+    "list_system_logs",
+    "log_audit_event",
+    "register_system_error",
+]

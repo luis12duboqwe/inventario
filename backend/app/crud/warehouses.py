@@ -76,3 +76,11 @@ def get_warehouse(
         return db.scalars(statement).one()
     except NoResultFound as exc:
         raise LookupError("warehouse_not_found") from exc
+
+
+__all__ = [
+    "ensure_default_warehouse",
+    "get_warehouse",
+    "list_warehouses",
+    "unset_default_warehouse",
+]

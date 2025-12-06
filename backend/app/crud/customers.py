@@ -724,3 +724,12 @@ def delete_customer(
             operation="DELETE",
             payload={"id": customer_id},
         )
+
+
+__all__ = [
+    "create_customer",
+    "delete_customer",
+    "get_customer",
+    "list_customers",
+    "update_customer",
+]

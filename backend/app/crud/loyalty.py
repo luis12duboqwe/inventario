@@ -504,3 +504,15 @@ def get_loyalty_summary(db: Session) -> schemas.LoyaltyReportSummary:
         total_expired=expired_sum,
         last_activity=last_activity,
     )
+
+
+__all__ = [
+    "apply_loyalty_for_sale",
+    "ensure_loyalty_account",
+    "get_loyalty_account",
+    "get_loyalty_account_by_id",
+    "get_loyalty_summary",
+    "list_loyalty_accounts",
+    "list_loyalty_transactions",
+    "update_loyalty_account",
+]

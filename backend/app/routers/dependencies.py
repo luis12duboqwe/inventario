@@ -11,7 +11,10 @@ from typing import Any
 try:
     # Importación perezosa para evitar ciclos si cambia la estructura.
     from ..security import get_current_user  # type: ignore
-except Exception:  # pragma: no cover - defensivo ante refactors
+except Exception:  # pragma: no cover
+    # NOTA: Captura amplia intencional. Permite arranque del módulo incluso si
+    # hay problemas de importación circular durante refactorización. Degradación
+    # segura a None permite que get_current_user_optional funcione sin romper.
     get_current_user = None  # type: ignore
 
 
@@ -61,7 +64,10 @@ async def get_current_user_optional(request: Request) -> Any | None:
         return maybe_user
     except FastAPIHTTPException:
         return None
-    except Exception:  # pragma: no cover - defensivo
+    except Exception:  # pragma: no cover
+        # NOTA: Captura amplia intencional. Endpoint bootstrap debe poder llamarse
+        # incluso con errores inesperados de autenticación (DB no disponible, token
+        # malformado, etc.). Devolver None permite continuar sin autenticación.
         return None
 
 

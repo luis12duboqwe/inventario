@@ -455,3 +455,12 @@ def _ensure_unique_identifier_payload(
             )
         if db.scalars(identifier_statement).first() is not None:
             raise ValueError("device_identifier_conflict")
+
+
+__all__ = [
+    "create_device",
+    "delete_device",
+    "get_device",
+    "list_devices",
+    "update_device",
+]
