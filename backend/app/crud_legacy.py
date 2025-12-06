@@ -289,6 +289,47 @@ def calculate_realtime_store_widget(*args, **kwargs):
 # END OF ANALYTICS COMPATIBILITY ALIASES
 # ============================================================================
 
+# ============================================================================
+# COMPATIBILITY ALIASES - Transfers Module Migration (Fase 2, Incremento 3)
+# ============================================================================
+# These aliases maintain backward compatibility after migrating Transfers functions
+# to backend/app/crud/transfers.py. They will be removed in a future PR after
+# validation in production.
+#
+# Migration date: 2025-12-06
+# Target removal: After 30 days of production validation
+# ============================================================================
+
+from .crud import transfers as _transfers_module
+
+def create_transfer_order(*args, **kwargs):
+    """DEPRECATED: Use crud.transfers.create_transfer_order. Alias for compatibility."""
+    return _transfers_module.create_transfer_order(*args, **kwargs)
+
+def get_transfer_order(*args, **kwargs):
+    """DEPRECATED: Use crud.transfers.get_transfer_order. Alias for compatibility."""
+    return _transfers_module.get_transfer_order(*args, **kwargs)
+
+def dispatch_transfer_order(*args, **kwargs):
+    """DEPRECATED: Use crud.transfers.dispatch_transfer_order. Alias for compatibility."""
+    return _transfers_module.dispatch_transfer_order(*args, **kwargs)
+
+def receive_transfer_order(*args, **kwargs):
+    """DEPRECATED: Use crud.transfers.receive_transfer_order. Alias for compatibility."""
+    return _transfers_module.receive_transfer_order(*args, **kwargs)
+
+def cancel_transfer_order(*args, **kwargs):
+    """DEPRECATED: Use crud.transfers.cancel_transfer_order. Alias for compatibility."""
+    return _transfers_module.cancel_transfer_order(*args, **kwargs)
+
+def list_transfer_orders(*args, **kwargs):
+    """DEPRECATED: Use crud.transfers.list_transfer_orders. Alias for compatibility."""
+    return _transfers_module.list_transfer_orders(*args, **kwargs)
+
+# ============================================================================
+# END OF TRANSFERS COMPATIBILITY ALIASES
+# ============================================================================
+
 _INVENTORY_MOVEMENTS_CACHE: TTLCache[schemas.InventoryMovementsReport] = TTLCache(
     ttl_seconds=60.0
 )
@@ -9450,119 +9491,119 @@ def _require_store_permission(
     return membership
 
 
-def _user_can_override_transfer(
-    db: Session,
-    *,
-    user_id: int,
-    store_id: int,
-) -> bool:
-    user = get_user(db, user_id)
-    user_roles = {assignment.role.name for assignment in user.roles}
-    if ADMIN in user_roles:
-        return True
-    if GERENTE in user_roles and user.store_id == store_id:
-        return True
-    return False
+# [MIGRATED TO crud/transfers.py] def _user_can_override_transfer(
+# [MIGRATED TO crud/transfers.py]     db: Session,
+# [MIGRATED TO crud/transfers.py]     *,
+# [MIGRATED TO crud/transfers.py]     user_id: int,
+# [MIGRATED TO crud/transfers.py]     store_id: int,
+# [MIGRATED TO crud/transfers.py] ) -> bool:
+# [MIGRATED TO crud/transfers.py]     user = get_user(db, user_id)
+# [MIGRATED TO crud/transfers.py]     user_roles = {assignment.role.name for assignment in user.roles}
+# [MIGRATED TO crud/transfers.py]     if ADMIN in user_roles:
+# [MIGRATED TO crud/transfers.py]         return True
+# [MIGRATED TO crud/transfers.py]     if GERENTE in user_roles and user.store_id == store_id:
+# [MIGRATED TO crud/transfers.py]         return True
+# [MIGRATED TO crud/transfers.py]     return False
 
 
-def list_store_memberships(
-    db: Session,
-    store_id: int,
-    *,
-    limit: int | None = 50,
-    offset: int = 0,
-) -> list[models.StoreMembership]:
-    statement = (
-        select(models.StoreMembership)
-        .options(joinedload(models.StoreMembership.user))
-        .where(models.StoreMembership.store_id == store_id)
-        .order_by(models.StoreMembership.user_id.asc())
-    )
-    if offset:
-        statement = statement.offset(offset)
-    if limit is not None:
-        statement = statement.limit(limit)
-    return list(db.scalars(statement))
+# [MIGRATED TO crud/transfers.py] def list_store_memberships(
+# [MIGRATED TO crud/transfers.py]     db: Session,
+# [MIGRATED TO crud/transfers.py]     store_id: int,
+# [MIGRATED TO crud/transfers.py]     *,
+# [MIGRATED TO crud/transfers.py]     limit: int | None = 50,
+# [MIGRATED TO crud/transfers.py]     offset: int = 0,
+# [MIGRATED TO crud/transfers.py] ) -> list[models.StoreMembership]:
+# [MIGRATED TO crud/transfers.py]     statement = (
+# [MIGRATED TO crud/transfers.py]         select(models.StoreMembership)
+# [MIGRATED TO crud/transfers.py]         .options(joinedload(models.StoreMembership.user))
+# [MIGRATED TO crud/transfers.py]         .where(models.StoreMembership.store_id == store_id)
+# [MIGRATED TO crud/transfers.py]         .order_by(models.StoreMembership.user_id.asc())
+# [MIGRATED TO crud/transfers.py]     )
+# [MIGRATED TO crud/transfers.py]     if offset:
+# [MIGRATED TO crud/transfers.py]         statement = statement.offset(offset)
+# [MIGRATED TO crud/transfers.py]     if limit is not None:
+# [MIGRATED TO crud/transfers.py]         statement = statement.limit(limit)
+# [MIGRATED TO crud/transfers.py]     return list(db.scalars(statement))
 
 
-def count_store_memberships(db: Session, store_id: int) -> int:
-    statement = select(func.count()).select_from(models.StoreMembership)
-    statement = statement.where(models.StoreMembership.store_id == store_id)
-    return int(db.scalar(statement) or 0)
+# [MIGRATED TO crud/transfers.py] def count_store_memberships(db: Session, store_id: int) -> int:
+# [MIGRATED TO crud/transfers.py]     statement = select(func.count()).select_from(models.StoreMembership)
+# [MIGRATED TO crud/transfers.py]     statement = statement.where(models.StoreMembership.store_id == store_id)
+# [MIGRATED TO crud/transfers.py]     return int(db.scalar(statement) or 0)
 
 
-def create_transfer_order(
-    db: Session,
-    payload: schemas.TransferOrderCreate,
-    *,
-    requested_by_id: int,
-) -> models.TransferOrder:
-    if payload.origin_store_id == payload.destination_store_id:
-        raise ValueError("transfer_same_store")
+# [MIGRATED TO crud/transfers.py] def create_transfer_order(
+# [MIGRATED TO crud/transfers.py]     db: Session,
+# [MIGRATED TO crud/transfers.py]     payload: schemas.TransferOrderCreate,
+# [MIGRATED TO crud/transfers.py]     *,
+# [MIGRATED TO crud/transfers.py]     requested_by_id: int,
+# [MIGRATED TO crud/transfers.py] ) -> models.TransferOrder:
+# [MIGRATED TO crud/transfers.py]     if payload.origin_store_id == payload.destination_store_id:
+# [MIGRATED TO crud/transfers.py]         raise ValueError("transfer_same_store")
 
-    origin_store = get_store(db, payload.origin_store_id)
-    destination_store = get_store(db, payload.destination_store_id)
+# [MIGRATED TO crud/transfers.py]     origin_store = get_store(db, payload.origin_store_id)
+# [MIGRATED TO crud/transfers.py]     destination_store = get_store(db, payload.destination_store_id)
 
-    try:
-        _require_store_permission(
-            db,
-            user_id=requested_by_id,
-            store_id=origin_store.id,
-            permission="create",
-        )
-    except PermissionError:
-        normalized_reason = (payload.reason or "").strip()
-        if len(normalized_reason) < 5 or not _user_can_override_transfer(
-            db, user_id=requested_by_id, store_id=origin_store.id
-        ):
-            raise
+# [MIGRATED TO crud/transfers.py]     try:
+# [MIGRATED TO crud/transfers.py]         _require_store_permission(
+# [MIGRATED TO crud/transfers.py]             db,
+# [MIGRATED TO crud/transfers.py]             user_id=requested_by_id,
+# [MIGRATED TO crud/transfers.py]             store_id=origin_store.id,
+# [MIGRATED TO crud/transfers.py]             permission="create",
+# [MIGRATED TO crud/transfers.py]         )
+# [MIGRATED TO crud/transfers.py]     except PermissionError:
+# [MIGRATED TO crud/transfers.py]         normalized_reason = (payload.reason or "").strip()
+# [MIGRATED TO crud/transfers.py]         if len(normalized_reason) < 5 or not _user_can_override_transfer(
+# [MIGRATED TO crud/transfers.py]             db, user_id=requested_by_id, store_id=origin_store.id
+# [MIGRATED TO crud/transfers.py]         ):
+# [MIGRATED TO crud/transfers.py]             raise
 
-    if not payload.items:
-        raise ValueError("transfer_items_required")
+# [MIGRATED TO crud/transfers.py]     if not payload.items:
+# [MIGRATED TO crud/transfers.py]         raise ValueError("transfer_items_required")
 
-    order = models.TransferOrder(
-        origin_store_id=origin_store.id,
-        destination_store_id=destination_store.id,
-        status=models.TransferStatus.SOLICITADA,
-        requested_by_id=requested_by_id,
-        reason=payload.reason,
-    )
-    with transactional_session(db):
-        db.add(order)
-        flush_session(db)
+# [MIGRATED TO crud/transfers.py]     order = models.TransferOrder(
+# [MIGRATED TO crud/transfers.py]         origin_store_id=origin_store.id,
+# [MIGRATED TO crud/transfers.py]         destination_store_id=destination_store.id,
+# [MIGRATED TO crud/transfers.py]         status=models.TransferStatus.SOLICITADA,
+# [MIGRATED TO crud/transfers.py]         requested_by_id=requested_by_id,
+# [MIGRATED TO crud/transfers.py]         reason=payload.reason,
+# [MIGRATED TO crud/transfers.py]     )
+# [MIGRATED TO crud/transfers.py]     with transactional_session(db):
+# [MIGRATED TO crud/transfers.py]         db.add(order)
+# [MIGRATED TO crud/transfers.py]         flush_session(db)
 
-        expire_reservations(
-            db, store_id=origin_store.id, device_ids=[
-                item.device_id for item in payload.items]
-        )
+# [MIGRATED TO crud/transfers.py]         expire_reservations(
+# [MIGRATED TO crud/transfers.py]             db, store_id=origin_store.id, device_ids=[
+# [MIGRATED TO crud/transfers.py]                 item.device_id for item in payload.items]
+# [MIGRATED TO crud/transfers.py]         )
 
-        for item in payload.items:
-            device = get_device(db, origin_store.id, item.device_id)
-            if item.quantity <= 0:
-                raise ValueError("transfer_invalid_quantity")
-            reservation_id = getattr(item, "reservation_id", None)
-            reservation = None
-            if reservation_id is not None:
-                reservation = get_inventory_reservation(db, reservation_id)
-                if reservation.store_id != origin_store.id:
-                    raise ValueError("reservation_store_mismatch")
+# [MIGRATED TO crud/transfers.py]         for item in payload.items:
+# [MIGRATED TO crud/transfers.py]             device = get_device(db, origin_store.id, item.device_id)
+# [MIGRATED TO crud/transfers.py]             if item.quantity <= 0:
+# [MIGRATED TO crud/transfers.py]                 raise ValueError("transfer_invalid_quantity")
+# [MIGRATED TO crud/transfers.py]             reservation_id = getattr(item, "reservation_id", None)
+# [MIGRATED TO crud/transfers.py]             reservation = None
+# [MIGRATED TO crud/transfers.py]             if reservation_id is not None:
+# [MIGRATED TO crud/transfers.py]                 reservation = get_inventory_reservation(db, reservation_id)
+# [MIGRATED TO crud/transfers.py]                 if reservation.store_id != origin_store.id:
+# [MIGRATED TO crud/transfers.py]                     raise ValueError("reservation_store_mismatch")
                 if reservation.device_id != device.id:
-                    raise ValueError("reservation_device_mismatch")
-                if reservation.status != models.InventoryState.RESERVADO:
-                    raise ValueError("reservation_not_active")
-                if reservation.quantity != item.quantity:
-                    raise ValueError("reservation_quantity_mismatch")
-                if reservation.expires_at <= datetime.now(timezone.utc):
-                    raise ValueError("reservation_expired")
-            order_item = models.TransferOrderItem(
-                transfer_order=order,
-                device=device,
-                quantity=item.quantity,
-                reservation_id=reservation.id if reservation is not None else None,
-            )
-            db.add(order_item)
+# [MIGRATED TO crud/transfers.py]                     raise ValueError("reservation_device_mismatch")
+# [MIGRATED TO crud/transfers.py]                 if reservation.status != models.InventoryState.RESERVADO:
+# [MIGRATED TO crud/transfers.py]                     raise ValueError("reservation_not_active")
+# [MIGRATED TO crud/transfers.py]                 if reservation.quantity != item.quantity:
+# [MIGRATED TO crud/transfers.py]                     raise ValueError("reservation_quantity_mismatch")
+# [MIGRATED TO crud/transfers.py]                 if reservation.expires_at <= datetime.now(timezone.utc):
+# [MIGRATED TO crud/transfers.py]                     raise ValueError("reservation_expired")
+# [MIGRATED TO crud/transfers.py]             order_item = models.TransferOrderItem(
+# [MIGRATED TO crud/transfers.py]                 transfer_order=order,
+# [MIGRATED TO crud/transfers.py]                 device=device,
+# [MIGRATED TO crud/transfers.py]                 quantity=item.quantity,
+# [MIGRATED TO crud/transfers.py]                 reservation_id=reservation.id if reservation is not None else None,
+# [MIGRATED TO crud/transfers.py]             )
+# [MIGRATED TO crud/transfers.py]             db.add(order_item)
 
-        flush_session(db)
+# [MIGRATED TO crud/transfers.py]         flush_session(db)
         _log_action(
             db,
             action="transfer_created",
@@ -9737,57 +9778,57 @@ def _apply_transfer_dispatch(
                 models.Device.sku == device.sku,
             )
             destination_device = db.scalars(destination_statement).first()
-            if destination_device is None:
-                clone = models.Device(
-                    store_id=order.destination_store_id,
-                    sku=device.sku,
-                    name=device.name,
-                    quantity=0,
-                    unit_price=device.unit_price,
-                    marca=device.marca,
-                    modelo=device.modelo,
-                    categoria=device.categoria,
-                    condicion=device.condicion,
-                    color=device.color,
-                    capacidad_gb=device.capacidad_gb,
-                    capacidad=device.capacidad,
-                    estado_comercial=device.estado_comercial,
-                    estado=device.estado,
-                    proveedor=device.proveedor,
-                    costo_unitario=origin_unit_cost,
-                    margen_porcentaje=device.margen_porcentaje,
-                    garantia_meses=device.garantia_meses,
-                    lote=device.lote,
-                    fecha_compra=device.fecha_compra,
-                    fecha_ingreso=device.fecha_ingreso,
-                    ubicacion=device.ubicacion,
-                    completo=device.completo,
-                    descripcion=device.descripcion,
-                    imei=device.imei,
-                    serial=device.serial,
-                    imagen_url=device.imagen_url,
-                )
-                db.add(clone)
-                flush_session(db)
+# [MIGRATED TO crud/transfers.py]             if destination_device is None:
+# [MIGRATED TO crud/transfers.py]                 clone = models.Device(
+# [MIGRATED TO crud/transfers.py]                     store_id=order.destination_store_id,
+# [MIGRATED TO crud/transfers.py]                     sku=device.sku,
+# [MIGRATED TO crud/transfers.py]                     name=device.name,
+# [MIGRATED TO crud/transfers.py]                     quantity=0,
+# [MIGRATED TO crud/transfers.py]                     unit_price=device.unit_price,
+# [MIGRATED TO crud/transfers.py]                     marca=device.marca,
+# [MIGRATED TO crud/transfers.py]                     modelo=device.modelo,
+# [MIGRATED TO crud/transfers.py]                     categoria=device.categoria,
+# [MIGRATED TO crud/transfers.py]                     condicion=device.condicion,
+# [MIGRATED TO crud/transfers.py]                     color=device.color,
+# [MIGRATED TO crud/transfers.py]                     capacidad_gb=device.capacidad_gb,
+# [MIGRATED TO crud/transfers.py]                     capacidad=device.capacidad,
+# [MIGRATED TO crud/transfers.py]                     estado_comercial=device.estado_comercial,
+# [MIGRATED TO crud/transfers.py]                     estado=device.estado,
+# [MIGRATED TO crud/transfers.py]                     proveedor=device.proveedor,
+# [MIGRATED TO crud/transfers.py]                     costo_unitario=origin_unit_cost,
+# [MIGRATED TO crud/transfers.py]                     margen_porcentaje=device.margen_porcentaje,
+# [MIGRATED TO crud/transfers.py]                     garantia_meses=device.garantia_meses,
+# [MIGRATED TO crud/transfers.py]                     lote=device.lote,
+# [MIGRATED TO crud/transfers.py]                     fecha_compra=device.fecha_compra,
+# [MIGRATED TO crud/transfers.py]                     fecha_ingreso=device.fecha_ingreso,
+# [MIGRATED TO crud/transfers.py]                     ubicacion=device.ubicacion,
+# [MIGRATED TO crud/transfers.py]                     completo=device.completo,
+# [MIGRATED TO crud/transfers.py]                     descripcion=device.descripcion,
+# [MIGRATED TO crud/transfers.py]                     imei=device.imei,
+# [MIGRATED TO crud/transfers.py]                     serial=device.serial,
+# [MIGRATED TO crud/transfers.py]                     imagen_url=device.imagen_url,
+# [MIGRATED TO crud/transfers.py]                 )
+# [MIGRATED TO crud/transfers.py]                 db.add(clone)
+# [MIGRATED TO crud/transfers.py]                 flush_session(db)
 
-    order.dispatched_by_id = order.dispatched_by_id or performed_by_id
-    order.dispatched_at = order.dispatched_at or datetime.now(timezone.utc)
-    if reason:
-        order.reason = reason
+# [MIGRATED TO crud/transfers.py]     order.dispatched_by_id = order.dispatched_by_id or performed_by_id
+# [MIGRATED TO crud/transfers.py]     order.dispatched_at = order.dispatched_at or datetime.now(timezone.utc)
+# [MIGRATED TO crud/transfers.py]     if reason:
+# [MIGRATED TO crud/transfers.py]         order.reason = reason
 
-    recalculate_store_inventory_value(db, order.origin_store_id)
+# [MIGRATED TO crud/transfers.py]     recalculate_store_inventory_value(db, order.origin_store_id)
 
 
-def dispatch_transfer_order(
-    db: Session,
-    transfer_id: int,
-    *,
-    performed_by_id: int,
-    reason: str | None,
-) -> models.TransferOrder:
-    order = get_transfer_order(db, transfer_id)
-    if order.status not in {models.TransferStatus.SOLICITADA}:
-        raise ValueError("transfer_invalid_transition")
+# [MIGRATED TO crud/transfers.py] def dispatch_transfer_order(
+# [MIGRATED TO crud/transfers.py]     db: Session,
+# [MIGRATED TO crud/transfers.py]     transfer_id: int,
+# [MIGRATED TO crud/transfers.py]     *,
+# [MIGRATED TO crud/transfers.py]     performed_by_id: int,
+# [MIGRATED TO crud/transfers.py]     reason: str | None,
+# [MIGRATED TO crud/transfers.py] ) -> models.TransferOrder:
+# [MIGRATED TO crud/transfers.py]     order = get_transfer_order(db, transfer_id)
+# [MIGRATED TO crud/transfers.py]     if order.status not in {models.TransferStatus.SOLICITADA}:
+# [MIGRATED TO crud/transfers.py]         raise ValueError("transfer_invalid_transition")
 
     _require_store_permission(
         db,
@@ -9990,72 +10031,72 @@ def _apply_transfer_reception(
                     db,
                     store_id=order.destination_store_id,
                     device_id=destination_device.id,
-                    movement_type=models.MovementType.IN,
-                    quantity=accepted_quantity,
-                    comment=build_transfer_movement_comment(
-                        order, destination_device, "IN", order.reason
-                    ),
-                    performed_by_id=performed_by_id,
-                    source_store_id=order.origin_store_id,
-                    destination_store_id=order.destination_store_id,
-                    warehouse_id=destination_warehouse.id,
-                    unit_cost=item.dispatched_unit_cost or origin_unit_cost,
-                    reference_type="transfer_order",
-                    reference_id=str(order.id),
-                )
+# [MIGRATED TO crud/transfers.py]                     movement_type=models.MovementType.IN,
+# [MIGRATED TO crud/transfers.py]                     quantity=accepted_quantity,
+# [MIGRATED TO crud/transfers.py]                     comment=build_transfer_movement_comment(
+# [MIGRATED TO crud/transfers.py]                         order, destination_device, "IN", order.reason
+# [MIGRATED TO crud/transfers.py]                     ),
+# [MIGRATED TO crud/transfers.py]                     performed_by_id=performed_by_id,
+# [MIGRATED TO crud/transfers.py]                     source_store_id=order.origin_store_id,
+# [MIGRATED TO crud/transfers.py]                     destination_store_id=order.destination_store_id,
+# [MIGRATED TO crud/transfers.py]                     warehouse_id=destination_warehouse.id,
+# [MIGRATED TO crud/transfers.py]                     unit_cost=item.dispatched_unit_cost or origin_unit_cost,
+# [MIGRATED TO crud/transfers.py]                     reference_type="transfer_order",
+# [MIGRATED TO crud/transfers.py]                     reference_id=str(order.id),
+# [MIGRATED TO crud/transfers.py]                 )
 
-        pending_return = shipped_quantity - accepted_quantity
-        if pending_return > 0:
-            _register_inventory_movement(
-                db,
-                store_id=order.origin_store_id,
-                device_id=device.id,
-                movement_type=models.MovementType.IN,
-                quantity=pending_return,
-                comment=build_transfer_movement_comment(
-                    order, device, "IN", "Reverso por faltante/rechazo"
-                ),
-                performed_by_id=performed_by_id,
-                source_store_id=order.destination_store_id,
-                source_warehouse_id=destination_warehouse.id,
-                destination_store_id=order.origin_store_id,
-                warehouse_id=origin_warehouse.id,
-                unit_cost=origin_unit_cost,
-                reference_type="transfer_order",
-                reference_id=str(order.id),
-            )
+# [MIGRATED TO crud/transfers.py]         pending_return = shipped_quantity - accepted_quantity
+# [MIGRATED TO crud/transfers.py]         if pending_return > 0:
+# [MIGRATED TO crud/transfers.py]             _register_inventory_movement(
+# [MIGRATED TO crud/transfers.py]                 db,
+# [MIGRATED TO crud/transfers.py]                 store_id=order.origin_store_id,
+# [MIGRATED TO crud/transfers.py]                 device_id=device.id,
+# [MIGRATED TO crud/transfers.py]                 movement_type=models.MovementType.IN,
+# [MIGRATED TO crud/transfers.py]                 quantity=pending_return,
+# [MIGRATED TO crud/transfers.py]                 comment=build_transfer_movement_comment(
+# [MIGRATED TO crud/transfers.py]                     order, device, "IN", "Reverso por faltante/rechazo"
+# [MIGRATED TO crud/transfers.py]                 ),
+# [MIGRATED TO crud/transfers.py]                 performed_by_id=performed_by_id,
+# [MIGRATED TO crud/transfers.py]                 source_store_id=order.destination_store_id,
+# [MIGRATED TO crud/transfers.py]                 source_warehouse_id=destination_warehouse.id,
+# [MIGRATED TO crud/transfers.py]                 destination_store_id=order.origin_store_id,
+# [MIGRATED TO crud/transfers.py]                 warehouse_id=origin_warehouse.id,
+# [MIGRATED TO crud/transfers.py]                 unit_cost=origin_unit_cost,
+# [MIGRATED TO crud/transfers.py]                 reference_type="transfer_order",
+# [MIGRATED TO crud/transfers.py]                 reference_id=str(order.id),
+# [MIGRATED TO crud/transfers.py]             )
 
-        item.received_quantity = accepted_quantity
+# [MIGRATED TO crud/transfers.py]         item.received_quantity = accepted_quantity
 
-    recalculate_store_inventory_value(db, order.origin_store_id)
-    recalculate_store_inventory_value(db, order.destination_store_id)
+# [MIGRATED TO crud/transfers.py]     recalculate_store_inventory_value(db, order.origin_store_id)
+# [MIGRATED TO crud/transfers.py]     recalculate_store_inventory_value(db, order.destination_store_id)
 
 
-def receive_transfer_order(
-    db: Session,
-    transfer_id: int,
-    *,
-    performed_by_id: int,
-    reason: str | None,
-    items: list[schemas.TransferReceptionItem] | None = None,
-    use_transaction: bool = True,
-) -> models.TransferOrder:
-    order = get_transfer_order(db, transfer_id)
-    if order.status not in {models.TransferStatus.SOLICITADA, models.TransferStatus.EN_TRANSITO}:
-        raise ValueError("transfer_invalid_transition")
+# [MIGRATED TO crud/transfers.py] def receive_transfer_order(
+# [MIGRATED TO crud/transfers.py]     db: Session,
+# [MIGRATED TO crud/transfers.py]     transfer_id: int,
+# [MIGRATED TO crud/transfers.py]     *,
+# [MIGRATED TO crud/transfers.py]     performed_by_id: int,
+# [MIGRATED TO crud/transfers.py]     reason: str | None,
+# [MIGRATED TO crud/transfers.py]     items: list[schemas.TransferReceptionItem] | None = None,
+# [MIGRATED TO crud/transfers.py]     use_transaction: bool = True,
+# [MIGRATED TO crud/transfers.py] ) -> models.TransferOrder:
+# [MIGRATED TO crud/transfers.py]     order = get_transfer_order(db, transfer_id)
+# [MIGRATED TO crud/transfers.py]     if order.status not in {models.TransferStatus.SOLICITADA, models.TransferStatus.EN_TRANSITO}:
+# [MIGRATED TO crud/transfers.py]         raise ValueError("transfer_invalid_transition")
 
-    _require_store_permission(
-        db,
-        user_id=performed_by_id,
-        store_id=order.destination_store_id,
-        permission="receive",
-    )
+# [MIGRATED TO crud/transfers.py]     _require_store_permission(
+# [MIGRATED TO crud/transfers.py]         db,
+# [MIGRATED TO crud/transfers.py]         user_id=performed_by_id,
+# [MIGRATED TO crud/transfers.py]         store_id=order.destination_store_id,
+# [MIGRATED TO crud/transfers.py]         permission="receive",
+# [MIGRATED TO crud/transfers.py]     )
 
-    def _receive_transfer() -> models.TransferOrder:
-        if not any(item.dispatched_quantity > 0 for item in order.items):
-            _apply_transfer_dispatch(
-                db, order, performed_by_id=performed_by_id, reason=reason
-            )
+# [MIGRATED TO crud/transfers.py]     def _receive_transfer() -> models.TransferOrder:
+# [MIGRATED TO crud/transfers.py]         if not any(item.dispatched_quantity > 0 for item in order.items):
+# [MIGRATED TO crud/transfers.py]             _apply_transfer_dispatch(
+# [MIGRATED TO crud/transfers.py]                 db, order, performed_by_id=performed_by_id, reason=reason
+# [MIGRATED TO crud/transfers.py]             )
 
         reception_map = _normalize_reception_quantities(order, items)
         _apply_transfer_reception(
@@ -10132,105 +10173,105 @@ def reject_transfer_order(
             )
         except LookupError as exc:
             if str(exc) != "warehouse_not_found":
-                raise
-            _ensure_default_warehouse(db, order.origin_store_id)
-            _ensure_default_warehouse(db, order.destination_store_id)
-            _apply_transfer_reception(
-                db,
-                order,
-                performed_by_id=performed_by_id,
-                received_map=rejection_map,
-                is_rejection=True,
-            )
+# [MIGRATED TO crud/transfers.py]                 raise
+# [MIGRATED TO crud/transfers.py]             _ensure_default_warehouse(db, order.origin_store_id)
+# [MIGRATED TO crud/transfers.py]             _ensure_default_warehouse(db, order.destination_store_id)
+# [MIGRATED TO crud/transfers.py]             _apply_transfer_reception(
+# [MIGRATED TO crud/transfers.py]                 db,
+# [MIGRATED TO crud/transfers.py]                 order,
+# [MIGRATED TO crud/transfers.py]                 performed_by_id=performed_by_id,
+# [MIGRATED TO crud/transfers.py]                 received_map=rejection_map,
+# [MIGRATED TO crud/transfers.py]                 is_rejection=True,
+# [MIGRATED TO crud/transfers.py]             )
 
-        order.status = models.TransferStatus.RECHAZADA
-        order.received_by_id = performed_by_id
-        order.received_at = datetime.now(timezone.utc)
-        order.reason = reason or order.reason
+# [MIGRATED TO crud/transfers.py]         order.status = models.TransferStatus.RECHAZADA
+# [MIGRATED TO crud/transfers.py]         order.received_by_id = performed_by_id
+# [MIGRATED TO crud/transfers.py]         order.received_at = datetime.now(timezone.utc)
+# [MIGRATED TO crud/transfers.py]         order.reason = reason or order.reason
 
-        flush_session(db)
+# [MIGRATED TO crud/transfers.py]         flush_session(db)
 
-        _log_action(
-            db,
-            action="transfer_rejected",
-            entity_type="transfer_order",
-            entity_id=str(order.id),
-            performed_by_id=performed_by_id,
-            details=json.dumps(
-                {"status": order.status.value, "reason": reason}),
-        )
+# [MIGRATED TO crud/transfers.py]         _log_action(
+# [MIGRATED TO crud/transfers.py]             db,
+# [MIGRATED TO crud/transfers.py]             action="transfer_rejected",
+# [MIGRATED TO crud/transfers.py]             entity_type="transfer_order",
+# [MIGRATED TO crud/transfers.py]             entity_id=str(order.id),
+# [MIGRATED TO crud/transfers.py]             performed_by_id=performed_by_id,
+# [MIGRATED TO crud/transfers.py]             details=json.dumps(
+# [MIGRATED TO crud/transfers.py]                 {"status": order.status.value, "reason": reason}),
+# [MIGRATED TO crud/transfers.py]         )
 
-        db.refresh(order)
-    order = get_transfer_order(db, order.id)
-    enqueue_sync_outbox(
-        db,
-        entity_type="transfer_order",
-        entity_id=str(order.id),
-        operation="UPSERT",
-        payload=transfer_order_payload(order),
-        priority=models.SyncOutboxPriority.HIGH,
-    )
-    return order
+# [MIGRATED TO crud/transfers.py]         db.refresh(order)
+# [MIGRATED TO crud/transfers.py]     order = get_transfer_order(db, order.id)
+# [MIGRATED TO crud/transfers.py]     enqueue_sync_outbox(
+# [MIGRATED TO crud/transfers.py]         db,
+# [MIGRATED TO crud/transfers.py]         entity_type="transfer_order",
+# [MIGRATED TO crud/transfers.py]         entity_id=str(order.id),
+# [MIGRATED TO crud/transfers.py]         operation="UPSERT",
+# [MIGRATED TO crud/transfers.py]         payload=transfer_order_payload(order),
+# [MIGRATED TO crud/transfers.py]         priority=models.SyncOutboxPriority.HIGH,
+# [MIGRATED TO crud/transfers.py]     )
+# [MIGRATED TO crud/transfers.py]     return order
 
 
-def cancel_transfer_order(
-    db: Session,
-    transfer_id: int,
-    *,
-    performed_by_id: int,
-    reason: str | None,
-) -> models.TransferOrder:
+# [MIGRATED TO crud/transfers.py] def cancel_transfer_order(
+# [MIGRATED TO crud/transfers.py]     db: Session,
+# [MIGRATED TO crud/transfers.py]     transfer_id: int,
+# [MIGRATED TO crud/transfers.py]     *,
+# [MIGRATED TO crud/transfers.py]     performed_by_id: int,
+# [MIGRATED TO crud/transfers.py]     reason: str | None,
+# [MIGRATED TO crud/transfers.py] ) -> models.TransferOrder:
     order = get_transfer_order(db, transfer_id)
-    if order.status in {models.TransferStatus.RECIBIDA, models.TransferStatus.CANCELADA}:
-        raise ValueError("transfer_invalid_transition")
+# [MIGRATED TO crud/transfers.py]     if order.status in {models.TransferStatus.RECIBIDA, models.TransferStatus.CANCELADA}:
+# [MIGRATED TO crud/transfers.py]         raise ValueError("transfer_invalid_transition")
 
-    _require_store_permission(
-        db,
-        user_id=performed_by_id,
-        store_id=order.origin_store_id,
-        permission="create",
-    )
+# [MIGRATED TO crud/transfers.py]     _require_store_permission(
+# [MIGRATED TO crud/transfers.py]         db,
+# [MIGRATED TO crud/transfers.py]         user_id=performed_by_id,
+# [MIGRATED TO crud/transfers.py]         store_id=order.origin_store_id,
+# [MIGRATED TO crud/transfers.py]         permission="create",
+# [MIGRATED TO crud/transfers.py]     )
 
-    with transactional_session(db):
-        order.status = models.TransferStatus.CANCELADA
-        order.cancelled_by_id = performed_by_id
-        order.cancelled_at = datetime.now(timezone.utc)
-        order.reason = reason or order.reason
+# [MIGRATED TO crud/transfers.py]     with transactional_session(db):
+# [MIGRATED TO crud/transfers.py]         order.status = models.TransferStatus.CANCELADA
+# [MIGRATED TO crud/transfers.py]         order.cancelled_by_id = performed_by_id
+# [MIGRATED TO crud/transfers.py]         order.cancelled_at = datetime.now(timezone.utc)
+# [MIGRATED TO crud/transfers.py]         order.reason = reason or order.reason
 
-        flush_session(db)
+# [MIGRATED TO crud/transfers.py]         flush_session(db)
 
-        _log_action(
-            db,
-            action="transfer_cancelled",
-            entity_type="transfer_order",
-            entity_id=str(order.id),
-            performed_by_id=performed_by_id,
-            details=json.dumps(
-                {"status": order.status.value, "reason": reason}),
-        )
+# [MIGRATED TO crud/transfers.py]         _log_action(
+# [MIGRATED TO crud/transfers.py]             db,
+# [MIGRATED TO crud/transfers.py]             action="transfer_cancelled",
+# [MIGRATED TO crud/transfers.py]             entity_type="transfer_order",
+# [MIGRATED TO crud/transfers.py]             entity_id=str(order.id),
+# [MIGRATED TO crud/transfers.py]             performed_by_id=performed_by_id,
+# [MIGRATED TO crud/transfers.py]             details=json.dumps(
+# [MIGRATED TO crud/transfers.py]                 {"status": order.status.value, "reason": reason}),
+# [MIGRATED TO crud/transfers.py]         )
 
-        db.refresh(order)
-    order = get_transfer_order(db, order.id)
-    enqueue_sync_outbox(
-        db,
-        entity_type="transfer_order",
-        entity_id=str(order.id),
-        operation="UPSERT",
-        payload=transfer_order_payload(order),
-        priority=models.SyncOutboxPriority.HIGH,
-    )
-    return order
+# [MIGRATED TO crud/transfers.py]         db.refresh(order)
+# [MIGRATED TO crud/transfers.py]     order = get_transfer_order(db, order.id)
+# [MIGRATED TO crud/transfers.py]     enqueue_sync_outbox(
+# [MIGRATED TO crud/transfers.py]         db,
+# [MIGRATED TO crud/transfers.py]         entity_type="transfer_order",
+# [MIGRATED TO crud/transfers.py]         entity_id=str(order.id),
+# [MIGRATED TO crud/transfers.py]         operation="UPSERT",
+# [MIGRATED TO crud/transfers.py]         payload=transfer_order_payload(order),
+# [MIGRATED TO crud/transfers.py]         priority=models.SyncOutboxPriority.HIGH,
+# [MIGRATED TO crud/transfers.py]     )
+# [MIGRATED TO crud/transfers.py]     return order
 
 
-def list_transfer_orders(
-    db: Session,
-    *,
-    store_id: int | None = None,
-    origin_store_id: int | None = None,
-    destination_store_id: int | None = None,
-    status: models.TransferStatus | None = None,
-    date_from: datetime | None = None,
-    date_to: datetime | None = None,
+# [MIGRATED TO crud/transfers.py] def list_transfer_orders(
+# [MIGRATED TO crud/transfers.py]     db: Session,
+# [MIGRATED TO crud/transfers.py]     *,
+# [MIGRATED TO crud/transfers.py]     store_id: int | None = None,
+# [MIGRATED TO crud/transfers.py]     origin_store_id: int | None = None,
+# [MIGRATED TO crud/transfers.py]     destination_store_id: int | None = None,
+# [MIGRATED TO crud/transfers.py]     status: models.TransferStatus | None = None,
+# [MIGRATED TO crud/transfers.py]     date_from: datetime | None = None,
+# [MIGRATED TO crud/transfers.py]     date_to: datetime | None = None,
     limit: int | None = 50,
     offset: int = 0,
 ) -> list[models.TransferOrder]:
