@@ -164,239 +164,15 @@ from .utils.payload_serializers import (
 logger = core_logger.bind(component=__name__)
 
 # ============================================================================
-# COMPATIBILITY ALIASES - POS Module Migration (Fase 2, Incremento 1)
-# ============================================================================
-# These aliases maintain backward compatibility after migrating POS functions
-# to backend/app/crud/pos.py. They will be removed in a future PR after
-# validation in production.
-#
-# Migration date: 2025-12-06
-# Target removal: After 30 days of production validation
-# ============================================================================
-
-from .crud import pos as _pos_module
-
-def resolve_device_for_pos(*args, **kwargs):
-    """DEPRECATED: Use crud.pos.resolve_device_for_pos. Alias for compatibility."""
-    return _pos_module.resolve_device_for_pos(*args, **kwargs)
-
-def get_cash_session(*args, **kwargs):
-    """DEPRECATED: Use crud.pos.get_cash_session. Alias for compatibility."""
-    return _pos_module.get_cash_session(*args, **kwargs)
-
-def get_open_cash_session(*args, **kwargs):
-    """DEPRECATED: Use crud.pos.get_open_cash_session. Alias for compatibility."""
-    return _pos_module.get_open_cash_session(*args, **kwargs)
-
-def get_last_cash_session_for_store(*args, **kwargs):
-    """DEPRECATED: Use crud.pos.get_last_cash_session_for_store. Alias for compatibility."""
-    return _pos_module.get_last_cash_session_for_store(*args, **kwargs)
-
-def paginate_cash_sessions(*args, **kwargs):
-    """DEPRECATED: Use crud.pos.paginate_cash_sessions. Alias for compatibility."""
-    return _pos_module.paginate_cash_sessions(*args, **kwargs)
-
-def open_cash_session(*args, **kwargs):
-    """DEPRECATED: Use crud.pos.open_cash_session. Alias for compatibility."""
-    return _pos_module.open_cash_session(*args, **kwargs)
-
-def close_cash_session(*args, **kwargs):
-    """DEPRECATED: Use crud.pos.close_cash_session. Alias for compatibility."""
-    return _pos_module.close_cash_session(*args, **kwargs)
-
-def get_pos_config(*args, **kwargs):
-    """DEPRECATED: Use crud.pos.get_pos_config. Alias for compatibility."""
-    return _pos_module.get_pos_config(*args, **kwargs)
-
-def update_pos_config(*args, **kwargs):
-    """DEPRECATED: Use crud.pos.update_pos_config. Alias for compatibility."""
-    return _pos_module.update_pos_config(*args, **kwargs)
-
-def get_pos_promotions(*args, **kwargs):
-    """DEPRECATED: Use crud.pos.get_pos_promotions. Alias for compatibility."""
-    return _pos_module.get_pos_promotions(*args, **kwargs)
-
-def update_pos_promotions(*args, **kwargs):
-    """DEPRECATED: Use crud.pos.update_pos_promotions. Alias for compatibility."""
-    return _pos_module.update_pos_promotions(*args, **kwargs)
-
-def save_pos_draft(*args, **kwargs):
-    """DEPRECATED: Use crud.pos.save_pos_draft. Alias for compatibility."""
-    return _pos_module.save_pos_draft(*args, **kwargs)
-
-def delete_pos_draft(*args, **kwargs):
-    """DEPRECATED: Use crud.pos.delete_pos_draft. Alias for compatibility."""
-    return _pos_module.delete_pos_draft(*args, **kwargs)
-
-def register_pos_sale(*args, **kwargs):
-    """DEPRECATED: Use crud.pos.register_pos_sale. Alias for compatibility."""
-    return _pos_module.register_pos_sale(*args, **kwargs)
-
-# ============================================================================
-# END OF POS COMPATIBILITY ALIASES
 # ============================================================================
 
 # ============================================================================
-# COMPATIBILITY ALIASES - Analytics Module Migration (Fase 2, Incremento 2)
-# ============================================================================
-# These aliases maintain backward compatibility after migrating Analytics functions
-# to backend/app/crud/analytics.py. They will be removed in a future PR after
-# validation in production.
-#
-# Migration date: 2025-12-06
-# Target removal: After 30 days of production validation
-# ============================================================================
-
-from .crud import analytics as _analytics_module
-
-def calculate_rotation_analytics(*args, **kwargs):
-    """DEPRECATED: Use crud.analytics.calculate_rotation_analytics. Alias for compatibility."""
-    return _analytics_module.calculate_rotation_analytics(*args, **kwargs)
-
-def calculate_aging_analytics(*args, **kwargs):
-    """DEPRECATED: Use crud.analytics.calculate_aging_analytics. Alias for compatibility."""
-    return _analytics_module.calculate_aging_analytics(*args, **kwargs)
-
-def calculate_stockout_forecast(*args, **kwargs):
-    """DEPRECATED: Use crud.analytics.calculate_stockout_forecast. Alias for compatibility."""
-    return _analytics_module.calculate_stockout_forecast(*args, **kwargs)
-
-def calculate_store_comparatives(*args, **kwargs):
-    """DEPRECATED: Use crud.analytics.calculate_store_comparatives. Alias for compatibility."""
-    return _analytics_module.calculate_store_comparatives(*args, **kwargs)
-
-def calculate_profit_margin(*args, **kwargs):
-    """DEPRECATED: Use crud.analytics.calculate_profit_margin. Alias for compatibility."""
-    return _analytics_module.calculate_profit_margin(*args, **kwargs)
-
-def calculate_sales_projection(*args, **kwargs):
-    """DEPRECATED: Use crud.analytics.calculate_sales_projection. Alias for compatibility."""
-    return _analytics_module.calculate_sales_projection(*args, **kwargs)
-
-def calculate_store_sales_forecast(*args, **kwargs):
-    """DEPRECATED: Use crud.analytics.calculate_store_sales_forecast. Alias for compatibility."""
-    return _analytics_module.calculate_store_sales_forecast(*args, **kwargs)
-
-def calculate_reorder_suggestions(*args, **kwargs):
-    """DEPRECATED: Use crud.analytics.calculate_reorder_suggestions. Alias for compatibility."""
-    return _analytics_module.calculate_reorder_suggestions(*args, **kwargs)
-
-def calculate_realtime_store_widget(*args, **kwargs):
-    """DEPRECATED: Use crud.analytics.calculate_realtime_store_widget. Alias for compatibility."""
-    return _analytics_module.calculate_realtime_store_widget(*args, **kwargs)
-
-# ============================================================================
-# END OF ANALYTICS COMPATIBILITY ALIASES
 # ============================================================================
 
 # ============================================================================
-# COMPATIBILITY ALIASES - Transfers Module Migration (Fase 2, Incremento 3)
-# ============================================================================
-# These aliases maintain backward compatibility after migrating Transfers functions
-# to backend/app/crud/transfers.py. They will be removed in a future PR after
-# validation in production.
-#
-# Migration date: 2025-12-06
-# Target removal: After 30 days of production validation
-# ============================================================================
-
-from .crud import transfers as _transfers_module
-
-def create_transfer_order(*args, **kwargs):
-    """DEPRECATED: Use crud.transfers.create_transfer_order. Alias for compatibility."""
-    return _transfers_module.create_transfer_order(*args, **kwargs)
-
-def get_transfer_order(*args, **kwargs):
-    """DEPRECATED: Use crud.transfers.get_transfer_order. Alias for compatibility."""
-    return _transfers_module.get_transfer_order(*args, **kwargs)
-
-def dispatch_transfer_order(*args, **kwargs):
-    """DEPRECATED: Use crud.transfers.dispatch_transfer_order. Alias for compatibility."""
-    return _transfers_module.dispatch_transfer_order(*args, **kwargs)
-
-def receive_transfer_order(*args, **kwargs):
-    """DEPRECATED: Use crud.transfers.receive_transfer_order. Alias for compatibility."""
-    return _transfers_module.receive_transfer_order(*args, **kwargs)
-
-def cancel_transfer_order(*args, **kwargs):
-    """DEPRECATED: Use crud.transfers.cancel_transfer_order. Alias for compatibility."""
-    return _transfers_module.cancel_transfer_order(*args, **kwargs)
-
-def list_transfer_orders(*args, **kwargs):
-    """DEPRECATED: Use crud.transfers.list_transfer_orders. Alias for compatibility."""
-    return _transfers_module.list_transfer_orders(*args, **kwargs)
-
-# ============================================================================
-# END OF TRANSFERS COMPATIBILITY ALIASES
 # ============================================================================
 
 # ============================================================================
-# COMPATIBILITY ALIASES - Invoicing Module Migration (Fase 2, Incremento 4)
-# ============================================================================
-# These aliases maintain backward compatibility after migrating Invoicing functions
-# to backend/app/crud/invoicing.py. They will be removed in a future PR after
-# validation in production.
-#
-# Migration date: 2025-12-06
-# Target removal: After 30 days of production validation
-# ============================================================================
-
-from .crud import invoicing as _invoicing_module
-
-def create_dte_authorization(*args, **kwargs):
-    """DEPRECATED: Use crud.invoicing.create_dte_authorization. Alias for compatibility."""
-    return _invoicing_module.create_dte_authorization(*args, **kwargs)
-
-def list_dte_authorizations(*args, **kwargs):
-    """DEPRECATED: Use crud.invoicing.list_dte_authorizations. Alias for compatibility."""
-    return _invoicing_module.list_dte_authorizations(*args, **kwargs)
-
-def get_dte_authorization(*args, **kwargs):
-    """DEPRECATED: Use crud.invoicing.get_dte_authorization. Alias for compatibility."""
-    return _invoicing_module.get_dte_authorization(*args, **kwargs)
-
-def update_dte_authorization(*args, **kwargs):
-    """DEPRECATED: Use crud.invoicing.update_dte_authorization. Alias for compatibility."""
-    return _invoicing_module.update_dte_authorization(*args, **kwargs)
-
-def reserve_dte_folio(*args, **kwargs):
-    """DEPRECATED: Use crud.invoicing.reserve_dte_folio. Alias for compatibility."""
-    return _invoicing_module.reserve_dte_folio(*args, **kwargs)
-
-def register_dte_document(*args, **kwargs):
-    """DEPRECATED: Use crud.invoicing.register_dte_document. Alias for compatibility."""
-    return _invoicing_module.register_dte_document(*args, **kwargs)
-
-def log_dte_event(*args, **kwargs):
-    """DEPRECATED: Use crud.invoicing.log_dte_event. Alias for compatibility."""
-    return _invoicing_module.log_dte_event(*args, **kwargs)
-
-def list_dte_documents(*args, **kwargs):
-    """DEPRECATED: Use crud.invoicing.list_dte_documents. Alias for compatibility."""
-    return _invoicing_module.list_dte_documents(*args, **kwargs)
-
-def get_dte_document(*args, **kwargs):
-    """DEPRECATED: Use crud.invoicing.get_dte_document. Alias for compatibility."""
-    return _invoicing_module.get_dte_document(*args, **kwargs)
-
-def register_dte_ack(*args, **kwargs):
-    """DEPRECATED: Use crud.invoicing.register_dte_ack. Alias for compatibility."""
-    return _invoicing_module.register_dte_ack(*args, **kwargs)
-
-def enqueue_dte_dispatch(*args, **kwargs):
-    """DEPRECATED: Use crud.invoicing.enqueue_dte_dispatch. Alias for compatibility."""
-    return _invoicing_module.enqueue_dte_dispatch(*args, **kwargs)
-
-def mark_dte_dispatch_sent(*args, **kwargs):
-    """DEPRECATED: Use crud.invoicing.mark_dte_dispatch_sent. Alias for compatibility."""
-    return _invoicing_module.mark_dte_dispatch_sent(*args, **kwargs)
-
-def list_dte_dispatch_queue(*args, **kwargs):
-    """DEPRECATED: Use crud.invoicing.list_dte_dispatch_queue. Alias for compatibility."""
-    return _invoicing_module.list_dte_dispatch_queue(*args, **kwargs)
-
-# ============================================================================
-# END OF INVOICING COMPATIBILITY ALIASES
 # ============================================================================
 
 _INVENTORY_MOVEMENTS_CACHE: TTLCache[schemas.InventoryMovementsReport] = TTLCache(
@@ -4115,44 +3891,9 @@ def resolve_price_for_device(
     get_device_global(db, device_id)
     effective_date = reference_date or date.today()
 
-# [MIGRATED TO crud/pos.py]     validity_condition = and_(
-# [MIGRATED TO crud/pos.py]         or_(models.PriceList.valid_from.is_(None),
-# [MIGRATED TO crud/pos.py]             models.PriceList.valid_from <= effective_date),
-# [MIGRATED TO crud/pos.py]         or_(models.PriceList.valid_until.is_(None),
-# [MIGRATED TO crud/pos.py]             models.PriceList.valid_until >= effective_date),
-# [MIGRATED TO crud/pos.py]     )
 
-# [MIGRATED TO crud/pos.py]     statement = (
-# [MIGRATED TO crud/pos.py]         select(models.PriceListItem, models.PriceList)
-# [MIGRATED TO crud/pos.py]         .join(models.PriceList, models.PriceListItem.price_list_id == models.PriceList.id)
-# [MIGRATED TO crud/pos.py]         .where(models.PriceListItem.device_id == device_id)
-# [MIGRATED TO crud/pos.py]         .where(models.PriceListItem.is_deleted.is_(False))
-# [MIGRATED TO crud/pos.py]         .where(models.PriceList.is_active.is_(True))
-# [MIGRATED TO crud/pos.py]         .where(models.PriceList.is_deleted.is_(False))
-# [MIGRATED TO crud/pos.py]         .where(validity_condition)
-# [MIGRATED TO crud/pos.py]     )
 
-# [MIGRATED TO crud/pos.py]     results = db.execute(statement).all()
 
-# [MIGRATED TO crud/pos.py]     def _priority(price_list: models.PriceList) -> int:
-# [MIGRATED TO crud/pos.py]         if (
-# [MIGRATED TO crud/pos.py]             store_id is not None
-# [MIGRATED TO crud/pos.py]             and customer_id is not None
-# [MIGRATED TO crud/pos.py]             and price_list.store_id == store_id
-# [MIGRATED TO crud/pos.py]             and price_list.customer_id == customer_id
-# [MIGRATED TO crud/pos.py]         ):
-# [MIGRATED TO crud/pos.py]             return 1
-# [MIGRATED TO crud/pos.py]         if (
-# [MIGRATED TO crud/pos.py]             customer_id is not None
-# [MIGRATED TO crud/pos.py]             and price_list.customer_id == customer_id
-# [MIGRATED TO crud/pos.py]             and price_list.store_id is None
-# [MIGRATED TO crud/pos.py]         ):
-# [MIGRATED TO crud/pos.py]             return 2
-# [MIGRATED TO crud/pos.py]         if (
-# [MIGRATED TO crud/pos.py]             store_id is not None
-# [MIGRATED TO crud/pos.py]             and price_list.store_id == store_id
-# [MIGRATED TO crud/pos.py]             and price_list.customer_id is None
-# [MIGRATED TO crud/pos.py]         ):
             return 3
         if price_list.store_id is None and price_list.customer_id is None:
             return 4
@@ -6483,624 +6224,61 @@ def get_inactive_products_report(
             quantity=entry.quantity,
             valor_total_producto=to_decimal(entry.valor_total_producto),
             ultima_venta=entry.ultima_venta,
-# [MIGRATED TO crud/analytics.py]             ultima_compra=entry.ultima_compra,
-# [MIGRATED TO crud/analytics.py]             ultimo_movimiento=entry.ultimo_movimiento,
-# [MIGRATED TO crud/analytics.py]             dias_sin_movimiento=entry.dias_sin_movimiento,
-# [MIGRATED TO crud/analytics.py]             ventas_30_dias=entry.ventas_30_dias,
-# [MIGRATED TO crud/analytics.py]             ventas_90_dias=entry.ventas_90_dias,
-# [MIGRATED TO crud/analytics.py]             rotacion_30_dias=to_decimal(entry.rotacion_30_dias),
-# [MIGRATED TO crud/analytics.py]             rotacion_90_dias=to_decimal(entry.rotacion_90_dias),
-# [MIGRATED TO crud/analytics.py]             rotacion_total=to_decimal(entry.rotacion_total),
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]         for entry in paginated
-# [MIGRATED TO crud/analytics.py]     ]
-
-# [MIGRATED TO crud/analytics.py]     total_units = sum((entry.quantity for entry in filtered), 0)
-# [MIGRATED TO crud/analytics.py]     total_value = sum(
-# [MIGRATED TO crud/analytics.py]         (to_decimal(entry.valor_total_producto) for entry in filtered),
-# [MIGRATED TO crud/analytics.py]         Decimal("0"),
-# [MIGRATED TO crud/analytics.py]     )
-# [MIGRATED TO crud/analytics.py]     days_values = [
-# [MIGRATED TO crud/analytics.py]         int(entry.dias_sin_movimiento)
-# [MIGRATED TO crud/analytics.py]         for entry in filtered
-# [MIGRATED TO crud/analytics.py]         if entry.dias_sin_movimiento is not None
-# [MIGRATED TO crud/analytics.py]     ]
-# [MIGRATED TO crud/analytics.py]     average_days: float | None = None
-# [MIGRATED TO crud/analytics.py]     if days_values:
-# [MIGRATED TO crud/analytics.py]         average_days = round(sum(days_values) / len(days_values), 2)
-# [MIGRATED TO crud/analytics.py]     max_days: int | None = max(days_values) if days_values else None
-
-# [MIGRATED TO crud/analytics.py]     totals = schemas.InactiveProductReportTotals(
-# [MIGRATED TO crud/analytics.py]         total_products=len(filtered),
-# [MIGRATED TO crud/analytics.py]         total_units=total_units,
-# [MIGRATED TO crud/analytics.py]         total_value=total_value,
-# [MIGRATED TO crud/analytics.py]         average_days_without_movement=average_days,
-# [MIGRATED TO crud/analytics.py]         max_days_without_movement=max_days,
-# [MIGRATED TO crud/analytics.py]     )
-
-# [MIGRATED TO crud/analytics.py]     normalized_stores = sorted({int(store_id) for store_id in store_ids or []})
-# [MIGRATED TO crud/analytics.py]     normalized_categories = [
-# [MIGRATED TO crud/analytics.py]         category for category in categories or [] if category]
-
-# [MIGRATED TO crud/analytics.py]     filters = schemas.InactiveProductReportFilters(
-# [MIGRATED TO crud/analytics.py]         store_ids=normalized_stores,
-# [MIGRATED TO crud/analytics.py]         categories=normalized_categories,
-# [MIGRATED TO crud/analytics.py]         min_days_without_movement=min_days,
-# [MIGRATED TO crud/analytics.py]     )
-
-# [MIGRATED TO crud/analytics.py]     return schemas.InactiveProductReport(
-# [MIGRATED TO crud/analytics.py]         generated_at=datetime.now(timezone.utc),
-# [MIGRATED TO crud/analytics.py]         filters=filters,
-# [MIGRATED TO crud/analytics.py]         totals=totals,
-# [MIGRATED TO crud/analytics.py]         items=items,
-# [MIGRATED TO crud/analytics.py]     )
 
 
-# [MIGRATED TO crud/analytics.py] def calculate_rotation_analytics(
-# [MIGRATED TO crud/analytics.py]     db: Session,
-# [MIGRATED TO crud/analytics.py]     store_ids: Iterable[int] | None = None,
-# [MIGRATED TO crud/analytics.py]     *,
-# [MIGRATED TO crud/analytics.py]     date_from: date | None = None,
-# [MIGRATED TO crud/analytics.py]     date_to: date | None = None,
-# [MIGRATED TO crud/analytics.py]     category: str | None = None,
-# [MIGRATED TO crud/analytics.py]     supplier: str | None = None,
-# [MIGRATED TO crud/analytics.py]     limit: int | None = None,
-# [MIGRATED TO crud/analytics.py]     offset: int = 0,
-# [MIGRATED TO crud/analytics.py] ) -> list[dict[str, object]]:
-# [MIGRATED TO crud/analytics.py]     store_filter = normalize_store_ids(store_ids)
-# [MIGRATED TO crud/analytics.py]     start_dt, end_dt = normalize_date_range(date_from, date_to)
-# [MIGRATED TO crud/analytics.py]     category_expr = device_category_expr()
 
-# [MIGRATED TO crud/analytics.py]     device_stmt = (
-# [MIGRATED TO crud/analytics.py]         select(
-# [MIGRATED TO crud/analytics.py]             models.Device.id,
-# [MIGRATED TO crud/analytics.py]             models.Device.sku,
-# [MIGRATED TO crud/analytics.py]             models.Device.name,
-# [MIGRATED TO crud/analytics.py]             models.Store.id.label("store_id"),
-# [MIGRATED TO crud/analytics.py]             models.Store.name.label("store_name"),
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]         .join(models.Store, models.Store.id == models.Device.store_id)
-# [MIGRATED TO crud/analytics.py]         .order_by(models.Store.name.asc(), models.Device.name.asc())
-# [MIGRATED TO crud/analytics.py]     )
-# [MIGRATED TO crud/analytics.py]     if store_filter:
-# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.where(
-# [MIGRATED TO crud/analytics.py]             models.Device.store_id.in_(store_filter))
-# [MIGRATED TO crud/analytics.py]     if category:
-# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.where(category_expr == category)
-# [MIGRATED TO crud/analytics.py]     if supplier:
-# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.where(models.Device.proveedor == supplier)
-# [MIGRATED TO crud/analytics.py]     if offset:
-# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.offset(offset)
-# [MIGRATED TO crud/analytics.py]     if limit is not None:
-# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.limit(limit)
 
-# [MIGRATED TO crud/analytics.py]     device_rows = list(db.execute(device_stmt))
-# [MIGRATED TO crud/analytics.py]     if not device_rows:
-# [MIGRATED TO crud/analytics.py]         return []
 
-# [MIGRATED TO crud/analytics.py]     device_ids = [row.id for row in device_rows]
 
-# [MIGRATED TO crud/analytics.py]     sale_stats = (
-# [MIGRATED TO crud/analytics.py]         select(
-# [MIGRATED TO crud/analytics.py]             models.SaleItem.device_id,
-# [MIGRATED TO crud/analytics.py]             func.sum(models.SaleItem.quantity).label("sold_units"),
-# [MIGRATED TO crud/analytics.py]             models.Sale.store_id,
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]         .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
-# [MIGRATED TO crud/analytics.py]         .join(models.Device, models.Device.id == models.SaleItem.device_id)
-# [MIGRATED TO crud/analytics.py]         .group_by(models.SaleItem.device_id, models.Sale.store_id)
-# [MIGRATED TO crud/analytics.py]     )
-# [MIGRATED TO crud/analytics.py]     if store_filter:
-# [MIGRATED TO crud/analytics.py]         sale_stats = sale_stats.where(models.Sale.store_id.in_(store_filter))
-# [MIGRATED TO crud/analytics.py]     if device_ids:
-# [MIGRATED TO crud/analytics.py]         sale_stats = sale_stats.where(
-# [MIGRATED TO crud/analytics.py]             models.SaleItem.device_id.in_(device_ids))
-# [MIGRATED TO crud/analytics.py]     if start_dt:
-# [MIGRATED TO crud/analytics.py]         sale_stats = sale_stats.where(models.Sale.created_at >= start_dt)
-# [MIGRATED TO crud/analytics.py]     if end_dt:
-# [MIGRATED TO crud/analytics.py]         sale_stats = sale_stats.where(models.Sale.created_at <= end_dt)
-# [MIGRATED TO crud/analytics.py]     if category:
-# [MIGRATED TO crud/analytics.py]         sale_stats = sale_stats.where(category_expr == category)
-# [MIGRATED TO crud/analytics.py]     if supplier:
-# [MIGRATED TO crud/analytics.py]         sale_stats = sale_stats.where(models.Device.proveedor == supplier)
 
-# [MIGRATED TO crud/analytics.py]     purchase_stats = (
-# [MIGRATED TO crud/analytics.py]         select(
-# [MIGRATED TO crud/analytics.py]             models.PurchaseOrderItem.device_id,
-# [MIGRATED TO crud/analytics.py]             func.sum(models.PurchaseOrderItem.quantity_received).label(
-# [MIGRATED TO crud/analytics.py]                 "received_units"),
-# [MIGRATED TO crud/analytics.py]             models.PurchaseOrder.store_id,
+
+
+
+
+
         )
-# [MIGRATED TO crud/analytics.py]         .join(models.PurchaseOrder, models.PurchaseOrder.id == models.PurchaseOrderItem.purchase_order_id)
-# [MIGRATED TO crud/analytics.py]         .join(models.Device, models.Device.id == models.PurchaseOrderItem.device_id)
-# [MIGRATED TO crud/analytics.py]         .group_by(models.PurchaseOrderItem.device_id, models.PurchaseOrder.store_id)
-# [MIGRATED TO crud/analytics.py]     )
-# [MIGRATED TO crud/analytics.py]     if store_filter:
-# [MIGRATED TO crud/analytics.py]         purchase_stats = purchase_stats.where(
-# [MIGRATED TO crud/analytics.py]             models.PurchaseOrder.store_id.in_(store_filter))
-# [MIGRATED TO crud/analytics.py]     if device_ids:
-# [MIGRATED TO crud/analytics.py]         purchase_stats = purchase_stats.where(
-# [MIGRATED TO crud/analytics.py]             models.PurchaseOrderItem.device_id.in_(device_ids)
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]     if start_dt:
-# [MIGRATED TO crud/analytics.py]         purchase_stats = purchase_stats.where(
-# [MIGRATED TO crud/analytics.py]             models.PurchaseOrder.created_at >= start_dt)
-# [MIGRATED TO crud/analytics.py]     if end_dt:
-# [MIGRATED TO crud/analytics.py]         purchase_stats = purchase_stats.where(
-# [MIGRATED TO crud/analytics.py]             models.PurchaseOrder.created_at <= end_dt)
-# [MIGRATED TO crud/analytics.py]     if category:
-# [MIGRATED TO crud/analytics.py]         purchase_stats = purchase_stats.where(category_expr == category)
-# [MIGRATED TO crud/analytics.py]     if supplier:
-# [MIGRATED TO crud/analytics.py]         purchase_stats = purchase_stats.where(
-# [MIGRATED TO crud/analytics.py]             models.Device.proveedor == supplier)
-
-# [MIGRATED TO crud/analytics.py]     sold_map = {
-# [MIGRATED TO crud/analytics.py]         row.device_id: int(row.sold_units or 0) for row in db.execute(sale_stats)
-# [MIGRATED TO crud/analytics.py]     }
-# [MIGRATED TO crud/analytics.py]     received_map = {
-# [MIGRATED TO crud/analytics.py]         row.device_id: int(row.received_units or 0)
-# [MIGRATED TO crud/analytics.py]         for row in db.execute(purchase_stats)
-# [MIGRATED TO crud/analytics.py]     }
-
-# [MIGRATED TO crud/analytics.py]     results: list[dict[str, object]] = []
-# [MIGRATED TO crud/analytics.py]     for row in device_rows:
-# [MIGRATED TO crud/analytics.py]         sold_units = sold_map.get(row.id, 0)
-# [MIGRATED TO crud/analytics.py]         received_units = received_map.get(row.id, 0)
-# [MIGRATED TO crud/analytics.py]         denominator = received_units if received_units > 0 else max(
-# [MIGRATED TO crud/analytics.py]             sold_units, 1)
-# [MIGRATED TO crud/analytics.py]         rotation_rate = sold_units / denominator if denominator else 0
-# [MIGRATED TO crud/analytics.py]         results.append(
-# [MIGRATED TO crud/analytics.py]             {
-# [MIGRATED TO crud/analytics.py]                 "store_id": row.store_id,
-# [MIGRATED TO crud/analytics.py]                 "store_name": row.store_name,
-# [MIGRATED TO crud/analytics.py]                 "device_id": row.id,
-# [MIGRATED TO crud/analytics.py]                 "sku": row.sku,
-# [MIGRATED TO crud/analytics.py]                 "name": row.name,
-# [MIGRATED TO crud/analytics.py]                 "sold_units": sold_units,
-# [MIGRATED TO crud/analytics.py]                 "received_units": received_units,
-# [MIGRATED TO crud/analytics.py]                 "rotation_rate": float(round(rotation_rate, 2)),
-# [MIGRATED TO crud/analytics.py]             }
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]     return results
 
 
-# [MIGRATED TO crud/analytics.py] def calculate_aging_analytics(
-# [MIGRATED TO crud/analytics.py]     db: Session,
-# [MIGRATED TO crud/analytics.py]     store_ids: Iterable[int] | None = None,
-# [MIGRATED TO crud/analytics.py]     *,
-# [MIGRATED TO crud/analytics.py]     date_from: date | None = None,
-# [MIGRATED TO crud/analytics.py]     date_to: date | None = None,
-# [MIGRATED TO crud/analytics.py]     category: str | None = None,
-# [MIGRATED TO crud/analytics.py]     supplier: str | None = None,
-# [MIGRATED TO crud/analytics.py]     limit: int | None = None,
-# [MIGRATED TO crud/analytics.py]     offset: int = 0,
-# [MIGRATED TO crud/analytics.py] ) -> list[dict[str, object]]:
-# [MIGRATED TO crud/analytics.py]     store_filter = normalize_store_ids(store_ids)
-# [MIGRATED TO crud/analytics.py]     now_date = datetime.now(timezone.utc).date()
-# [MIGRATED TO crud/analytics.py]     category_expr = device_category_expr()
-# [MIGRATED TO crud/analytics.py]     device_stmt = (
-# [MIGRATED TO crud/analytics.py]         select(
-# [MIGRATED TO crud/analytics.py]             models.Device.id,
+
+
             models.Device.sku,
-# [MIGRATED TO crud/analytics.py]             models.Device.name,
-# [MIGRATED TO crud/analytics.py]             models.Device.fecha_compra,
-# [MIGRATED TO crud/analytics.py]             models.Device.quantity,
-# [MIGRATED TO crud/analytics.py]             models.Store.id.label("store_id"),
-# [MIGRATED TO crud/analytics.py]             models.Store.name.label("store_name"),
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]         .join(models.Store, models.Store.id == models.Device.store_id)
-# [MIGRATED TO crud/analytics.py]         .order_by(
-# [MIGRATED TO crud/analytics.py]             models.Device.fecha_compra.is_(None),
-# [MIGRATED TO crud/analytics.py]             models.Device.fecha_compra.asc(),
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]     )
-# [MIGRATED TO crud/analytics.py]     if store_filter:
-# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.where(
-# [MIGRATED TO crud/analytics.py]             models.Device.store_id.in_(store_filter))
-# [MIGRATED TO crud/analytics.py]     if date_from:
-# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.where(
-# [MIGRATED TO crud/analytics.py]             models.Device.fecha_compra >= date_from)
-# [MIGRATED TO crud/analytics.py]     if date_to:
-# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.where(models.Device.fecha_compra <= date_to)
-# [MIGRATED TO crud/analytics.py]     if category:
-# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.where(category_expr == category)
-# [MIGRATED TO crud/analytics.py]     if supplier:
-# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.where(models.Device.proveedor == supplier)
-
-# [MIGRATED TO crud/analytics.py]     if offset:
-# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.offset(offset)
-# [MIGRATED TO crud/analytics.py]     if limit is not None:
-# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.limit(limit)
-
-# [MIGRATED TO crud/analytics.py]     device_rows = list(db.execute(device_stmt))
-# [MIGRATED TO crud/analytics.py]     if not device_rows:
-# [MIGRATED TO crud/analytics.py]         return []
-
-# [MIGRATED TO crud/analytics.py]     metrics: list[dict[str, object]] = []
-# [MIGRATED TO crud/analytics.py]     for row in device_rows:
-# [MIGRATED TO crud/analytics.py]         purchase_date = row.fecha_compra
-# [MIGRATED TO crud/analytics.py]         days_in_stock = (now_date - purchase_date).days if purchase_date else 0
-# [MIGRATED TO crud/analytics.py]         metrics.append(
-# [MIGRATED TO crud/analytics.py]             {
-# [MIGRATED TO crud/analytics.py]                 "device_id": row.id,
-# [MIGRATED TO crud/analytics.py]                 "sku": row.sku,
-# [MIGRATED TO crud/analytics.py]                 "name": row.name,
-# [MIGRATED TO crud/analytics.py]                 "store_id": row.store_id,
-# [MIGRATED TO crud/analytics.py]                 "store_name": row.store_name,
-# [MIGRATED TO crud/analytics.py]                 "days_in_stock": max(days_in_stock, 0),
-# [MIGRATED TO crud/analytics.py]                 "quantity": int(row.quantity or 0),
-# [MIGRATED TO crud/analytics.py]             }
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]     metrics.sort(key=lambda item: item["days_in_stock"], reverse=True)
-# [MIGRATED TO crud/analytics.py]     return metrics
 
 
-# [MIGRATED TO crud/analytics.py] def calculate_stockout_forecast(
-# [MIGRATED TO crud/analytics.py]     db: Session,
-# [MIGRATED TO crud/analytics.py]     store_ids: Iterable[int] | None = None,
-# [MIGRATED TO crud/analytics.py]     *,
-# [MIGRATED TO crud/analytics.py]     date_from: date | None = None,
-# [MIGRATED TO crud/analytics.py]     date_to: date | None = None,
-# [MIGRATED TO crud/analytics.py]     category: str | None = None,
-# [MIGRATED TO crud/analytics.py]     supplier: str | None = None,
-# [MIGRATED TO crud/analytics.py]     limit: int | None = None,
-# [MIGRATED TO crud/analytics.py]     offset: int = 0,
-# [MIGRATED TO crud/analytics.py] ) -> list[dict[str, object]]:
-# [MIGRATED TO crud/analytics.py]     store_filter = normalize_store_ids(store_ids)
-# [MIGRATED TO crud/analytics.py]     start_dt, end_dt = normalize_date_range(date_from, date_to)
-# [MIGRATED TO crud/analytics.py]     category_expr = device_category_expr()
 
-# [MIGRATED TO crud/analytics.py]     device_stmt = (
-# [MIGRATED TO crud/analytics.py]         select(
-# [MIGRATED TO crud/analytics.py]             models.Device.id,
-# [MIGRATED TO crud/analytics.py]             models.Device.sku,
-# [MIGRATED TO crud/analytics.py]             models.Device.name,
-# [MIGRATED TO crud/analytics.py]             models.Device.quantity,
-# [MIGRATED TO crud/analytics.py]             models.Device.minimum_stock,
-# [MIGRATED TO crud/analytics.py]             models.Device.reorder_point,
-# [MIGRATED TO crud/analytics.py]             models.Store.id.label("store_id"),
-# [MIGRATED TO crud/analytics.py]             models.Store.name.label("store_name"),
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]         .join(models.Store, models.Store.id == models.Device.store_id)
-# [MIGRATED TO crud/analytics.py]         .order_by(models.Store.name.asc(), models.Device.name.asc())
-# [MIGRATED TO crud/analytics.py]     )
-# [MIGRATED TO crud/analytics.py]     if store_filter:
-# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.where(
-# [MIGRATED TO crud/analytics.py]             models.Device.store_id.in_(store_filter))
-# [MIGRATED TO crud/analytics.py]     if category:
-# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.where(category_expr == category)
-# [MIGRATED TO crud/analytics.py]     if supplier:
-# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.where(models.Device.proveedor == supplier)
-# [MIGRATED TO crud/analytics.py]     if offset:
-# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.offset(offset)
-# [MIGRATED TO crud/analytics.py]     if limit is not None:
-# [MIGRATED TO crud/analytics.py]         device_stmt = device_stmt.limit(limit)
 
-# [MIGRATED TO crud/analytics.py]     device_rows = list(db.execute(device_stmt))
-# [MIGRATED TO crud/analytics.py]     if not device_rows:
-# [MIGRATED TO crud/analytics.py]         return []
 
-# [MIGRATED TO crud/analytics.py]     device_ids = [row.id for row in device_rows]
 
-# [MIGRATED TO crud/analytics.py]     sales_summary_stmt = (
-# [MIGRATED TO crud/analytics.py]         select(
-# [MIGRATED TO crud/analytics.py]             models.SaleItem.device_id,
-# [MIGRATED TO crud/analytics.py]             models.Sale.store_id,
-# [MIGRATED TO crud/analytics.py]             func.sum(models.SaleItem.quantity).label("sold_units"),
-# [MIGRATED TO crud/analytics.py]             func.min(models.Sale.created_at).label("first_sale"),
-# [MIGRATED TO crud/analytics.py]             func.max(models.Sale.created_at).label("last_sale"),
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]         .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
-# [MIGRATED TO crud/analytics.py]         .join(models.Device, models.Device.id == models.SaleItem.device_id)
-# [MIGRATED TO crud/analytics.py]         .group_by(models.SaleItem.device_id, models.Sale.store_id)
-# [MIGRATED TO crud/analytics.py]     )
-# [MIGRATED TO crud/analytics.py]     if store_filter:
-# [MIGRATED TO crud/analytics.py]         sales_summary_stmt = sales_summary_stmt.where(
-# [MIGRATED TO crud/analytics.py]             models.Sale.store_id.in_(store_filter))
-# [MIGRATED TO crud/analytics.py]     if device_ids:
-# [MIGRATED TO crud/analytics.py]         sales_summary_stmt = sales_summary_stmt.where(
-# [MIGRATED TO crud/analytics.py]             models.SaleItem.device_id.in_(device_ids)
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]     if start_dt:
-# [MIGRATED TO crud/analytics.py]         sales_summary_stmt = sales_summary_stmt.where(
-# [MIGRATED TO crud/analytics.py]             models.Sale.created_at >= start_dt)
-# [MIGRATED TO crud/analytics.py]     if end_dt:
-# [MIGRATED TO crud/analytics.py]         sales_summary_stmt = sales_summary_stmt.where(
-# [MIGRATED TO crud/analytics.py]             models.Sale.created_at <= end_dt)
-# [MIGRATED TO crud/analytics.py]     if category:
-# [MIGRATED TO crud/analytics.py]         sales_summary_stmt = sales_summary_stmt.where(
-# [MIGRATED TO crud/analytics.py]             category_expr == category)
-# [MIGRATED TO crud/analytics.py]     if supplier:
-# [MIGRATED TO crud/analytics.py]         sales_summary_stmt = sales_summary_stmt.where(
-# [MIGRATED TO crud/analytics.py]             models.Device.proveedor == supplier)
 
-# [MIGRATED TO crud/analytics.py]     day_column = func.date(models.Sale.created_at)
-# [MIGRATED TO crud/analytics.py]     daily_sales_stmt = (
-# [MIGRATED TO crud/analytics.py]         select(
-# [MIGRATED TO crud/analytics.py]             models.SaleItem.device_id,
-# [MIGRATED TO crud/analytics.py]             day_column.label("day"),
-# [MIGRATED TO crud/analytics.py]             func.sum(models.SaleItem.quantity).label("sold_units"),
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]         .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
-# [MIGRATED TO crud/analytics.py]         .join(models.Device, models.Device.id == models.SaleItem.device_id)
-# [MIGRATED TO crud/analytics.py]         .group_by(models.SaleItem.device_id, day_column)
-# [MIGRATED TO crud/analytics.py]     )
-# [MIGRATED TO crud/analytics.py]     if store_filter:
-# [MIGRATED TO crud/analytics.py]         daily_sales_stmt = daily_sales_stmt.where(
-# [MIGRATED TO crud/analytics.py]             models.Sale.store_id.in_(store_filter))
-# [MIGRATED TO crud/analytics.py]     if device_ids:
-# [MIGRATED TO crud/analytics.py]         daily_sales_stmt = daily_sales_stmt.where(
-# [MIGRATED TO crud/analytics.py]             models.SaleItem.device_id.in_(device_ids)
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]     if start_dt:
-# [MIGRATED TO crud/analytics.py]         daily_sales_stmt = daily_sales_stmt.where(
-# [MIGRATED TO crud/analytics.py]             models.Sale.created_at >= start_dt)
-# [MIGRATED TO crud/analytics.py]     if end_dt:
-# [MIGRATED TO crud/analytics.py]         daily_sales_stmt = daily_sales_stmt.where(
-# [MIGRATED TO crud/analytics.py]             models.Sale.created_at <= end_dt)
-# [MIGRATED TO crud/analytics.py]     if category:
-# [MIGRATED TO crud/analytics.py]         daily_sales_stmt = daily_sales_stmt.where(category_expr == category)
-# [MIGRATED TO crud/analytics.py]     if supplier:
-# [MIGRATED TO crud/analytics.py]         daily_sales_stmt = daily_sales_stmt.where(
-# [MIGRATED TO crud/analytics.py]             models.Device.proveedor == supplier)
 
-# [MIGRATED TO crud/analytics.py]     sales_map: dict[int, dict[str, object]] = {}
-# [MIGRATED TO crud/analytics.py]     for row in db.execute(sales_summary_stmt):
-# [MIGRATED TO crud/analytics.py]         sales_map[row.device_id] = {
-# [MIGRATED TO crud/analytics.py]             "sold_units": int(row.sold_units or 0),
-# [MIGRATED TO crud/analytics.py]             "first_sale": row.first_sale,
-# [MIGRATED TO crud/analytics.py]             "last_sale": row.last_sale,
-# [MIGRATED TO crud/analytics.py]             "store_id": int(row.store_id),
-# [MIGRATED TO crud/analytics.py]         }
 
-# [MIGRATED TO crud/analytics.py]     daily_sales_map: defaultdict[int,
-# [MIGRATED TO crud/analytics.py]                                  list[tuple[datetime, float]]] = defaultdict(list)
-# [MIGRATED TO crud/analytics.py]     for row in db.execute(daily_sales_stmt):
-# [MIGRATED TO crud/analytics.py]         day: datetime | None = row.day
-# [MIGRATED TO crud/analytics.py]         if day is None:
-# [MIGRATED TO crud/analytics.py]             continue
-# [MIGRATED TO crud/analytics.py]         daily_sales_map[row.device_id].append(
-# [MIGRATED TO crud/analytics.py]             (day, float(row.sold_units or 0)))
 
-# [MIGRATED TO crud/analytics.py]     metrics: list[dict[str, object]] = []
-# [MIGRATED TO crud/analytics.py]     for row in device_rows:
-# [MIGRATED TO crud/analytics.py]         stats = sales_map.get(row.id)
-# [MIGRATED TO crud/analytics.py]         quantity = int(row.quantity or 0)
-# [MIGRATED TO crud/analytics.py]         daily_points_raw = sorted(
-# [MIGRATED TO crud/analytics.py]             daily_sales_map.get(row.id, []), key=lambda item: item[0]
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]         points = [(float(index), value)
-# [MIGRATED TO crud/analytics.py]                   for index, (_, value) in enumerate(daily_points_raw)]
-# [MIGRATED TO crud/analytics.py]         slope, intercept, r_squared = linear_regression(points)
-# [MIGRATED TO crud/analytics.py]         historical_avg = (
-# [MIGRATED TO crud/analytics.py]             sum(value for _, value in daily_points_raw) / len(daily_points_raw)
-# [MIGRATED TO crud/analytics.py]             if daily_points_raw
-# [MIGRATED TO crud/analytics.py]             else 0.0
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]         predicted_next = max(0.0, slope * len(points) +
-# [MIGRATED TO crud/analytics.py]                              intercept) if points else 0.0
+
+
+
         expected_daily = max(historical_avg, predicted_next)
 
-# [MIGRATED TO crud/analytics.py]         if stats is None:
-# [MIGRATED TO crud/analytics.py]             sold_units = 0
-# [MIGRATED TO crud/analytics.py]         else:
-# [MIGRATED TO crud/analytics.py]             sold_units = int(stats.get("sold_units", 0))
-
-# [MIGRATED TO crud/analytics.py]         if expected_daily <= 0:
-# [MIGRATED TO crud/analytics.py]             projected_days: int | None = None
-# [MIGRATED TO crud/analytics.py]         else:
-# [MIGRATED TO crud/analytics.py]             projected_days = max(int(math.ceil(quantity / expected_daily)), 0)
-
-# [MIGRATED TO crud/analytics.py]         if slope > 0.25:
-# [MIGRATED TO crud/analytics.py]             trend_label = "acelerando"
-# [MIGRATED TO crud/analytics.py]         elif slope < -0.25:
-# [MIGRATED TO crud/analytics.py]             trend_label = "desacelerando"
-# [MIGRATED TO crud/analytics.py]         else:
-# [MIGRATED TO crud/analytics.py]             trend_label = "estable"
-
-# [MIGRATED TO crud/analytics.py]         alert_level: str | None
-# [MIGRATED TO crud/analytics.py]         if projected_days is None:
-# [MIGRATED TO crud/analytics.py]             alert_level = None
-# [MIGRATED TO crud/analytics.py]         elif projected_days <= 3:
-# [MIGRATED TO crud/analytics.py]             alert_level = "critical"
-# [MIGRATED TO crud/analytics.py]         elif projected_days <= 7:
-# [MIGRATED TO crud/analytics.py]             alert_level = "warning"
-# [MIGRATED TO crud/analytics.py]         else:
-# [MIGRATED TO crud/analytics.py]             alert_level = "ok"
-
-# [MIGRATED TO crud/analytics.py]         metrics.append(
-# [MIGRATED TO crud/analytics.py]             {
-# [MIGRATED TO crud/analytics.py]                 "device_id": row.id,
-# [MIGRATED TO crud/analytics.py]                 "sku": row.sku,
-# [MIGRATED TO crud/analytics.py]                 "name": row.name,
-# [MIGRATED TO crud/analytics.py]                 "store_id": row.store_id,
-# [MIGRATED TO crud/analytics.py]                 "store_name": row.store_name,
-# [MIGRATED TO crud/analytics.py]                 "average_daily_sales": round(float(expected_daily), 2),
-# [MIGRATED TO crud/analytics.py]                 "projected_days": projected_days,
-# [MIGRATED TO crud/analytics.py]                 "quantity": quantity,
-# [MIGRATED TO crud/analytics.py]                 "minimum_stock": int(getattr(row, "minimum_stock", 0) or 0),
-# [MIGRATED TO crud/analytics.py]                 "reorder_point": int(getattr(row, "reorder_point", 0) or 0),
-# [MIGRATED TO crud/analytics.py]                 "trend": trend_label,
-# [MIGRATED TO crud/analytics.py]                 "trend_score": round(float(slope), 4),
-# [MIGRATED TO crud/analytics.py]                 "confidence": round(float(r_squared), 3),
-# [MIGRATED TO crud/analytics.py]                 "alert_level": alert_level,
-# [MIGRATED TO crud/analytics.py]                 "sold_units": sold_units,
-# [MIGRATED TO crud/analytics.py]             }
-# [MIGRATED TO crud/analytics.py]         )
-
-# [MIGRATED TO crud/analytics.py]     metrics.sort(key=lambda item: (
-# [MIGRATED TO crud/analytics.py]         item["projected_days"] is None, item["projected_days"] or 0))
-# [MIGRATED TO crud/analytics.py]     return metrics
 
 
-# [MIGRATED TO crud/analytics.py] def calculate_store_comparatives(
-# [MIGRATED TO crud/analytics.py]     db: Session,
-# [MIGRATED TO crud/analytics.py]     store_ids: Iterable[int] | None = None,
-# [MIGRATED TO crud/analytics.py]     *,
-# [MIGRATED TO crud/analytics.py]     date_from: date | None = None,
-# [MIGRATED TO crud/analytics.py]     date_to: date | None = None,
-# [MIGRATED TO crud/analytics.py]     category: str | None = None,
-# [MIGRATED TO crud/analytics.py]     supplier: str | None = None,
-# [MIGRATED TO crud/analytics.py]     limit: int | None = None,
-# [MIGRATED TO crud/analytics.py]     offset: int = 0,
-# [MIGRATED TO crud/analytics.py] ) -> list[dict[str, object]]:
-# [MIGRATED TO crud/analytics.py]     store_filter = normalize_store_ids(store_ids)
-# [MIGRATED TO crud/analytics.py]     start_dt, end_dt = normalize_date_range(date_from, date_to)
-# [MIGRATED TO crud/analytics.py]     category_expr = device_category_expr()
 
-# [MIGRATED TO crud/analytics.py]     inventory_stmt = (
-# [MIGRATED TO crud/analytics.py]         select(
-# [MIGRATED TO crud/analytics.py]             models.Store.id,
-# [MIGRATED TO crud/analytics.py]             models.Store.name,
-# [MIGRATED TO crud/analytics.py]             func.coalesce(func.count(models.Device.id),
-# [MIGRATED TO crud/analytics.py]                           0).label("device_count"),
-# [MIGRATED TO crud/analytics.py]             func.coalesce(func.sum(models.Device.quantity),
-# [MIGRATED TO crud/analytics.py]                           0).label("total_units"),
-# [MIGRATED TO crud/analytics.py]             func.coalesce(
-# [MIGRATED TO crud/analytics.py]                 func.sum(models.Device.quantity * models.Device.unit_price),
-# [MIGRATED TO crud/analytics.py]                 0,
-# [MIGRATED TO crud/analytics.py]             ).label("inventory_value"),
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]         .outerjoin(models.Device, models.Device.store_id == models.Store.id)
-# [MIGRATED TO crud/analytics.py]         .group_by(models.Store.id)
-# [MIGRATED TO crud/analytics.py]         .order_by(models.Store.name.asc())
-# [MIGRATED TO crud/analytics.py]     )
-# [MIGRATED TO crud/analytics.py]     if store_filter:
-# [MIGRATED TO crud/analytics.py]         inventory_stmt = inventory_stmt.where(
-# [MIGRATED TO crud/analytics.py]             models.Store.id.in_(store_filter))
-# [MIGRATED TO crud/analytics.py]     if category:
-# [MIGRATED TO crud/analytics.py]         inventory_stmt = inventory_stmt.where(category_expr == category)
-# [MIGRATED TO crud/analytics.py]     if supplier:
-# [MIGRATED TO crud/analytics.py]         inventory_stmt = inventory_stmt.where(
-# [MIGRATED TO crud/analytics.py]             models.Device.proveedor == supplier)
-# [MIGRATED TO crud/analytics.py]     if offset:
-# [MIGRATED TO crud/analytics.py]         inventory_stmt = inventory_stmt.offset(offset)
-# [MIGRATED TO crud/analytics.py]     if limit is not None:
-# [MIGRATED TO crud/analytics.py]         inventory_stmt = inventory_stmt.limit(limit)
 
-# [MIGRATED TO crud/analytics.py]     inventory_rows = list(db.execute(inventory_stmt))
-# [MIGRATED TO crud/analytics.py]     if not inventory_rows:
-# [MIGRATED TO crud/analytics.py]         return []
 
-# [MIGRATED TO crud/analytics.py]     store_ids_window = [int(row.id) for row in inventory_rows]
 
-# [MIGRATED TO crud/analytics.py]     rotation = calculate_rotation_analytics(
-# [MIGRATED TO crud/analytics.py]         db,
-# [MIGRATED TO crud/analytics.py]         store_ids=store_ids_window,
-# [MIGRATED TO crud/analytics.py]         date_from=date_from,
-# [MIGRATED TO crud/analytics.py]         date_to=date_to,
-# [MIGRATED TO crud/analytics.py]         category=category,
-# [MIGRATED TO crud/analytics.py]         supplier=supplier,
-# [MIGRATED TO crud/analytics.py]         limit=None,
-# [MIGRATED TO crud/analytics.py]         offset=0,
-# [MIGRATED TO crud/analytics.py]     )
-# [MIGRATED TO crud/analytics.py]     aging = calculate_aging_analytics(
-# [MIGRATED TO crud/analytics.py]         db,
-# [MIGRATED TO crud/analytics.py]         store_ids=store_ids_window,
-# [MIGRATED TO crud/analytics.py]         date_from=date_from,
-# [MIGRATED TO crud/analytics.py]         date_to=date_to,
-# [MIGRATED TO crud/analytics.py]         category=category,
-# [MIGRATED TO crud/analytics.py]         supplier=supplier,
-# [MIGRATED TO crud/analytics.py]         limit=None,
-# [MIGRATED TO crud/analytics.py]         offset=0,
-# [MIGRATED TO crud/analytics.py]     )
 
-# [MIGRATED TO crud/analytics.py]     rotation_totals: dict[int, tuple[float, int]] = {}
-# [MIGRATED TO crud/analytics.py]     aging_totals: dict[int, tuple[float, int]] = {}
 
-# [MIGRATED TO crud/analytics.py]     for item in rotation:
-# [MIGRATED TO crud/analytics.py]         store_id = int(item["store_id"])
-# [MIGRATED TO crud/analytics.py]         total, count = rotation_totals.get(store_id, (0.0, 0))
-# [MIGRATED TO crud/analytics.py]         rotation_totals[store_id] = (
-# [MIGRATED TO crud/analytics.py]             total + float(item["rotation_rate"]), count + 1)
 
-# [MIGRATED TO crud/analytics.py]     for item in aging:
-# [MIGRATED TO crud/analytics.py]         store_id_value = item.get("store_id")
-# [MIGRATED TO crud/analytics.py]         if store_id_value is None:
-# [MIGRATED TO crud/analytics.py]             continue
-# [MIGRATED TO crud/analytics.py]         store_id = int(store_id_value)
-# [MIGRATED TO crud/analytics.py]         total, count = aging_totals.get(store_id, (0.0, 0))
-# [MIGRATED TO crud/analytics.py]         aging_totals[store_id] = (
-# [MIGRATED TO crud/analytics.py]             total + float(item["days_in_stock"]), count + 1)
 
-# [MIGRATED TO crud/analytics.py]     rotation_avg = {
-# [MIGRATED TO crud/analytics.py]         store_id: (total / count if count else 0.0)
-# [MIGRATED TO crud/analytics.py]         for store_id, (total, count) in rotation_totals.items()
-# [MIGRATED TO crud/analytics.py]     }
-# [MIGRATED TO crud/analytics.py]     aging_avg = {
-# [MIGRATED TO crud/analytics.py]         store_id: (total / count if count else 0.0)
-# [MIGRATED TO crud/analytics.py]         for store_id, (total, count) in aging_totals.items()
-# [MIGRATED TO crud/analytics.py]     }
+
+
+
+
+
 
     window_start = start_dt or (datetime.now(
-# [MIGRATED TO crud/analytics.py]         timezone.utc) - timedelta(days=30))
-# [MIGRATED TO crud/analytics.py]     sales_stmt = (
-# [MIGRATED TO crud/analytics.py]         select(
-# [MIGRATED TO crud/analytics.py]             models.Sale.store_id,
-# [MIGRATED TO crud/analytics.py]             func.coalesce(func.count(models.Sale.id), 0).label("orders"),
-# [MIGRATED TO crud/analytics.py]             func.coalesce(func.sum(models.Sale.total_amount),
-# [MIGRATED TO crud/analytics.py]                           0).label("revenue"),
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]         .join(models.SaleItem, models.SaleItem.sale_id == models.Sale.id)
-# [MIGRATED TO crud/analytics.py]         .join(models.Device, models.Device.id == models.SaleItem.device_id)
-# [MIGRATED TO crud/analytics.py]         .where(models.Sale.created_at >= window_start)
-# [MIGRATED TO crud/analytics.py]         .group_by(models.Sale.store_id)
-# [MIGRATED TO crud/analytics.py]     )
-# [MIGRATED TO crud/analytics.py]     if store_ids_window:
-# [MIGRATED TO crud/analytics.py]         sales_stmt = sales_stmt.where(
-# [MIGRATED TO crud/analytics.py]             models.Sale.store_id.in_(store_ids_window))
-# [MIGRATED TO crud/analytics.py]     if end_dt:
-# [MIGRATED TO crud/analytics.py]         sales_stmt = sales_stmt.where(models.Sale.created_at <= end_dt)
-# [MIGRATED TO crud/analytics.py]     if category:
-# [MIGRATED TO crud/analytics.py]         sales_stmt = sales_stmt.where(category_expr == category)
-# [MIGRATED TO crud/analytics.py]     if supplier:
-# [MIGRATED TO crud/analytics.py]         sales_stmt = sales_stmt.where(models.Device.proveedor == supplier)
-
-# [MIGRATED TO crud/analytics.py]     sales_map: dict[int, dict[str, Decimal]] = {}
-# [MIGRATED TO crud/analytics.py]     for row in db.execute(sales_stmt):
-# [MIGRATED TO crud/analytics.py]         sales_map[int(row.store_id)] = {
-# [MIGRATED TO crud/analytics.py]             "orders": Decimal(row.orders or 0),
-# [MIGRATED TO crud/analytics.py]             "revenue": Decimal(row.revenue or 0),
-# [MIGRATED TO crud/analytics.py]         }
-
-# [MIGRATED TO crud/analytics.py]     comparatives: list[dict[str, object]] = []
-# [MIGRATED TO crud/analytics.py]     for row in inventory_rows:
-# [MIGRATED TO crud/analytics.py]         store_id = int(row.id)
-# [MIGRATED TO crud/analytics.py]         sales = sales_map.get(
-# [MIGRATED TO crud/analytics.py]             store_id, {"orders": Decimal(0), "revenue": Decimal(0)})
-# [MIGRATED TO crud/analytics.py]         comparatives.append(
-# [MIGRATED TO crud/analytics.py]             {
-# [MIGRATED TO crud/analytics.py]                 "store_id": store_id,
-# [MIGRATED TO crud/analytics.py]                 "store_name": row.name,
-# [MIGRATED TO crud/analytics.py]                 "device_count": int(row.device_count or 0),
-# [MIGRATED TO crud/analytics.py]                 "total_units": int(row.total_units or 0),
-# [MIGRATED TO crud/analytics.py]                 "inventory_value": float(row.inventory_value or 0),
-# [MIGRATED TO crud/analytics.py]                 "average_rotation": round(rotation_avg.get(store_id, 0.0), 2),
-# [MIGRATED TO crud/analytics.py]                 "average_aging_days": round(aging_avg.get(store_id, 0.0), 1),
-# [MIGRATED TO crud/analytics.py]                 "sales_last_30_days": float(sales["revenue"]),
-# [MIGRATED TO crud/analytics.py]                 "sales_count_last_30_days": int(sales["orders"]),
-# [MIGRATED TO crud/analytics.py]             }
-# [MIGRATED TO crud/analytics.py]         )
-
-# [MIGRATED TO crud/analytics.py]     comparatives.sort(key=lambda item: item["inventory_value"], reverse=True)
-# [MIGRATED TO crud/analytics.py]     return comparatives
 
 
-# [MIGRATED TO crud/analytics.py] def calculate_profit_margin(
-# [MIGRATED TO crud/analytics.py]     db: Session,
-# [MIGRATED TO crud/analytics.py]     store_ids: Iterable[int] | None = None,
-# [MIGRATED TO crud/analytics.py]     *,
-# [MIGRATED TO crud/analytics.py]     date_from: date | None = None,
-# [MIGRATED TO crud/analytics.py]     date_to: date | None = None,
-# [MIGRATED TO crud/analytics.py]     category: str | None = None,
-# [MIGRATED TO crud/analytics.py]     supplier: str | None = None,
-# [MIGRATED TO crud/analytics.py]     limit: int | None = None,
-# [MIGRATED TO crud/analytics.py]     offset: int = 0,
-# [MIGRATED TO crud/analytics.py] ) -> list[dict[str, object]]:
-# [MIGRATED TO crud/analytics.py]     store_filter = normalize_store_ids(store_ids)
-# [MIGRATED TO crud/analytics.py]     start_dt, end_dt = normalize_date_range(date_from, date_to)
-# [MIGRATED TO crud/analytics.py]     category_expr = device_category_expr()
-# [MIGRATED TO crud/analytics.py]     revenue_expr = func.coalesce(func.sum(models.SaleItem.total_line), 0)
+
+
+
     cost_expr = func.coalesce(
         func.sum(models.SaleItem.quantity * models.Device.costo_unitario),
         0,
@@ -7273,174 +6451,16 @@ def calculate_sales_by_category(
 def calculate_sales_timeseries(
     db: Session,
     store_ids: Iterable[int] | None = None,
-# [MIGRATED TO crud/analytics.py]     *,
-# [MIGRATED TO crud/analytics.py]     date_from: date | None = None,
-# [MIGRATED TO crud/analytics.py]     date_to: date | None = None,
-# [MIGRATED TO crud/analytics.py]     category: str | None = None,
-# [MIGRATED TO crud/analytics.py]     supplier: str | None = None,
-# [MIGRATED TO crud/analytics.py]     limit: int | None = None,
-# [MIGRATED TO crud/analytics.py]     offset: int = 0,
-# [MIGRATED TO crud/analytics.py] ) -> list[dict[str, object]]:
-# [MIGRATED TO crud/analytics.py]     store_filter = normalize_store_ids(store_ids)
-# [MIGRATED TO crud/analytics.py]     start_dt, end_dt = normalize_date_range(date_from, date_to)
-# [MIGRATED TO crud/analytics.py]     category_expr = device_category_expr()
-# [MIGRATED TO crud/analytics.py]     stmt = (
-# [MIGRATED TO crud/analytics.py]         select(
-# [MIGRATED TO crud/analytics.py]             func.date(models.Sale.created_at).label("sale_date"),
-# [MIGRATED TO crud/analytics.py]             func.coalesce(func.sum(models.SaleItem.total_line),
-# [MIGRATED TO crud/analytics.py]                           0).label("revenue"),
-# [MIGRATED TO crud/analytics.py]             func.count(func.distinct(models.Sale.id)).label("orders"),
-# [MIGRATED TO crud/analytics.py]             func.coalesce(func.sum(models.SaleItem.quantity),
-# [MIGRATED TO crud/analytics.py]                           0).label("units"),
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]         .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
-# [MIGRATED TO crud/analytics.py]         .join(models.Device, models.Device.id == models.SaleItem.device_id)
-# [MIGRATED TO crud/analytics.py]         .group_by(func.date(models.Sale.created_at))
-# [MIGRATED TO crud/analytics.py]         .order_by(func.date(models.Sale.created_at).asc())
-# [MIGRATED TO crud/analytics.py]     )
-# [MIGRATED TO crud/analytics.py]     if store_filter:
-# [MIGRATED TO crud/analytics.py]         stmt = stmt.where(models.Sale.store_id.in_(store_filter))
-# [MIGRATED TO crud/analytics.py]     if start_dt:
-# [MIGRATED TO crud/analytics.py]         stmt = stmt.where(models.Sale.created_at >= start_dt)
-# [MIGRATED TO crud/analytics.py]     if end_dt:
-# [MIGRATED TO crud/analytics.py]         stmt = stmt.where(models.Sale.created_at <= end_dt)
-# [MIGRATED TO crud/analytics.py]     if category:
-# [MIGRATED TO crud/analytics.py]         stmt = stmt.where(category_expr == category)
-# [MIGRATED TO crud/analytics.py]     if supplier:
-# [MIGRATED TO crud/analytics.py]         stmt = stmt.where(models.Device.proveedor == supplier)
-# [MIGRATED TO crud/analytics.py]     if offset:
-# [MIGRATED TO crud/analytics.py]         stmt = stmt.offset(offset)
-# [MIGRATED TO crud/analytics.py]     if limit is not None:
-# [MIGRATED TO crud/analytics.py]         stmt = stmt.limit(limit)
-
-# [MIGRATED TO crud/analytics.py]     series: list[dict[str, object]] = []
-# [MIGRATED TO crud/analytics.py]     for row in db.execute(stmt):
-# [MIGRATED TO crud/analytics.py]         series.append(
-# [MIGRATED TO crud/analytics.py]             {
-# [MIGRATED TO crud/analytics.py]                 "date": row.sale_date,
-# [MIGRATED TO crud/analytics.py]                 "revenue": float(row.revenue or 0),
-# [MIGRATED TO crud/analytics.py]                 "orders": int(row.orders or 0),
-# [MIGRATED TO crud/analytics.py]                 "units": int(row.units or 0),
-# [MIGRATED TO crud/analytics.py]             }
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]     return series
 
 
-# [MIGRATED TO crud/analytics.py] def calculate_sales_projection(
-# [MIGRATED TO crud/analytics.py]     db: Session,
-# [MIGRATED TO crud/analytics.py]     store_ids: Iterable[int] | None = None,
-# [MIGRATED TO crud/analytics.py]     *,
-# [MIGRATED TO crud/analytics.py]     horizon_days: int = 30,
-# [MIGRATED TO crud/analytics.py]     date_from: date | None = None,
-# [MIGRATED TO crud/analytics.py]     date_to: date | None = None,
-# [MIGRATED TO crud/analytics.py]     category: str | None = None,
-# [MIGRATED TO crud/analytics.py]     supplier: str | None = None,
-# [MIGRATED TO crud/analytics.py]     limit: int | None = None,
-# [MIGRATED TO crud/analytics.py]     offset: int = 0,
-# [MIGRATED TO crud/analytics.py] ) -> list[dict[str, object]]:
-# [MIGRATED TO crud/analytics.py]     store_filter = normalize_store_ids(store_ids)
-# [MIGRATED TO crud/analytics.py]     start_dt, end_dt = normalize_date_range(date_from, date_to)
-# [MIGRATED TO crud/analytics.py]     category_expr = device_category_expr()
-# [MIGRATED TO crud/analytics.py]     lookback_days = max(horizon_days, 30)
-# [MIGRATED TO crud/analytics.py]     since = start_dt or (datetime.now(timezone.utc) -
-# [MIGRATED TO crud/analytics.py]                          timedelta(days=lookback_days))
 
-# [MIGRATED TO crud/analytics.py]     store_stmt = select(models.Store.id, models.Store.name).order_by(
-# [MIGRATED TO crud/analytics.py]         models.Store.name.asc())
-# [MIGRATED TO crud/analytics.py]     if store_filter:
-# [MIGRATED TO crud/analytics.py]         store_stmt = store_stmt.where(models.Store.id.in_(store_filter))
-# [MIGRATED TO crud/analytics.py]     if offset:
-# [MIGRATED TO crud/analytics.py]         store_stmt = store_stmt.offset(offset)
-# [MIGRATED TO crud/analytics.py]     if limit is not None:
-# [MIGRATED TO crud/analytics.py]         store_stmt = store_stmt.limit(limit)
 
-# [MIGRATED TO crud/analytics.py]     store_rows = list(db.execute(store_stmt))
-# [MIGRATED TO crud/analytics.py]     if not store_rows:
-# [MIGRATED TO crud/analytics.py]         return []
 
-# [MIGRATED TO crud/analytics.py]     store_ids_window = [int(row.id) for row in store_rows]
 
-# [MIGRATED TO crud/analytics.py]     day_bucket = func.date(models.Sale.created_at)
-# [MIGRATED TO crud/analytics.py]     daily_stmt = (
-# [MIGRATED TO crud/analytics.py]         select(
-# [MIGRATED TO crud/analytics.py]             models.Store.id.label("store_id"),
-# [MIGRATED TO crud/analytics.py]             models.Store.name.label("store_name"),
-# [MIGRATED TO crud/analytics.py]             day_bucket.label("sale_day"),
-# [MIGRATED TO crud/analytics.py]             func.coalesce(func.sum(models.SaleItem.quantity),
-# [MIGRATED TO crud/analytics.py]                           0).label("units"),
-# [MIGRATED TO crud/analytics.py]             func.coalesce(func.sum(models.SaleItem.total_line),
-# [MIGRATED TO crud/analytics.py]                           0).label("revenue"),
-# [MIGRATED TO crud/analytics.py]             func.coalesce(func.count(func.distinct(
-# [MIGRATED TO crud/analytics.py]                 models.Sale.id)), 0).label("orders"),
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]         .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
-# [MIGRATED TO crud/analytics.py]         .join(models.Store, models.Store.id == models.Sale.store_id)
-# [MIGRATED TO crud/analytics.py]         .join(models.Device, models.Device.id == models.SaleItem.device_id)
-# [MIGRATED TO crud/analytics.py]         .where(models.Sale.created_at >= since)
-# [MIGRATED TO crud/analytics.py]         .group_by(
-# [MIGRATED TO crud/analytics.py]             models.Store.id,
-# [MIGRATED TO crud/analytics.py]             models.Store.name,
-# [MIGRATED TO crud/analytics.py]             day_bucket,
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]         .order_by(models.Store.name.asc())
-# [MIGRATED TO crud/analytics.py]     )
-# [MIGRATED TO crud/analytics.py]     daily_stmt = daily_stmt.where(models.Store.id.in_(store_ids_window))
-# [MIGRATED TO crud/analytics.py]     if end_dt:
-# [MIGRATED TO crud/analytics.py]         daily_stmt = daily_stmt.where(models.Sale.created_at <= end_dt)
-# [MIGRATED TO crud/analytics.py]     if category:
-# [MIGRATED TO crud/analytics.py]         daily_stmt = daily_stmt.where(category_expr == category)
-# [MIGRATED TO crud/analytics.py]     if supplier:
-# [MIGRATED TO crud/analytics.py]         daily_stmt = daily_stmt.where(models.Device.proveedor == supplier)
 
-# [MIGRATED TO crud/analytics.py]     stores_data: dict[int, dict[str, object]] = {}
-# [MIGRATED TO crud/analytics.py]     for row in db.execute(daily_stmt):
-# [MIGRATED TO crud/analytics.py]         store_entry = stores_data.setdefault(
-# [MIGRATED TO crud/analytics.py]             int(row.store_id),
-# [MIGRATED TO crud/analytics.py]             {
-# [MIGRATED TO crud/analytics.py]                 "store_name": row.store_name,
-# [MIGRATED TO crud/analytics.py]                 "daily": [],
-# [MIGRATED TO crud/analytics.py]                 "orders": 0,
-# [MIGRATED TO crud/analytics.py]                 "total_units": 0.0,
-# [MIGRATED TO crud/analytics.py]                 "total_revenue": 0.0,
-# [MIGRATED TO crud/analytics.py]             },
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]         day_value: datetime | None = row.sale_day
-# [MIGRATED TO crud/analytics.py]         if day_value is None:
-# [MIGRATED TO crud/analytics.py]             continue
-# [MIGRATED TO crud/analytics.py]         units_value = float(row.units or 0)
-# [MIGRATED TO crud/analytics.py]         revenue_value = float(row.revenue or 0)
-# [MIGRATED TO crud/analytics.py]         orders_value = int(row.orders or 0)
-# [MIGRATED TO crud/analytics.py]         store_entry["daily"].append(
-# [MIGRATED TO crud/analytics.py]             {
-# [MIGRATED TO crud/analytics.py]                 "day": day_value,
-# [MIGRATED TO crud/analytics.py]                 "units": units_value,
-# [MIGRATED TO crud/analytics.py]                 "revenue": revenue_value,
-# [MIGRATED TO crud/analytics.py]                 "orders": orders_value,
-# [MIGRATED TO crud/analytics.py]             }
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]         store_entry["orders"] += orders_value
-# [MIGRATED TO crud/analytics.py]         store_entry["total_units"] += units_value
-# [MIGRATED TO crud/analytics.py]         store_entry["total_revenue"] += revenue_value
 
-# [MIGRATED TO crud/analytics.py]     projections: list[dict[str, object]] = []
-# [MIGRATED TO crud/analytics.py]     for store_id, payload in stores_data.items():
-# [MIGRATED TO crud/analytics.py]         daily_points = sorted(payload["daily"], key=lambda item: item["day"])
-# [MIGRATED TO crud/analytics.py]         if not daily_points:
-# [MIGRATED TO crud/analytics.py]             continue
 
-# [MIGRATED TO crud/analytics.py]         unit_points = [
-# [MIGRATED TO crud/analytics.py]             (float(index), item["units"])
-# [MIGRATED TO crud/analytics.py]             for index, item in enumerate(daily_points)
-# [MIGRATED TO crud/analytics.py]         ]
-# [MIGRATED TO crud/analytics.py]         revenue_points = [
-# [MIGRATED TO crud/analytics.py]             (float(index), item["revenue"])
-# [MIGRATED TO crud/analytics.py]             for index, item in enumerate(daily_points)
-# [MIGRATED TO crud/analytics.py]         ]
-# [MIGRATED TO crud/analytics.py]         slope_units, intercept_units, r2_units = linear_regression(
-# [MIGRATED TO crud/analytics.py]             unit_points)
-# [MIGRATED TO crud/analytics.py]         slope_revenue, intercept_revenue, r2_revenue = linear_regression(
-# [MIGRATED TO crud/analytics.py]             revenue_points
-# [MIGRATED TO crud/analytics.py]         )
+
         historical_avg_units = (
             payload["total_units"] / len(unit_points) if unit_points else 0.0
         )
@@ -7571,116 +6591,14 @@ def generate_analytics_alerts(
     for item in projections:
         trend = item.get("trend")
         trend_score = float(item.get("trend_score", 0))
-# [MIGRATED TO crud/analytics.py]         if trend == "cayendo" and trend_score < -0.5:
-# [MIGRATED TO crud/analytics.py]             level = "warning" if trend_score > -1.0 else "critical"
-# [MIGRATED TO crud/analytics.py]             message = (
-# [MIGRATED TO crud/analytics.py]                 f"Ventas en {item['store_name']} muestran caída (tendencia {trend_score:.2f})"
-# [MIGRATED TO crud/analytics.py]             )
-# [MIGRATED TO crud/analytics.py]             alerts.append(
-# [MIGRATED TO crud/analytics.py]                 {
-# [MIGRATED TO crud/analytics.py]                     "type": "sales",
-# [MIGRATED TO crud/analytics.py]                     "level": level,
-# [MIGRATED TO crud/analytics.py]                     "message": message,
-# [MIGRATED TO crud/analytics.py]                     "store_id": item["store_id"],
-# [MIGRATED TO crud/analytics.py]                     "store_name": item["store_name"],
-# [MIGRATED TO crud/analytics.py]                     "device_id": None,
-# [MIGRATED TO crud/analytics.py]                     "sku": None,
-# [MIGRATED TO crud/analytics.py]                 }
-# [MIGRATED TO crud/analytics.py]             )
 
-# [MIGRATED TO crud/analytics.py]     anomalies = detect_return_anomalies(
-# [MIGRATED TO crud/analytics.py]         db,
-# [MIGRATED TO crud/analytics.py]         store_ids=store_ids,
-# [MIGRATED TO crud/analytics.py]         date_from=date_from,
-# [MIGRATED TO crud/analytics.py]         date_to=date_to,
-# [MIGRATED TO crud/analytics.py]         min_returns=3,
-# [MIGRATED TO crud/analytics.py]         sigma_threshold=1.5,
-# [MIGRATED TO crud/analytics.py]         limit=window,
-# [MIGRATED TO crud/analytics.py]         offset=offset,
-# [MIGRATED TO crud/analytics.py]     )
 
-# [MIGRATED TO crud/analytics.py]     for anomaly in anomalies:
-# [MIGRATED TO crud/analytics.py]         if not anomaly.get("is_anomalous"):
-# [MIGRATED TO crud/analytics.py]             continue
-# [MIGRATED TO crud/analytics.py]         alerts.append(
-# [MIGRATED TO crud/analytics.py]             {
-# [MIGRATED TO crud/analytics.py]                 "type": "returns",
-# [MIGRATED TO crud/analytics.py]                 "level": "warning",
-# [MIGRATED TO crud/analytics.py]                 "message": (
-# [MIGRATED TO crud/analytics.py]                     f"{anomaly['user_name'] or 'Usuario'} registra devoluciones inusuales"
-# [MIGRATED TO crud/analytics.py]                     f" ({anomaly['return_count']} en la ventana)"
                 ),
-# [MIGRATED TO crud/analytics.py]                 "store_id": None,
-# [MIGRATED TO crud/analytics.py]                 "store_name": "Global",
-# [MIGRATED TO crud/analytics.py]                 "device_id": None,
-# [MIGRATED TO crud/analytics.py]                 "sku": None,
-# [MIGRATED TO crud/analytics.py]             }
-# [MIGRATED TO crud/analytics.py]         )
-
-# [MIGRATED TO crud/analytics.py]     alerts.sort(key=lambda alert: (
-# [MIGRATED TO crud/analytics.py]         alert["level"] != "critical", alert["level"] != "warning"))
-# [MIGRATED TO crud/analytics.py]     if limit is None:
-# [MIGRATED TO crud/analytics.py]         return alerts[offset:]
-# [MIGRATED TO crud/analytics.py]     return alerts[offset: offset + limit]
 
 
-# [MIGRATED TO crud/analytics.py] def calculate_store_sales_forecast(
-# [MIGRATED TO crud/analytics.py]     db: Session,
-# [MIGRATED TO crud/analytics.py]     *,
-# [MIGRATED TO crud/analytics.py]     store_ids: Iterable[int] | None = None,
-# [MIGRATED TO crud/analytics.py]     horizon_days: int = 14,
-# [MIGRATED TO crud/analytics.py]     date_from: date | None = None,
-# [MIGRATED TO crud/analytics.py]     date_to: date | None = None,
-# [MIGRATED TO crud/analytics.py]     category: str | None = None,
-# [MIGRATED TO crud/analytics.py]     supplier: str | None = None,
-# [MIGRATED TO crud/analytics.py]     limit: int | None = None,
-# [MIGRATED TO crud/analytics.py]     offset: int = 0,
-# [MIGRATED TO crud/analytics.py] ) -> list[dict[str, object]]:
-# [MIGRATED TO crud/analytics.py]     projections = calculate_sales_projection(
-# [MIGRATED TO crud/analytics.py]         db,
-# [MIGRATED TO crud/analytics.py]         store_ids=store_ids,
-# [MIGRATED TO crud/analytics.py]         date_from=date_from,
-# [MIGRATED TO crud/analytics.py]         date_to=date_to,
-# [MIGRATED TO crud/analytics.py]         category=category,
-# [MIGRATED TO crud/analytics.py]         supplier=supplier,
-# [MIGRATED TO crud/analytics.py]         horizon_days=horizon_days,
-# [MIGRATED TO crud/analytics.py]         limit=limit,
-# [MIGRATED TO crud/analytics.py]         offset=offset,
-# [MIGRATED TO crud/analytics.py]     )
-# [MIGRATED TO crud/analytics.py]     forecasts: list[dict[str, object]] = []
-# [MIGRATED TO crud/analytics.py]     for item in projections:
-# [MIGRATED TO crud/analytics.py]         forecasts.append(
-# [MIGRATED TO crud/analytics.py]             {
-# [MIGRATED TO crud/analytics.py]                 "store_id": int(item["store_id"]),
-# [MIGRATED TO crud/analytics.py]                 "store_name": item["store_name"],
-# [MIGRATED TO crud/analytics.py]                 "average_daily_units": float(item.get("average_daily_units", 0)),
-# [MIGRATED TO crud/analytics.py]                 "projected_units": float(item.get("projected_units", 0)),
-# [MIGRATED TO crud/analytics.py]                 "projected_revenue": float(item.get("projected_revenue", 0)),
-# [MIGRATED TO crud/analytics.py]                 "trend": item.get("trend", "estable"),
-# [MIGRATED TO crud/analytics.py]                 "confidence": float(item.get("confidence", 0)),
-# [MIGRATED TO crud/analytics.py]             }
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]     return forecasts
 
 
-# [MIGRATED TO crud/analytics.py] def calculate_reorder_suggestions(
-# [MIGRATED TO crud/analytics.py]     db: Session,
-# [MIGRATED TO crud/analytics.py]     *,
-# [MIGRATED TO crud/analytics.py]     store_ids: Iterable[int] | None = None,
-# [MIGRATED TO crud/analytics.py]     horizon_days: int = 7,
-# [MIGRATED TO crud/analytics.py]     safety_days: int = 2,
-# [MIGRATED TO crud/analytics.py]     date_from: date | None = None,
-# [MIGRATED TO crud/analytics.py]     date_to: date | None = None,
-# [MIGRATED TO crud/analytics.py]     category: str | None = None,
-# [MIGRATED TO crud/analytics.py]     supplier: str | None = None,
-# [MIGRATED TO crud/analytics.py]     limit: int | None = None,
-# [MIGRATED TO crud/analytics.py]     offset: int = 0,
-# [MIGRATED TO crud/analytics.py] ) -> list[dict[str, object]]:
-# [MIGRATED TO crud/analytics.py]     horizon = max(horizon_days, 1) + max(safety_days, 0)
-# [MIGRATED TO crud/analytics.py]     forecast = calculate_stockout_forecast(
-# [MIGRATED TO crud/analytics.py]         db,
-# [MIGRATED TO crud/analytics.py]         store_ids=store_ids,
-# [MIGRATED TO crud/analytics.py]         date_from=date_from,
+
         date_to=date_to,
         category=category,
         supplier=supplier,
@@ -7762,158 +6680,20 @@ def detect_return_anomalies(
                        ).label("store_count"),
         )
         .join(models.Sale, models.Sale.id == models.SaleReturn.sale_id)
-# [MIGRATED TO crud/analytics.py]         .join(models.Store, models.Store.id == models.Sale.store_id)
-# [MIGRATED TO crud/analytics.py]         .join(models.User, models.User.id == models.SaleReturn.processed_by_id)
-# [MIGRATED TO crud/analytics.py]         .group_by(models.User.id)
-# [MIGRATED TO crud/analytics.py]         .order_by(models.User.username.asc())
-# [MIGRATED TO crud/analytics.py]     )
-# [MIGRATED TO crud/analytics.py]     if store_filter:
-# [MIGRATED TO crud/analytics.py]         stmt = stmt.where(models.Sale.store_id.in_(store_filter))
-# [MIGRATED TO crud/analytics.py]     if start_dt:
-# [MIGRATED TO crud/analytics.py]         stmt = stmt.where(models.SaleReturn.created_at >= start_dt)
-# [MIGRATED TO crud/analytics.py]     if end_dt:
-# [MIGRATED TO crud/analytics.py]         stmt = stmt.where(models.SaleReturn.created_at <= end_dt)
-# [MIGRATED TO crud/analytics.py]     if limit is not None:
-# [MIGRATED TO crud/analytics.py]         stmt = stmt.limit(limit)
-# [MIGRATED TO crud/analytics.py]     if offset:
-# [MIGRATED TO crud/analytics.py]         stmt = stmt.offset(offset)
-
-# [MIGRATED TO crud/analytics.py]     rows = list(db.execute(stmt))
-# [MIGRATED TO crud/analytics.py]     if not rows:
-# [MIGRATED TO crud/analytics.py]         return []
-
-# [MIGRATED TO crud/analytics.py]     counts = [int(row.return_count or 0) for row in rows]
-# [MIGRATED TO crud/analytics.py]     mean = sum(counts) / len(counts) if counts else 0.0
-# [MIGRATED TO crud/analytics.py]     variance = sum((count - mean) ** 2 for count in counts) / \
-# [MIGRATED TO crud/analytics.py]         len(counts) if counts else 0.0
-# [MIGRATED TO crud/analytics.py]     std_dev = math.sqrt(variance)
-# [MIGRATED TO crud/analytics.py]     threshold = max(float(min_returns), mean + sigma_threshold * std_dev)
-
-# [MIGRATED TO crud/analytics.py]     anomalies: list[dict[str, object]] = []
-# [MIGRATED TO crud/analytics.py]     for row in rows:
-# [MIGRATED TO crud/analytics.py]         count_value = int(row.return_count or 0)
-# [MIGRATED TO crud/analytics.py]         total_units = int(row.units or 0)
-# [MIGRATED TO crud/analytics.py]         if count_value < 1:
-# [MIGRATED TO crud/analytics.py]             continue
-# [MIGRATED TO crud/analytics.py]         z_score = (count_value - mean) / std_dev if std_dev > 0 else 0.0
-# [MIGRATED TO crud/analytics.py]         is_anomalous = count_value >= threshold and count_value >= min_returns
-# [MIGRATED TO crud/analytics.py]         anomalies.append(
-# [MIGRATED TO crud/analytics.py]             {
-# [MIGRATED TO crud/analytics.py]                 "user_id": int(row.user_id),
-# [MIGRATED TO crud/analytics.py]                 "user_name": user_display_name(row) or row.username,
-# [MIGRATED TO crud/analytics.py]                 "return_count": count_value,
-# [MIGRATED TO crud/analytics.py]                 "total_units": total_units,
-# [MIGRATED TO crud/analytics.py]                 "last_return": row.last_return,
-# [MIGRATED TO crud/analytics.py]                 "store_count": int(row.store_count or 0),
-# [MIGRATED TO crud/analytics.py]                 "z_score": round(z_score, 2),
-# [MIGRATED TO crud/analytics.py]                 "threshold": round(threshold, 2),
-# [MIGRATED TO crud/analytics.py]                 "is_anomalous": is_anomalous,
-# [MIGRATED TO crud/analytics.py]             }
-# [MIGRATED TO crud/analytics.py]         )
-
-# [MIGRATED TO crud/analytics.py]     anomalies.sort(key=lambda item: item["return_count"], reverse=True)
-# [MIGRATED TO crud/analytics.py]     return anomalies
 
 
-# [MIGRATED TO crud/analytics.py] def calculate_realtime_store_widget(
-# [MIGRATED TO crud/analytics.py]     db: Session,
-# [MIGRATED TO crud/analytics.py]     *,
-# [MIGRATED TO crud/analytics.py]     store_ids: Iterable[int] | None = None,
-# [MIGRATED TO crud/analytics.py]     category: str | None = None,
-# [MIGRATED TO crud/analytics.py]     supplier: str | None = None,
-# [MIGRATED TO crud/analytics.py]     low_stock_threshold: int = 5,
-# [MIGRATED TO crud/analytics.py]     limit: int | None = None,
-# [MIGRATED TO crud/analytics.py]     offset: int = 0,
-# [MIGRATED TO crud/analytics.py] ) -> list[dict[str, object]]:
-# [MIGRATED TO crud/analytics.py]     store_filter = normalize_store_ids(store_ids)
-# [MIGRATED TO crud/analytics.py]     category_expr = device_category_expr()
-# [MIGRATED TO crud/analytics.py]     today_start = datetime.now(timezone.utc).replace(
-# [MIGRATED TO crud/analytics.py]         hour=0, minute=0, second=0, microsecond=0)
 
-# [MIGRATED TO crud/analytics.py]     stores_stmt = select(models.Store.id, models.Store.name,
-# [MIGRATED TO crud/analytics.py]                          models.Store.inventory_value)
-# [MIGRATED TO crud/analytics.py]     if store_filter:
-# [MIGRATED TO crud/analytics.py]         stores_stmt = stores_stmt.where(models.Store.id.in_(store_filter))
-# [MIGRATED TO crud/analytics.py]     stores_stmt = stores_stmt.order_by(models.Store.name.asc())
-# [MIGRATED TO crud/analytics.py]     if offset:
-# [MIGRATED TO crud/analytics.py]         stores_stmt = stores_stmt.offset(offset)
-# [MIGRATED TO crud/analytics.py]     if limit is not None:
-# [MIGRATED TO crud/analytics.py]         stores_stmt = stores_stmt.limit(limit)
 
-# [MIGRATED TO crud/analytics.py]     store_rows = list(db.execute(stores_stmt))
-# [MIGRATED TO crud/analytics.py]     if not store_rows:
-# [MIGRATED TO crud/analytics.py]         return []
 
-# [MIGRATED TO crud/analytics.py]     store_ids_window = [int(row.id) for row in store_rows]
 
-# [MIGRATED TO crud/analytics.py]     low_stock_stmt = (
-# [MIGRATED TO crud/analytics.py]         select(models.Device.store_id, func.count(
-# [MIGRATED TO crud/analytics.py]             models.Device.id).label("low_stock"))
-# [MIGRATED TO crud/analytics.py]         .where(models.Device.quantity <= low_stock_threshold)
-# [MIGRATED TO crud/analytics.py]         .group_by(models.Device.store_id)
-# [MIGRATED TO crud/analytics.py]     )
-# [MIGRATED TO crud/analytics.py]     if store_ids_window:
-# [MIGRATED TO crud/analytics.py]         low_stock_stmt = low_stock_stmt.where(
-# [MIGRATED TO crud/analytics.py]             models.Device.store_id.in_(store_ids_window)
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]     if category:
-# [MIGRATED TO crud/analytics.py]         low_stock_stmt = low_stock_stmt.where(category_expr == category)
-# [MIGRATED TO crud/analytics.py]     if supplier:
-# [MIGRATED TO crud/analytics.py]         low_stock_stmt = low_stock_stmt.where(
-# [MIGRATED TO crud/analytics.py]             models.Device.proveedor == supplier)
 
-# [MIGRATED TO crud/analytics.py]     sales_today_stmt = (
-# [MIGRATED TO crud/analytics.py]         select(
-# [MIGRATED TO crud/analytics.py]             models.Store.id.label("store_id"),
-# [MIGRATED TO crud/analytics.py]             func.coalesce(func.sum(models.SaleItem.total_line),
-# [MIGRATED TO crud/analytics.py]                           0).label("revenue"),
-# [MIGRATED TO crud/analytics.py]             func.max(models.Sale.created_at).label("last_sale_at"),
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]         .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
-# [MIGRATED TO crud/analytics.py]         .join(models.Store, models.Store.id == models.Sale.store_id)
-# [MIGRATED TO crud/analytics.py]         .join(models.Device, models.Device.id == models.SaleItem.device_id)
-# [MIGRATED TO crud/analytics.py]         .where(models.Sale.created_at >= today_start)
-# [MIGRATED TO crud/analytics.py]         .group_by(models.Store.id)
-# [MIGRATED TO crud/analytics.py]     )
-# [MIGRATED TO crud/analytics.py]     if store_ids_window:
-# [MIGRATED TO crud/analytics.py]         sales_today_stmt = sales_today_stmt.where(
-# [MIGRATED TO crud/analytics.py]             models.Store.id.in_(store_ids_window))
-# [MIGRATED TO crud/analytics.py]     if category:
-# [MIGRATED TO crud/analytics.py]         sales_today_stmt = sales_today_stmt.where(category_expr == category)
-# [MIGRATED TO crud/analytics.py]     if supplier:
-# [MIGRATED TO crud/analytics.py]         sales_today_stmt = sales_today_stmt.where(
-# [MIGRATED TO crud/analytics.py]             models.Device.proveedor == supplier)
 
-# [MIGRATED TO crud/analytics.py]     repairs_stmt = (
-# [MIGRATED TO crud/analytics.py]         select(
-# [MIGRATED TO crud/analytics.py]             models.RepairOrder.store_id,
-# [MIGRATED TO crud/analytics.py]             func.count(models.RepairOrder.id).label("pending"),
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]         .where(models.RepairOrder.status != models.RepairStatus.ENTREGADO)
-# [MIGRATED TO crud/analytics.py]         .group_by(models.RepairOrder.store_id)
-# [MIGRATED TO crud/analytics.py]     )
-# [MIGRATED TO crud/analytics.py]     if store_ids_window:
-# [MIGRATED TO crud/analytics.py]         repairs_stmt = repairs_stmt.where(
-# [MIGRATED TO crud/analytics.py]             models.RepairOrder.store_id.in_(store_ids_window)
-# [MIGRATED TO crud/analytics.py]         )
 
-# [MIGRATED TO crud/analytics.py]     sync_stmt = (
-# [MIGRATED TO crud/analytics.py]         select(
-# [MIGRATED TO crud/analytics.py]             models.SyncSession.store_id,
-# [MIGRATED TO crud/analytics.py]             func.max(models.SyncSession.finished_at).label("last_sync"),
-# [MIGRATED TO crud/analytics.py]         )
-# [MIGRATED TO crud/analytics.py]         .group_by(models.SyncSession.store_id)
-# [MIGRATED TO crud/analytics.py]     )
-# [MIGRATED TO crud/analytics.py]     if store_ids_window:
-# [MIGRATED TO crud/analytics.py]         sync_stmt = sync_stmt.where(
-# [MIGRATED TO crud/analytics.py]             (models.SyncSession.store_id.is_(None))
-# [MIGRATED TO crud/analytics.py]             | (models.SyncSession.store_id.in_(store_ids_window))
-# [MIGRATED TO crud/analytics.py]         )
 
-# [MIGRATED TO crud/analytics.py]     low_stock_map = {
-# [MIGRATED TO crud/analytics.py]         int(row.store_id): int(row.low_stock or 0)
-# [MIGRATED TO crud/analytics.py]         for row in db.execute(low_stock_stmt)
-# [MIGRATED TO crud/analytics.py]     }
+
+
+
+
     sales_today_map = {
         int(row.store_id): {
             "revenue": float(row.revenue or 0),
@@ -9560,119 +8340,20 @@ def _require_store_permission(
     return membership
 
 
-# [MIGRATED TO crud/transfers.py] def _user_can_override_transfer(
-# [MIGRATED TO crud/transfers.py]     db: Session,
-# [MIGRATED TO crud/transfers.py]     *,
-# [MIGRATED TO crud/transfers.py]     user_id: int,
-# [MIGRATED TO crud/transfers.py]     store_id: int,
-# [MIGRATED TO crud/transfers.py] ) -> bool:
-# [MIGRATED TO crud/transfers.py]     user = get_user(db, user_id)
-# [MIGRATED TO crud/transfers.py]     user_roles = {assignment.role.name for assignment in user.roles}
-# [MIGRATED TO crud/transfers.py]     if ADMIN in user_roles:
-# [MIGRATED TO crud/transfers.py]         return True
-# [MIGRATED TO crud/transfers.py]     if GERENTE in user_roles and user.store_id == store_id:
-# [MIGRATED TO crud/transfers.py]         return True
-# [MIGRATED TO crud/transfers.py]     return False
 
 
-# [MIGRATED TO crud/transfers.py] def list_store_memberships(
-# [MIGRATED TO crud/transfers.py]     db: Session,
-# [MIGRATED TO crud/transfers.py]     store_id: int,
-# [MIGRATED TO crud/transfers.py]     *,
-# [MIGRATED TO crud/transfers.py]     limit: int | None = 50,
-# [MIGRATED TO crud/transfers.py]     offset: int = 0,
-# [MIGRATED TO crud/transfers.py] ) -> list[models.StoreMembership]:
-# [MIGRATED TO crud/transfers.py]     statement = (
-# [MIGRATED TO crud/transfers.py]         select(models.StoreMembership)
-# [MIGRATED TO crud/transfers.py]         .options(joinedload(models.StoreMembership.user))
-# [MIGRATED TO crud/transfers.py]         .where(models.StoreMembership.store_id == store_id)
-# [MIGRATED TO crud/transfers.py]         .order_by(models.StoreMembership.user_id.asc())
-# [MIGRATED TO crud/transfers.py]     )
-# [MIGRATED TO crud/transfers.py]     if offset:
-# [MIGRATED TO crud/transfers.py]         statement = statement.offset(offset)
-# [MIGRATED TO crud/transfers.py]     if limit is not None:
-# [MIGRATED TO crud/transfers.py]         statement = statement.limit(limit)
-# [MIGRATED TO crud/transfers.py]     return list(db.scalars(statement))
 
 
-# [MIGRATED TO crud/transfers.py] def count_store_memberships(db: Session, store_id: int) -> int:
-# [MIGRATED TO crud/transfers.py]     statement = select(func.count()).select_from(models.StoreMembership)
-# [MIGRATED TO crud/transfers.py]     statement = statement.where(models.StoreMembership.store_id == store_id)
-# [MIGRATED TO crud/transfers.py]     return int(db.scalar(statement) or 0)
 
 
-# [MIGRATED TO crud/transfers.py] def create_transfer_order(
-# [MIGRATED TO crud/transfers.py]     db: Session,
-# [MIGRATED TO crud/transfers.py]     payload: schemas.TransferOrderCreate,
-# [MIGRATED TO crud/transfers.py]     *,
-# [MIGRATED TO crud/transfers.py]     requested_by_id: int,
-# [MIGRATED TO crud/transfers.py] ) -> models.TransferOrder:
-# [MIGRATED TO crud/transfers.py]     if payload.origin_store_id == payload.destination_store_id:
-# [MIGRATED TO crud/transfers.py]         raise ValueError("transfer_same_store")
 
-# [MIGRATED TO crud/transfers.py]     origin_store = get_store(db, payload.origin_store_id)
-# [MIGRATED TO crud/transfers.py]     destination_store = get_store(db, payload.destination_store_id)
 
-# [MIGRATED TO crud/transfers.py]     try:
-# [MIGRATED TO crud/transfers.py]         _require_store_permission(
-# [MIGRATED TO crud/transfers.py]             db,
-# [MIGRATED TO crud/transfers.py]             user_id=requested_by_id,
-# [MIGRATED TO crud/transfers.py]             store_id=origin_store.id,
-# [MIGRATED TO crud/transfers.py]             permission="create",
-# [MIGRATED TO crud/transfers.py]         )
-# [MIGRATED TO crud/transfers.py]     except PermissionError:
-# [MIGRATED TO crud/transfers.py]         normalized_reason = (payload.reason or "").strip()
-# [MIGRATED TO crud/transfers.py]         if len(normalized_reason) < 5 or not _user_can_override_transfer(
-# [MIGRATED TO crud/transfers.py]             db, user_id=requested_by_id, store_id=origin_store.id
-# [MIGRATED TO crud/transfers.py]         ):
-# [MIGRATED TO crud/transfers.py]             raise
 
-# [MIGRATED TO crud/transfers.py]     if not payload.items:
-# [MIGRATED TO crud/transfers.py]         raise ValueError("transfer_items_required")
 
-# [MIGRATED TO crud/transfers.py]     order = models.TransferOrder(
-# [MIGRATED TO crud/transfers.py]         origin_store_id=origin_store.id,
-# [MIGRATED TO crud/transfers.py]         destination_store_id=destination_store.id,
-# [MIGRATED TO crud/transfers.py]         status=models.TransferStatus.SOLICITADA,
-# [MIGRATED TO crud/transfers.py]         requested_by_id=requested_by_id,
-# [MIGRATED TO crud/transfers.py]         reason=payload.reason,
-# [MIGRATED TO crud/transfers.py]     )
-# [MIGRATED TO crud/transfers.py]     with transactional_session(db):
-# [MIGRATED TO crud/transfers.py]         db.add(order)
-# [MIGRATED TO crud/transfers.py]         flush_session(db)
 
-# [MIGRATED TO crud/transfers.py]         expire_reservations(
-# [MIGRATED TO crud/transfers.py]             db, store_id=origin_store.id, device_ids=[
-# [MIGRATED TO crud/transfers.py]                 item.device_id for item in payload.items]
-# [MIGRATED TO crud/transfers.py]         )
 
-# [MIGRATED TO crud/transfers.py]         for item in payload.items:
-# [MIGRATED TO crud/transfers.py]             device = get_device(db, origin_store.id, item.device_id)
-# [MIGRATED TO crud/transfers.py]             if item.quantity <= 0:
-# [MIGRATED TO crud/transfers.py]                 raise ValueError("transfer_invalid_quantity")
-# [MIGRATED TO crud/transfers.py]             reservation_id = getattr(item, "reservation_id", None)
-# [MIGRATED TO crud/transfers.py]             reservation = None
-# [MIGRATED TO crud/transfers.py]             if reservation_id is not None:
-# [MIGRATED TO crud/transfers.py]                 reservation = get_inventory_reservation(db, reservation_id)
-# [MIGRATED TO crud/transfers.py]                 if reservation.store_id != origin_store.id:
-# [MIGRATED TO crud/transfers.py]                     raise ValueError("reservation_store_mismatch")
                 if reservation.device_id != device.id:
-# [MIGRATED TO crud/transfers.py]                     raise ValueError("reservation_device_mismatch")
-# [MIGRATED TO crud/transfers.py]                 if reservation.status != models.InventoryState.RESERVADO:
-# [MIGRATED TO crud/transfers.py]                     raise ValueError("reservation_not_active")
-# [MIGRATED TO crud/transfers.py]                 if reservation.quantity != item.quantity:
-# [MIGRATED TO crud/transfers.py]                     raise ValueError("reservation_quantity_mismatch")
-# [MIGRATED TO crud/transfers.py]                 if reservation.expires_at <= datetime.now(timezone.utc):
-# [MIGRATED TO crud/transfers.py]                     raise ValueError("reservation_expired")
-# [MIGRATED TO crud/transfers.py]             order_item = models.TransferOrderItem(
-# [MIGRATED TO crud/transfers.py]                 transfer_order=order,
-# [MIGRATED TO crud/transfers.py]                 device=device,
-# [MIGRATED TO crud/transfers.py]                 quantity=item.quantity,
-# [MIGRATED TO crud/transfers.py]                 reservation_id=reservation.id if reservation is not None else None,
-# [MIGRATED TO crud/transfers.py]             )
-# [MIGRATED TO crud/transfers.py]             db.add(order_item)
 
-# [MIGRATED TO crud/transfers.py]         flush_session(db)
         _log_action(
             db,
             action="transfer_created",
@@ -9847,57 +8528,10 @@ def _apply_transfer_dispatch(
                 models.Device.sku == device.sku,
             )
             destination_device = db.scalars(destination_statement).first()
-# [MIGRATED TO crud/transfers.py]             if destination_device is None:
-# [MIGRATED TO crud/transfers.py]                 clone = models.Device(
-# [MIGRATED TO crud/transfers.py]                     store_id=order.destination_store_id,
-# [MIGRATED TO crud/transfers.py]                     sku=device.sku,
-# [MIGRATED TO crud/transfers.py]                     name=device.name,
-# [MIGRATED TO crud/transfers.py]                     quantity=0,
-# [MIGRATED TO crud/transfers.py]                     unit_price=device.unit_price,
-# [MIGRATED TO crud/transfers.py]                     marca=device.marca,
-# [MIGRATED TO crud/transfers.py]                     modelo=device.modelo,
-# [MIGRATED TO crud/transfers.py]                     categoria=device.categoria,
-# [MIGRATED TO crud/transfers.py]                     condicion=device.condicion,
-# [MIGRATED TO crud/transfers.py]                     color=device.color,
-# [MIGRATED TO crud/transfers.py]                     capacidad_gb=device.capacidad_gb,
-# [MIGRATED TO crud/transfers.py]                     capacidad=device.capacidad,
-# [MIGRATED TO crud/transfers.py]                     estado_comercial=device.estado_comercial,
-# [MIGRATED TO crud/transfers.py]                     estado=device.estado,
-# [MIGRATED TO crud/transfers.py]                     proveedor=device.proveedor,
-# [MIGRATED TO crud/transfers.py]                     costo_unitario=origin_unit_cost,
-# [MIGRATED TO crud/transfers.py]                     margen_porcentaje=device.margen_porcentaje,
-# [MIGRATED TO crud/transfers.py]                     garantia_meses=device.garantia_meses,
-# [MIGRATED TO crud/transfers.py]                     lote=device.lote,
-# [MIGRATED TO crud/transfers.py]                     fecha_compra=device.fecha_compra,
-# [MIGRATED TO crud/transfers.py]                     fecha_ingreso=device.fecha_ingreso,
-# [MIGRATED TO crud/transfers.py]                     ubicacion=device.ubicacion,
-# [MIGRATED TO crud/transfers.py]                     completo=device.completo,
-# [MIGRATED TO crud/transfers.py]                     descripcion=device.descripcion,
-# [MIGRATED TO crud/transfers.py]                     imei=device.imei,
-# [MIGRATED TO crud/transfers.py]                     serial=device.serial,
-# [MIGRATED TO crud/transfers.py]                     imagen_url=device.imagen_url,
-# [MIGRATED TO crud/transfers.py]                 )
-# [MIGRATED TO crud/transfers.py]                 db.add(clone)
-# [MIGRATED TO crud/transfers.py]                 flush_session(db)
-
-# [MIGRATED TO crud/transfers.py]     order.dispatched_by_id = order.dispatched_by_id or performed_by_id
-# [MIGRATED TO crud/transfers.py]     order.dispatched_at = order.dispatched_at or datetime.now(timezone.utc)
-# [MIGRATED TO crud/transfers.py]     if reason:
-# [MIGRATED TO crud/transfers.py]         order.reason = reason
-
-# [MIGRATED TO crud/transfers.py]     recalculate_store_inventory_value(db, order.origin_store_id)
 
 
-# [MIGRATED TO crud/transfers.py] def dispatch_transfer_order(
-# [MIGRATED TO crud/transfers.py]     db: Session,
-# [MIGRATED TO crud/transfers.py]     transfer_id: int,
-# [MIGRATED TO crud/transfers.py]     *,
-# [MIGRATED TO crud/transfers.py]     performed_by_id: int,
-# [MIGRATED TO crud/transfers.py]     reason: str | None,
-# [MIGRATED TO crud/transfers.py] ) -> models.TransferOrder:
-# [MIGRATED TO crud/transfers.py]     order = get_transfer_order(db, transfer_id)
-# [MIGRATED TO crud/transfers.py]     if order.status not in {models.TransferStatus.SOLICITADA}:
-# [MIGRATED TO crud/transfers.py]         raise ValueError("transfer_invalid_transition")
+
+
 
     _require_store_permission(
         db,
@@ -10100,72 +8734,13 @@ def _apply_transfer_reception(
                     db,
                     store_id=order.destination_store_id,
                     device_id=destination_device.id,
-# [MIGRATED TO crud/transfers.py]                     movement_type=models.MovementType.IN,
-# [MIGRATED TO crud/transfers.py]                     quantity=accepted_quantity,
-# [MIGRATED TO crud/transfers.py]                     comment=build_transfer_movement_comment(
-# [MIGRATED TO crud/transfers.py]                         order, destination_device, "IN", order.reason
-# [MIGRATED TO crud/transfers.py]                     ),
-# [MIGRATED TO crud/transfers.py]                     performed_by_id=performed_by_id,
-# [MIGRATED TO crud/transfers.py]                     source_store_id=order.origin_store_id,
-# [MIGRATED TO crud/transfers.py]                     destination_store_id=order.destination_store_id,
-# [MIGRATED TO crud/transfers.py]                     warehouse_id=destination_warehouse.id,
-# [MIGRATED TO crud/transfers.py]                     unit_cost=item.dispatched_unit_cost or origin_unit_cost,
-# [MIGRATED TO crud/transfers.py]                     reference_type="transfer_order",
-# [MIGRATED TO crud/transfers.py]                     reference_id=str(order.id),
-# [MIGRATED TO crud/transfers.py]                 )
-
-# [MIGRATED TO crud/transfers.py]         pending_return = shipped_quantity - accepted_quantity
-# [MIGRATED TO crud/transfers.py]         if pending_return > 0:
-# [MIGRATED TO crud/transfers.py]             _register_inventory_movement(
-# [MIGRATED TO crud/transfers.py]                 db,
-# [MIGRATED TO crud/transfers.py]                 store_id=order.origin_store_id,
-# [MIGRATED TO crud/transfers.py]                 device_id=device.id,
-# [MIGRATED TO crud/transfers.py]                 movement_type=models.MovementType.IN,
-# [MIGRATED TO crud/transfers.py]                 quantity=pending_return,
-# [MIGRATED TO crud/transfers.py]                 comment=build_transfer_movement_comment(
-# [MIGRATED TO crud/transfers.py]                     order, device, "IN", "Reverso por faltante/rechazo"
-# [MIGRATED TO crud/transfers.py]                 ),
-# [MIGRATED TO crud/transfers.py]                 performed_by_id=performed_by_id,
-# [MIGRATED TO crud/transfers.py]                 source_store_id=order.destination_store_id,
-# [MIGRATED TO crud/transfers.py]                 source_warehouse_id=destination_warehouse.id,
-# [MIGRATED TO crud/transfers.py]                 destination_store_id=order.origin_store_id,
-# [MIGRATED TO crud/transfers.py]                 warehouse_id=origin_warehouse.id,
-# [MIGRATED TO crud/transfers.py]                 unit_cost=origin_unit_cost,
-# [MIGRATED TO crud/transfers.py]                 reference_type="transfer_order",
-# [MIGRATED TO crud/transfers.py]                 reference_id=str(order.id),
-# [MIGRATED TO crud/transfers.py]             )
-
-# [MIGRATED TO crud/transfers.py]         item.received_quantity = accepted_quantity
-
-# [MIGRATED TO crud/transfers.py]     recalculate_store_inventory_value(db, order.origin_store_id)
-# [MIGRATED TO crud/transfers.py]     recalculate_store_inventory_value(db, order.destination_store_id)
 
 
-# [MIGRATED TO crud/transfers.py] def receive_transfer_order(
-# [MIGRATED TO crud/transfers.py]     db: Session,
-# [MIGRATED TO crud/transfers.py]     transfer_id: int,
-# [MIGRATED TO crud/transfers.py]     *,
-# [MIGRATED TO crud/transfers.py]     performed_by_id: int,
-# [MIGRATED TO crud/transfers.py]     reason: str | None,
-# [MIGRATED TO crud/transfers.py]     items: list[schemas.TransferReceptionItem] | None = None,
-# [MIGRATED TO crud/transfers.py]     use_transaction: bool = True,
-# [MIGRATED TO crud/transfers.py] ) -> models.TransferOrder:
-# [MIGRATED TO crud/transfers.py]     order = get_transfer_order(db, transfer_id)
-# [MIGRATED TO crud/transfers.py]     if order.status not in {models.TransferStatus.SOLICITADA, models.TransferStatus.EN_TRANSITO}:
-# [MIGRATED TO crud/transfers.py]         raise ValueError("transfer_invalid_transition")
 
-# [MIGRATED TO crud/transfers.py]     _require_store_permission(
-# [MIGRATED TO crud/transfers.py]         db,
-# [MIGRATED TO crud/transfers.py]         user_id=performed_by_id,
-# [MIGRATED TO crud/transfers.py]         store_id=order.destination_store_id,
-# [MIGRATED TO crud/transfers.py]         permission="receive",
-# [MIGRATED TO crud/transfers.py]     )
 
-# [MIGRATED TO crud/transfers.py]     def _receive_transfer() -> models.TransferOrder:
-# [MIGRATED TO crud/transfers.py]         if not any(item.dispatched_quantity > 0 for item in order.items):
-# [MIGRATED TO crud/transfers.py]             _apply_transfer_dispatch(
-# [MIGRATED TO crud/transfers.py]                 db, order, performed_by_id=performed_by_id, reason=reason
-# [MIGRATED TO crud/transfers.py]             )
+
+
+
 
         reception_map = _normalize_reception_quantities(order, items)
         _apply_transfer_reception(
@@ -10242,105 +8817,20 @@ def reject_transfer_order(
             )
         except LookupError as exc:
             if str(exc) != "warehouse_not_found":
-# [MIGRATED TO crud/transfers.py]                 raise
-# [MIGRATED TO crud/transfers.py]             _ensure_default_warehouse(db, order.origin_store_id)
-# [MIGRATED TO crud/transfers.py]             _ensure_default_warehouse(db, order.destination_store_id)
-# [MIGRATED TO crud/transfers.py]             _apply_transfer_reception(
-# [MIGRATED TO crud/transfers.py]                 db,
-# [MIGRATED TO crud/transfers.py]                 order,
-# [MIGRATED TO crud/transfers.py]                 performed_by_id=performed_by_id,
-# [MIGRATED TO crud/transfers.py]                 received_map=rejection_map,
-# [MIGRATED TO crud/transfers.py]                 is_rejection=True,
-# [MIGRATED TO crud/transfers.py]             )
-
-# [MIGRATED TO crud/transfers.py]         order.status = models.TransferStatus.RECHAZADA
-# [MIGRATED TO crud/transfers.py]         order.received_by_id = performed_by_id
-# [MIGRATED TO crud/transfers.py]         order.received_at = datetime.now(timezone.utc)
-# [MIGRATED TO crud/transfers.py]         order.reason = reason or order.reason
-
-# [MIGRATED TO crud/transfers.py]         flush_session(db)
-
-# [MIGRATED TO crud/transfers.py]         _log_action(
-# [MIGRATED TO crud/transfers.py]             db,
-# [MIGRATED TO crud/transfers.py]             action="transfer_rejected",
-# [MIGRATED TO crud/transfers.py]             entity_type="transfer_order",
-# [MIGRATED TO crud/transfers.py]             entity_id=str(order.id),
-# [MIGRATED TO crud/transfers.py]             performed_by_id=performed_by_id,
-# [MIGRATED TO crud/transfers.py]             details=json.dumps(
-# [MIGRATED TO crud/transfers.py]                 {"status": order.status.value, "reason": reason}),
-# [MIGRATED TO crud/transfers.py]         )
-
-# [MIGRATED TO crud/transfers.py]         db.refresh(order)
-# [MIGRATED TO crud/transfers.py]     order = get_transfer_order(db, order.id)
-# [MIGRATED TO crud/transfers.py]     enqueue_sync_outbox(
-# [MIGRATED TO crud/transfers.py]         db,
-# [MIGRATED TO crud/transfers.py]         entity_type="transfer_order",
-# [MIGRATED TO crud/transfers.py]         entity_id=str(order.id),
-# [MIGRATED TO crud/transfers.py]         operation="UPSERT",
-# [MIGRATED TO crud/transfers.py]         payload=transfer_order_payload(order),
-# [MIGRATED TO crud/transfers.py]         priority=models.SyncOutboxPriority.HIGH,
-# [MIGRATED TO crud/transfers.py]     )
-# [MIGRATED TO crud/transfers.py]     return order
 
 
-# [MIGRATED TO crud/transfers.py] def cancel_transfer_order(
-# [MIGRATED TO crud/transfers.py]     db: Session,
-# [MIGRATED TO crud/transfers.py]     transfer_id: int,
-# [MIGRATED TO crud/transfers.py]     *,
-# [MIGRATED TO crud/transfers.py]     performed_by_id: int,
-# [MIGRATED TO crud/transfers.py]     reason: str | None,
-# [MIGRATED TO crud/transfers.py] ) -> models.TransferOrder:
+
+
+
+
     order = get_transfer_order(db, transfer_id)
-# [MIGRATED TO crud/transfers.py]     if order.status in {models.TransferStatus.RECIBIDA, models.TransferStatus.CANCELADA}:
-# [MIGRATED TO crud/transfers.py]         raise ValueError("transfer_invalid_transition")
-
-# [MIGRATED TO crud/transfers.py]     _require_store_permission(
-# [MIGRATED TO crud/transfers.py]         db,
-# [MIGRATED TO crud/transfers.py]         user_id=performed_by_id,
-# [MIGRATED TO crud/transfers.py]         store_id=order.origin_store_id,
-# [MIGRATED TO crud/transfers.py]         permission="create",
-# [MIGRATED TO crud/transfers.py]     )
-
-# [MIGRATED TO crud/transfers.py]     with transactional_session(db):
-# [MIGRATED TO crud/transfers.py]         order.status = models.TransferStatus.CANCELADA
-# [MIGRATED TO crud/transfers.py]         order.cancelled_by_id = performed_by_id
-# [MIGRATED TO crud/transfers.py]         order.cancelled_at = datetime.now(timezone.utc)
-# [MIGRATED TO crud/transfers.py]         order.reason = reason or order.reason
-
-# [MIGRATED TO crud/transfers.py]         flush_session(db)
-
-# [MIGRATED TO crud/transfers.py]         _log_action(
-# [MIGRATED TO crud/transfers.py]             db,
-# [MIGRATED TO crud/transfers.py]             action="transfer_cancelled",
-# [MIGRATED TO crud/transfers.py]             entity_type="transfer_order",
-# [MIGRATED TO crud/transfers.py]             entity_id=str(order.id),
-# [MIGRATED TO crud/transfers.py]             performed_by_id=performed_by_id,
-# [MIGRATED TO crud/transfers.py]             details=json.dumps(
-# [MIGRATED TO crud/transfers.py]                 {"status": order.status.value, "reason": reason}),
-# [MIGRATED TO crud/transfers.py]         )
-
-# [MIGRATED TO crud/transfers.py]         db.refresh(order)
-# [MIGRATED TO crud/transfers.py]     order = get_transfer_order(db, order.id)
-# [MIGRATED TO crud/transfers.py]     enqueue_sync_outbox(
-# [MIGRATED TO crud/transfers.py]         db,
-# [MIGRATED TO crud/transfers.py]         entity_type="transfer_order",
-# [MIGRATED TO crud/transfers.py]         entity_id=str(order.id),
-# [MIGRATED TO crud/transfers.py]         operation="UPSERT",
-# [MIGRATED TO crud/transfers.py]         payload=transfer_order_payload(order),
-# [MIGRATED TO crud/transfers.py]         priority=models.SyncOutboxPriority.HIGH,
-# [MIGRATED TO crud/transfers.py]     )
-# [MIGRATED TO crud/transfers.py]     return order
 
 
-# [MIGRATED TO crud/transfers.py] def list_transfer_orders(
-# [MIGRATED TO crud/transfers.py]     db: Session,
-# [MIGRATED TO crud/transfers.py]     *,
-# [MIGRATED TO crud/transfers.py]     store_id: int | None = None,
-# [MIGRATED TO crud/transfers.py]     origin_store_id: int | None = None,
-# [MIGRATED TO crud/transfers.py]     destination_store_id: int | None = None,
-# [MIGRATED TO crud/transfers.py]     status: models.TransferStatus | None = None,
-# [MIGRATED TO crud/transfers.py]     date_from: datetime | None = None,
-# [MIGRATED TO crud/transfers.py]     date_to: datetime | None = None,
+
+
+
+
+
     limit: int | None = 50,
     offset: int = 0,
 ) -> list[models.TransferOrder]:
@@ -14926,238 +13416,32 @@ def list_operations_history(
         .options(
             joinedload(models.Sale.store),
             joinedload(models.Sale.performed_by),
-# [MIGRATED TO crud/pos.py]         )
-# [MIGRATED TO crud/pos.py]         .where(
-# [MIGRATED TO crud/pos.py]             models.Sale.created_at >= start_dt,
-# [MIGRATED TO crud/pos.py]             models.Sale.created_at <= end_dt,
-# [MIGRATED TO crud/pos.py]         )
-# [MIGRATED TO crud/pos.py]     )
-# [MIGRATED TO crud/pos.py]     if store_id is not None:
-# [MIGRATED TO crud/pos.py]         sale_stmt = sale_stmt.where(models.Sale.store_id == store_id)
-# [MIGRATED TO crud/pos.py]     for sale in db.scalars(sale_stmt).unique():
-# [MIGRATED TO crud/pos.py]         if technician_id is not None and sale.performed_by_id != technician_id:
-# [MIGRATED TO crud/pos.py]             continue
-# [MIGRATED TO crud/pos.py]         register_technician(sale.performed_by)
-# [MIGRATED TO crud/pos.py]         records.append(
-# [MIGRATED TO crud/pos.py]             schemas.OperationHistoryEntry(
-# [MIGRATED TO crud/pos.py]                 id=f"sale-{sale.id}",
-# [MIGRATED TO crud/pos.py]                 operation_type=schemas.OperationHistoryType.SALE,
-# [MIGRATED TO crud/pos.py]                 occurred_at=sale.created_at,
-# [MIGRATED TO crud/pos.py]                 store_id=sale.store_id,
-# [MIGRATED TO crud/pos.py]                 store_name=sale.store.name if sale.store else None,
-# [MIGRATED TO crud/pos.py]                 technician_id=sale.performed_by_id,
-# [MIGRATED TO crud/pos.py]                 technician_name=user_display_name(sale.performed_by),
-# [MIGRATED TO crud/pos.py]                 reference=f"VNT-{sale.id}",
-# [MIGRATED TO crud/pos.py]                 description="Venta registrada en POS",
-# [MIGRATED TO crud/pos.py]                 amount=to_decimal(sale.total_amount),
-# [MIGRATED TO crud/pos.py]             )
-# [MIGRATED TO crud/pos.py]         )
-
-# [MIGRATED TO crud/pos.py]     records.sort(key=lambda entry: entry.occurred_at, reverse=True)
-# [MIGRATED TO crud/pos.py]     paginated_records = records[offset:] if offset else records[:]
-# [MIGRATED TO crud/pos.py]     if limit is not None:
-# [MIGRATED TO crud/pos.py]         paginated_records = paginated_records[:limit]
-
-# [MIGRATED TO crud/pos.py]     technician_ids = {
-# [MIGRATED TO crud/pos.py]         entry.technician_id
-# [MIGRATED TO crud/pos.py]         for entry in paginated_records
-# [MIGRATED TO crud/pos.py]         if entry.technician_id is not None and entry.technician_id in technicians
-# [MIGRATED TO crud/pos.py]     }
-# [MIGRATED TO crud/pos.py]     technicians_list = [
-# [MIGRATED TO crud/pos.py]         schemas.OperationHistoryTechnician(
-# [MIGRATED TO crud/pos.py]             id=tech_id, name=technicians[tech_id])
-# [MIGRATED TO crud/pos.py]         for tech_id in sorted(technician_ids, key=lambda ident: technicians[ident].lower())
-# [MIGRATED TO crud/pos.py]     ]
-
-# [MIGRATED TO crud/pos.py]     return schemas.OperationsHistoryResponse(
-# [MIGRATED TO crud/pos.py]         records=paginated_records,
-# [MIGRATED TO crud/pos.py]         technicians=technicians_list,
-# [MIGRATED TO crud/pos.py]     )
 
 
-# [MIGRATED TO crud/pos.py] def list_cash_sessions(
-# [MIGRATED TO crud/pos.py]     db: Session,
-# [MIGRATED TO crud/pos.py]     *,
-# [MIGRATED TO crud/pos.py]     store_id: int,
-# [MIGRATED TO crud/pos.py]     limit: int = 50,
-# [MIGRATED TO crud/pos.py]     offset: int = 0,
-# [MIGRATED TO crud/pos.py] ) -> list[models.CashRegisterSession]:
-# [MIGRATED TO crud/pos.py]     statement = (
-# [MIGRATED TO crud/pos.py]         select(models.CashRegisterSession)
-# [MIGRATED TO crud/pos.py]         .where(models.CashRegisterSession.store_id == store_id)
-# [MIGRATED TO crud/pos.py]         .order_by(models.CashRegisterSession.opened_at.desc())
-# [MIGRATED TO crud/pos.py]         .offset(offset)
-# [MIGRATED TO crud/pos.py]         .limit(limit)
-# [MIGRATED TO crud/pos.py]     )
-# [MIGRATED TO crud/pos.py]     return list(db.scalars(statement).unique())
 
 
-# [MIGRATED TO crud/pos.py] def count_cash_sessions(db: Session, *, store_id: int) -> int:
-# [MIGRATED TO crud/pos.py]     statement = select(func.count()).select_from(models.CashRegisterSession).where(
-# [MIGRATED TO crud/pos.py]         models.CashRegisterSession.store_id == store_id
-# [MIGRATED TO crud/pos.py]     )
-# [MIGRATED TO crud/pos.py]     return int(db.scalar(statement) or 0)
 
 
-# [MIGRATED TO crud/pos.py] def get_cash_session(db: Session, session_id: int) -> models.CashRegisterSession:
-# [MIGRATED TO crud/pos.py]     statement = select(models.CashRegisterSession).where(
-# [MIGRATED TO crud/pos.py]         models.CashRegisterSession.id == session_id)
-# [MIGRATED TO crud/pos.py]     try:
-# [MIGRATED TO crud/pos.py]         return db.scalars(statement).one()
-# [MIGRATED TO crud/pos.py]     except NoResultFound as exc:
-# [MIGRATED TO crud/pos.py]         raise LookupError("cash_session_not_found") from exc
 
 
-# [MIGRATED TO crud/pos.py] def get_open_cash_session(db: Session, *, store_id: int) -> models.CashRegisterSession:
-# [MIGRATED TO crud/pos.py]     statement = (
-# [MIGRATED TO crud/pos.py]         select(models.CashRegisterSession)
-# [MIGRATED TO crud/pos.py]         .where(
-# [MIGRATED TO crud/pos.py]             models.CashRegisterSession.store_id == store_id,
-# [MIGRATED TO crud/pos.py]             models.CashRegisterSession.status == models.CashSessionStatus.ABIERTO,
-# [MIGRATED TO crud/pos.py]         )
-# [MIGRATED TO crud/pos.py]         .order_by(models.CashRegisterSession.opened_at.desc())
-# [MIGRATED TO crud/pos.py]     )
-# [MIGRATED TO crud/pos.py]     session = db.scalars(statement).first()
-# [MIGRATED TO crud/pos.py]     if session is None:
-# [MIGRATED TO crud/pos.py]         raise LookupError("cash_session_not_found")
-# [MIGRATED TO crud/pos.py]     return session
 
 
-# [MIGRATED TO crud/pos.py] # // [PACK34-lookup]
-# [MIGRATED TO crud/pos.py] def get_last_cash_session_for_store(
-# [MIGRATED TO crud/pos.py]     db: Session, *, store_id: int
-# [MIGRATED TO crud/pos.py] ) -> models.CashRegisterSession:
-# [MIGRATED TO crud/pos.py]     statement = (
-# [MIGRATED TO crud/pos.py]         select(models.CashRegisterSession)
-# [MIGRATED TO crud/pos.py]         .where(models.CashRegisterSession.store_id == store_id)
-# [MIGRATED TO crud/pos.py]         .order_by(models.CashRegisterSession.opened_at.desc())
-# [MIGRATED TO crud/pos.py]     )
-# [MIGRATED TO crud/pos.py]     session = db.scalars(statement).first()
-# [MIGRATED TO crud/pos.py]     if session is None:
-# [MIGRATED TO crud/pos.py]         raise LookupError("cash_session_not_found")
-# [MIGRATED TO crud/pos.py]     return session
 
 
-# [MIGRATED TO crud/pos.py] def paginate_cash_sessions(
-# [MIGRATED TO crud/pos.py]     db: Session,
-# [MIGRATED TO crud/pos.py]     *,
-# [MIGRATED TO crud/pos.py]     store_id: int,
-# [MIGRATED TO crud/pos.py]     page: int,
-# [MIGRATED TO crud/pos.py]     size: int,
-# [MIGRATED TO crud/pos.py] ) -> tuple[int, list[models.CashRegisterSession]]:
-# [MIGRATED TO crud/pos.py]     total = count_cash_sessions(db, store_id=store_id)
-# [MIGRATED TO crud/pos.py]     offset = max(page - 1, 0) * size
-# [MIGRATED TO crud/pos.py]     sessions = list_cash_sessions(
-# [MIGRATED TO crud/pos.py]         db, store_id=store_id, limit=size, offset=offset)
-# [MIGRATED TO crud/pos.py]     return total, sessions
 
 
-# [MIGRATED TO crud/pos.py] def open_cash_session(
-# [MIGRATED TO crud/pos.py]     db: Session,
-# [MIGRATED TO crud/pos.py]     payload: schemas.CashSessionOpenRequest,
-# [MIGRATED TO crud/pos.py]     *,
-# [MIGRATED TO crud/pos.py]     opened_by_id: int | None,
-# [MIGRATED TO crud/pos.py]     reason: str | None = None,
-# [MIGRATED TO crud/pos.py] ) -> models.CashRegisterSession:
-# [MIGRATED TO crud/pos.py]     get_store(db, payload.store_id)
-# [MIGRATED TO crud/pos.py]     statement = select(models.CashRegisterSession).where(
-# [MIGRATED TO crud/pos.py]         models.CashRegisterSession.store_id == payload.store_id,
-# [MIGRATED TO crud/pos.py]         models.CashRegisterSession.status == models.CashSessionStatus.ABIERTO,
-# [MIGRATED TO crud/pos.py]     )
-# [MIGRATED TO crud/pos.py]     if db.scalars(statement).first() is not None:
-# [MIGRATED TO crud/pos.py]         raise ValueError("cash_session_already_open")
-
-# [MIGRATED TO crud/pos.py]     opening_amount = to_decimal(payload.opening_amount).quantize(
-# [MIGRATED TO crud/pos.py]         Decimal("0.01"), rounding=ROUND_HALF_UP
-# [MIGRATED TO crud/pos.py]     )
-# [MIGRATED TO crud/pos.py]     session = models.CashRegisterSession(
-# [MIGRATED TO crud/pos.py]         store_id=payload.store_id,
-# [MIGRATED TO crud/pos.py]         status=models.CashSessionStatus.ABIERTO,
-# [MIGRATED TO crud/pos.py]         opening_amount=opening_amount,
-# [MIGRATED TO crud/pos.py]         closing_amount=Decimal("0"),
-# [MIGRATED TO crud/pos.py]         expected_amount=opening_amount,
-# [MIGRATED TO crud/pos.py]         difference_amount=Decimal("0"),
-# [MIGRATED TO crud/pos.py]         payment_breakdown={},
-# [MIGRATED TO crud/pos.py]         notes=payload.notes,
-# [MIGRATED TO crud/pos.py]         opened_by_id=opened_by_id,
-# [MIGRATED TO crud/pos.py]     )
-# [MIGRATED TO crud/pos.py]     with transactional_session(db):
-# [MIGRATED TO crud/pos.py]         db.add(session)
-# [MIGRATED TO crud/pos.py]         flush_session(db)
-# [MIGRATED TO crud/pos.py]         db.refresh(session)
-
-# [MIGRATED TO crud/pos.py]         _log_action(
-# [MIGRATED TO crud/pos.py]             db,
-# [MIGRATED TO crud/pos.py]             action="cash_session_opened",
-# [MIGRATED TO crud/pos.py]             entity_type="cash_session",
-# [MIGRATED TO crud/pos.py]             entity_id=str(session.id),
-# [MIGRATED TO crud/pos.py]             performed_by_id=opened_by_id,
-# [MIGRATED TO crud/pos.py]             details=json.dumps(
-# [MIGRATED TO crud/pos.py]                 {"store_id": session.store_id, "reason": reason}),
-# [MIGRATED TO crud/pos.py]         )
-# [MIGRATED TO crud/pos.py]         flush_session(db)
-# [MIGRATED TO crud/pos.py]         db.refresh(session)
-# [MIGRATED TO crud/pos.py]     return session
 
 
-# [MIGRATED TO crud/pos.py] def _cash_entries_totals(
-# [MIGRATED TO crud/pos.py]     db: Session,
-# [MIGRATED TO crud/pos.py]     *,
-# [MIGRATED TO crud/pos.py]     session_id: int,
-# [MIGRATED TO crud/pos.py] ) -> tuple[Decimal, Decimal]:
-# [MIGRATED TO crud/pos.py]     """Resume los ingresos y egresos registrados en la sesión."""
-
-# [MIGRATED TO crud/pos.py]     entries_stmt = (
-# [MIGRATED TO crud/pos.py]         select(
-# [MIGRATED TO crud/pos.py]             models.CashRegisterEntry.entry_type,
-# [MIGRATED TO crud/pos.py]             func.coalesce(func.sum(models.CashRegisterEntry.amount), 0),
-# [MIGRATED TO crud/pos.py]         )
-# [MIGRATED TO crud/pos.py]         .where(models.CashRegisterEntry.session_id == session_id)
-# [MIGRATED TO crud/pos.py]         .group_by(models.CashRegisterEntry.entry_type)
-# [MIGRATED TO crud/pos.py]     )
-# [MIGRATED TO crud/pos.py]     incomes = Decimal("0")
-# [MIGRATED TO crud/pos.py]     expenses = Decimal("0")
-# [MIGRATED TO crud/pos.py]     for entry_type, total in db.execute(entries_stmt):
-# [MIGRATED TO crud/pos.py]         normalized_total = to_decimal(total).quantize(
-# [MIGRATED TO crud/pos.py]             Decimal("0.01"), rounding=ROUND_HALF_UP
-# [MIGRATED TO crud/pos.py]         )
-# [MIGRATED TO crud/pos.py]         if entry_type == models.CashEntryType.INGRESO:
-# [MIGRATED TO crud/pos.py]             incomes = normalized_total
-# [MIGRATED TO crud/pos.py]         elif entry_type == models.CashEntryType.EGRESO:
-# [MIGRATED TO crud/pos.py]             expenses = normalized_total
-# [MIGRATED TO crud/pos.py]     return incomes, expenses
 
 
-# [MIGRATED TO crud/pos.py] def close_cash_session(
-# [MIGRATED TO crud/pos.py]     db: Session,
-# [MIGRATED TO crud/pos.py]     payload: schemas.CashSessionCloseRequest,
-# [MIGRATED TO crud/pos.py]     *,
-# [MIGRATED TO crud/pos.py]     closed_by_id: int | None,
-# [MIGRATED TO crud/pos.py]     reason: str | None = None,
-# [MIGRATED TO crud/pos.py] ) -> models.CashRegisterSession:
-# [MIGRATED TO crud/pos.py]     session = get_cash_session(db, payload.session_id)
-# [MIGRATED TO crud/pos.py]     if session.status != models.CashSessionStatus.ABIERTO:
-# [MIGRATED TO crud/pos.py]         raise ValueError("cash_session_not_open")
 
-# [MIGRATED TO crud/pos.py]     sales_totals: dict[str, Decimal] = {}
-# [MIGRATED TO crud/pos.py]     totals_stmt = (
-# [MIGRATED TO crud/pos.py]         select(models.Sale.payment_method, func.sum(models.Sale.total_amount))
-# [MIGRATED TO crud/pos.py]         .where(models.Sale.cash_session_id == session.id)
-# [MIGRATED TO crud/pos.py]         .group_by(models.Sale.payment_method)
-# [MIGRATED TO crud/pos.py]     )
-# [MIGRATED TO crud/pos.py]     for method, total in db.execute(totals_stmt):
-# [MIGRATED TO crud/pos.py]         totals_value = to_decimal(total).quantize(
-# [MIGRATED TO crud/pos.py]             Decimal("0.01"), rounding=ROUND_HALF_UP)
-# [MIGRATED TO crud/pos.py]         sales_totals[method.value] = totals_value
 
-# [MIGRATED TO crud/pos.py]     session.closing_amount = to_decimal(payload.closing_amount).quantize(
-# [MIGRATED TO crud/pos.py]         Decimal("0.01"), rounding=ROUND_HALF_UP
-# [MIGRATED TO crud/pos.py]     )
-# [MIGRATED TO crud/pos.py]     session.closed_by_id = closed_by_id
-# [MIGRATED TO crud/pos.py]     session.closed_at = datetime.now(timezone.utc)
-# [MIGRATED TO crud/pos.py]     session.status = models.CashSessionStatus.CERRADO
-# [MIGRATED TO crud/pos.py]     breakdown_snapshot = dict(session.payment_breakdown or {})
-# [MIGRATED TO crud/pos.py]     for key, value in sales_totals.items():
+
+
+
+
+
+
         breakdown_snapshot[key] = float(value)
 
     for method_key, reported_amount in payload.payment_breakdown.items():
@@ -15228,162 +13512,22 @@ def list_operations_history(
         )
         flush_session(db)
         db.refresh(session)
-# [MIGRATED TO crud/pos.py]     return session
 
 
-# [MIGRATED TO crud/pos.py] def record_cash_entry(
-# [MIGRATED TO crud/pos.py]     db: Session,
-# [MIGRATED TO crud/pos.py]     payload: schemas.CashRegisterEntryCreate,
-# [MIGRATED TO crud/pos.py]     *,
-# [MIGRATED TO crud/pos.py]     created_by_id: int | None,
-# [MIGRATED TO crud/pos.py]     reason: str | None = None,
-# [MIGRATED TO crud/pos.py] ) -> models.CashRegisterEntry:
-# [MIGRATED TO crud/pos.py]     session = get_cash_session(db, payload.session_id)
-# [MIGRATED TO crud/pos.py]     if session.status != models.CashSessionStatus.ABIERTO:
-# [MIGRATED TO crud/pos.py]         raise ValueError("cash_session_not_open")
-
-# [MIGRATED TO crud/pos.py]     amount = to_decimal(payload.amount).quantize(
-# [MIGRATED TO crud/pos.py]         Decimal("0.01"), rounding=ROUND_HALF_UP
-# [MIGRATED TO crud/pos.py]     )
-
-# [MIGRATED TO crud/pos.py]     entry = models.CashRegisterEntry(
-# [MIGRATED TO crud/pos.py]         session_id=session.id,
-# [MIGRATED TO crud/pos.py]         entry_type=payload.entry_type,
-# [MIGRATED TO crud/pos.py]         amount=amount,
-# [MIGRATED TO crud/pos.py]         reason=payload.reason,
-# [MIGRATED TO crud/pos.py]         notes=payload.notes,
-# [MIGRATED TO crud/pos.py]         created_by_id=created_by_id,
-# [MIGRATED TO crud/pos.py]     )
-
-# [MIGRATED TO crud/pos.py]     with transactional_session(db):
-# [MIGRATED TO crud/pos.py]         db.add(entry)
-
-# [MIGRATED TO crud/pos.py]         expected_delta = amount if payload.entry_type == models.CashEntryType.INGRESO else -amount
-# [MIGRATED TO crud/pos.py]         session.expected_amount = (
-# [MIGRATED TO crud/pos.py]             session.expected_amount + expected_delta
-# [MIGRATED TO crud/pos.py]         ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-# [MIGRATED TO crud/pos.py]         db.add(session)
-# [MIGRATED TO crud/pos.py]         flush_session(db)
-# [MIGRATED TO crud/pos.py]         db.refresh(entry)
-# [MIGRATED TO crud/pos.py]         db.refresh(session)
-
-# [MIGRATED TO crud/pos.py]         _log_action(
-# [MIGRATED TO crud/pos.py]             db,
-# [MIGRATED TO crud/pos.py]             action="cash_entry_recorded",
-# [MIGRATED TO crud/pos.py]             entity_type="cash_session",
-# [MIGRATED TO crud/pos.py]             entity_id=str(session.id),
-# [MIGRATED TO crud/pos.py]             performed_by_id=created_by_id,
-# [MIGRATED TO crud/pos.py]             details=json.dumps(
-# [MIGRATED TO crud/pos.py]                 {
-# [MIGRATED TO crud/pos.py]                     "entry_type": payload.entry_type,
-# [MIGRATED TO crud/pos.py]                     "amount": float(amount),
-# [MIGRATED TO crud/pos.py]                     "reason": payload.reason,
-# [MIGRATED TO crud/pos.py]                     "notes": payload.notes,
-# [MIGRATED TO crud/pos.py]                     "reason_header": reason,
-# [MIGRATED TO crud/pos.py]                 }
-# [MIGRATED TO crud/pos.py]             ),
-# [MIGRATED TO crud/pos.py]         )
-# [MIGRATED TO crud/pos.py]         flush_session(db)
-# [MIGRATED TO crud/pos.py]         db.refresh(entry)
-# [MIGRATED TO crud/pos.py]     return entry
 
 
-# [MIGRATED TO crud/pos.py] def list_cash_entries(
-# [MIGRATED TO crud/pos.py]     db: Session,
-# [MIGRATED TO crud/pos.py]     *,
-# [MIGRATED TO crud/pos.py]     session_id: int,
-# [MIGRATED TO crud/pos.py] ) -> list[models.CashRegisterEntry]:
-# [MIGRATED TO crud/pos.py]     statement = (
-# [MIGRATED TO crud/pos.py]         select(models.CashRegisterEntry)
-# [MIGRATED TO crud/pos.py]         .where(models.CashRegisterEntry.session_id == session_id)
-# [MIGRATED TO crud/pos.py]         .order_by(models.CashRegisterEntry.created_at.desc())
-# [MIGRATED TO crud/pos.py]     )
-# [MIGRATED TO crud/pos.py]     return list(db.scalars(statement))
 
 
-# [MIGRATED TO crud/pos.py] def get_pos_config(db: Session, store_id: int) -> models.POSConfig:
-# [MIGRATED TO crud/pos.py]     store = get_store(db, store_id)
-# [MIGRATED TO crud/pos.py]     statement = select(models.POSConfig).where(
-# [MIGRATED TO crud/pos.py]         models.POSConfig.store_id == store_id)
-# [MIGRATED TO crud/pos.py]     config = db.scalars(statement).first()
-# [MIGRATED TO crud/pos.py]     if config is None:
-# [MIGRATED TO crud/pos.py]         prefix = store.name[:3].upper() if store.name else "POS"
-# [MIGRATED TO crud/pos.py]         generated_prefix = f"{prefix}-{store_id:03d}"[:12]
-# [MIGRATED TO crud/pos.py]         config = models.POSConfig(
-# [MIGRATED TO crud/pos.py]             store_id=store_id, invoice_prefix=generated_prefix)
-# [MIGRATED TO crud/pos.py]         with transactional_session(db):
-# [MIGRATED TO crud/pos.py]             db.add(config)
-# [MIGRATED TO crud/pos.py]             flush_session(db)
-# [MIGRATED TO crud/pos.py]             db.refresh(config)
-# [MIGRATED TO crud/pos.py]     else:
-# [MIGRATED TO crud/pos.py]         db.refresh(config)
-# [MIGRATED TO crud/pos.py]     normalized_hardware = normalize_hardware_settings(
-# [MIGRATED TO crud/pos.py]         config.hardware_settings if isinstance(
-# [MIGRATED TO crud/pos.py]             config.hardware_settings, dict) else None
-# [MIGRATED TO crud/pos.py]     )
-# [MIGRATED TO crud/pos.py]     if config.hardware_settings != normalized_hardware:
-# [MIGRATED TO crud/pos.py]         with transactional_session(db):
-# [MIGRATED TO crud/pos.py]             config.hardware_settings = normalized_hardware
-# [MIGRATED TO crud/pos.py]             db.add(config)
-# [MIGRATED TO crud/pos.py]             flush_session(db)
-# [MIGRATED TO crud/pos.py]             db.refresh(config)
-# [MIGRATED TO crud/pos.py]     else:
-# [MIGRATED TO crud/pos.py]         config.hardware_settings = normalized_hardware
-# [MIGRATED TO crud/pos.py]     return config
 
 
-# [MIGRATED TO crud/pos.py] def _pos_config_payload(config: models.POSConfig) -> dict[str, Any]:
-# [MIGRATED TO crud/pos.py]     """Serializa la configuración POS para sincronización."""
-# [MIGRATED TO crud/pos.py]     return {
-# [MIGRATED TO crud/pos.py]         "id": config.id,
-# [MIGRATED TO crud/pos.py]         "store_id": config.store_id,
-# [MIGRATED TO crud/pos.py]         "invoice_prefix": config.invoice_prefix,
-# [MIGRATED TO crud/pos.py]         "receipt_header": config.receipt_header,
-# [MIGRATED TO crud/pos.py]         "receipt_footer": config.receipt_footer,
-# [MIGRATED TO crud/pos.py]         "printer_name": config.printer_name,
-# [MIGRATED TO crud/pos.py]         "hardware_settings": config.hardware_settings,
-# [MIGRATED TO crud/pos.py]         "promotions_config": config.promotions_config,
-# [MIGRATED TO crud/pos.py]         "tax_rate": float(config.tax_rate) if config.tax_rate else 0.0,
-# [MIGRATED TO crud/pos.py]         "auto_print": config.auto_print,
-# [MIGRATED TO crud/pos.py]     }
 
 
-# [MIGRATED TO crud/pos.py] def update_pos_config(
-# [MIGRATED TO crud/pos.py]     db: Session,
-# [MIGRATED TO crud/pos.py]     payload: schemas.POSConfigUpdate,
-# [MIGRATED TO crud/pos.py]     *,
-# [MIGRATED TO crud/pos.py]     updated_by_id: int | None,
-# [MIGRATED TO crud/pos.py]     reason: str | None = None,
-# [MIGRATED TO crud/pos.py] ) -> models.POSConfig:
-# [MIGRATED TO crud/pos.py]     config = get_pos_config(db, payload.store_id)
-# [MIGRATED TO crud/pos.py]     with transactional_session(db):
-# [MIGRATED TO crud/pos.py]         config.tax_rate = to_decimal(payload.tax_rate).quantize(
-# [MIGRATED TO crud/pos.py]             Decimal("0.01"), rounding=ROUND_HALF_UP
-# [MIGRATED TO crud/pos.py]         )
-# [MIGRATED TO crud/pos.py]         config.invoice_prefix = payload.invoice_prefix.strip().upper()
-# [MIGRATED TO crud/pos.py]         config.printer_name = payload.printer_name.strip() if payload.printer_name else None
-# [MIGRATED TO crud/pos.py]         config.printer_profile = (
-# [MIGRATED TO crud/pos.py]             payload.printer_profile.strip() if payload.printer_profile else None
-# [MIGRATED TO crud/pos.py]         )
-# [MIGRATED TO crud/pos.py]         config.quick_product_ids = payload.quick_product_ids
-# [MIGRATED TO crud/pos.py]         if payload.hardware_settings is not None:
-# [MIGRATED TO crud/pos.py]             config.hardware_settings = payload.hardware_settings.model_dump()
-# [MIGRATED TO crud/pos.py]         else:
-# [MIGRATED TO crud/pos.py]             config.hardware_settings = normalize_hardware_settings(
-# [MIGRATED TO crud/pos.py]                 config.hardware_settings
-# [MIGRATED TO crud/pos.py]             )
-# [MIGRATED TO crud/pos.py]         # Persistir el tipo de documento por defecto dentro de hardware_settings (no hay columna dedicada)
-# [MIGRATED TO crud/pos.py]         if payload.default_document_type:
-# [MIGRATED TO crud/pos.py]             hw = dict(config.hardware_settings or {})
-# [MIGRATED TO crud/pos.py]             hw["default_document_type"] = payload.default_document_type
-# [MIGRATED TO crud/pos.py]             config.hardware_settings = hw
-# [MIGRATED TO crud/pos.py]         db.add(config)
-# [MIGRATED TO crud/pos.py]         flush_session(db)
-# [MIGRATED TO crud/pos.py]         db.refresh(config)
 
-# [MIGRATED TO crud/pos.py]         _log_action(
-# [MIGRATED TO crud/pos.py]             db,
-# [MIGRATED TO crud/pos.py]             action="pos_config_update",
+
+
+
+
+
             entity_type="store",
             entity_id=str(payload.store_id),
             performed_by_id=updated_by_id,
@@ -15438,362 +13582,26 @@ def update_pos_promotions(
             entity_type="store",
             entity_id=str(payload.store_id),
             performed_by_id=updated_by_id,
-# [MIGRATED TO crud/pos.py]             details=json.dumps({
-# [MIGRATED TO crud/pos.py]                 "reason": reason,
-# [MIGRATED TO crud/pos.py]                 "volume": normalized.feature_flags.volume,
-# [MIGRATED TO crud/pos.py]                 "combos": normalized.feature_flags.combos,
-# [MIGRATED TO crud/pos.py]                 "coupons": normalized.feature_flags.coupons,
-# [MIGRATED TO crud/pos.py]             }),
-# [MIGRATED TO crud/pos.py]         )
-# [MIGRATED TO crud/pos.py]         enqueue_sync_outbox(
-# [MIGRATED TO crud/pos.py]             db,
-# [MIGRATED TO crud/pos.py]             entity_type="pos_config",
-# [MIGRATED TO crud/pos.py]             entity_id=str(payload.store_id),
-# [MIGRATED TO crud/pos.py]             operation="UPSERT",
-# [MIGRATED TO crud/pos.py]             payload=_pos_config_payload(config),
-# [MIGRATED TO crud/pos.py]         )
-# [MIGRATED TO crud/pos.py]     db.refresh(config)
-# [MIGRATED TO crud/pos.py]     return _build_pos_promotions_response(config)
 
 
-# [MIGRATED TO crud/pos.py] # // [PACK34-taxes]
-# [MIGRATED TO crud/pos.py] def list_pos_taxes(db: Session) -> list[schemas.POSTaxInfo]:
-# [MIGRATED TO crud/pos.py]     statement = (
-# [MIGRATED TO crud/pos.py]         select(models.POSConfig.tax_rate,
-# [MIGRATED TO crud/pos.py]                models.POSConfig.store_id, models.Store.name)
-# [MIGRATED TO crud/pos.py]         .join(models.Store, models.Store.id == models.POSConfig.store_id)
-# [MIGRATED TO crud/pos.py]         .order_by(models.POSConfig.tax_rate.desc())
-# [MIGRATED TO crud/pos.py]     )
-# [MIGRATED TO crud/pos.py]     taxes: list[schemas.POSTaxInfo] = []
-# [MIGRATED TO crud/pos.py]     seen_rates: set[str] = set()
-# [MIGRATED TO crud/pos.py]     for tax_rate, store_id, store_name in db.execute(statement):
-# [MIGRATED TO crud/pos.py]         normalized_rate = to_decimal(tax_rate).quantize(
-# [MIGRATED TO crud/pos.py]             Decimal("0.01"), rounding=ROUND_HALF_UP
-# [MIGRATED TO crud/pos.py]         )
-# [MIGRATED TO crud/pos.py]         rate_key = f"{normalized_rate:.2f}"
-# [MIGRATED TO crud/pos.py]         if rate_key in seen_rates:
-# [MIGRATED TO crud/pos.py]             continue
-# [MIGRATED TO crud/pos.py]         seen_rates.add(rate_key)
-# [MIGRATED TO crud/pos.py]         label = store_name or f"Sucursal #{store_id}"
-# [MIGRATED TO crud/pos.py]         taxes.append(
-# [MIGRATED TO crud/pos.py]             schemas.POSTaxInfo(
-# [MIGRATED TO crud/pos.py]                 code=f"POS-{rate_key.replace('.', '')}",
-# [MIGRATED TO crud/pos.py]                 name=f"IVA {rate_key}% ({label})",
-# [MIGRATED TO crud/pos.py]                 rate=normalized_rate,
-# [MIGRATED TO crud/pos.py]             )
-# [MIGRATED TO crud/pos.py]         )
-# [MIGRATED TO crud/pos.py]     if not taxes:
-# [MIGRATED TO crud/pos.py]         taxes.append(
-# [MIGRATED TO crud/pos.py]             schemas.POSTaxInfo(
-# [MIGRATED TO crud/pos.py]                 code="POS-DEFAULT",
-# [MIGRATED TO crud/pos.py]                 name="Impuesto estándar",
-# [MIGRATED TO crud/pos.py]                 rate=Decimal("0"),
-# [MIGRATED TO crud/pos.py]             )
-# [MIGRATED TO crud/pos.py]         )
-# [MIGRATED TO crud/pos.py]     return taxes
 
 
-# [MIGRATED TO crud/pos.py] def register_pos_config_access(
-# [MIGRATED TO crud/pos.py]     db: Session,
-# [MIGRATED TO crud/pos.py]     *,
-# [MIGRATED TO crud/pos.py]     store_id: int,
-# [MIGRATED TO crud/pos.py]     performed_by_id: int | None,
-# [MIGRATED TO crud/pos.py]     reason: str,
-# [MIGRATED TO crud/pos.py] ) -> None:
-# [MIGRATED TO crud/pos.py]     details = json.dumps({"store_id": store_id, "reason": reason.strip()})
-# [MIGRATED TO crud/pos.py]     _log_action(
-# [MIGRATED TO crud/pos.py]         db,
-# [MIGRATED TO crud/pos.py]         action="pos_config_viewed",
-# [MIGRATED TO crud/pos.py]         entity_type="store",
-# [MIGRATED TO crud/pos.py]         entity_id=str(store_id),
-# [MIGRATED TO crud/pos.py]         performed_by_id=performed_by_id,
-# [MIGRATED TO crud/pos.py]         details=details,
-# [MIGRATED TO crud/pos.py]     )
 
 
-# [MIGRATED TO crud/pos.py] def save_pos_draft(
-# [MIGRATED TO crud/pos.py]     db: Session,
-# [MIGRATED TO crud/pos.py]     payload: schemas.POSSaleRequest,
-# [MIGRATED TO crud/pos.py]     *,
-# [MIGRATED TO crud/pos.py]     saved_by_id: int | None,
-# [MIGRATED TO crud/pos.py]     reason: str | None = None,
-# [MIGRATED TO crud/pos.py] ) -> models.POSDraftSale:
-# [MIGRATED TO crud/pos.py]     get_store(db, payload.store_id)
-# [MIGRATED TO crud/pos.py]     draft: models.POSDraftSale
-# [MIGRATED TO crud/pos.py]     if payload.draft_id:
-# [MIGRATED TO crud/pos.py]         statement = select(models.POSDraftSale).where(
-# [MIGRATED TO crud/pos.py]             models.POSDraftSale.id == payload.draft_id)
-# [MIGRATED TO crud/pos.py]         draft = db.scalars(statement).first()
-# [MIGRATED TO crud/pos.py]         if draft is None:
-# [MIGRATED TO crud/pos.py]             raise LookupError("pos_draft_not_found")
-# [MIGRATED TO crud/pos.py]         draft.store_id = payload.store_id
-# [MIGRATED TO crud/pos.py]     else:
-# [MIGRATED TO crud/pos.py]         draft = models.POSDraftSale(store_id=payload.store_id)
-# [MIGRATED TO crud/pos.py]         db.add(draft)
-
-# [MIGRATED TO crud/pos.py]     with transactional_session(db):
-# [MIGRATED TO crud/pos.py]         serialized = payload.model_dump(
-# [MIGRATED TO crud/pos.py]             mode="json",
-# [MIGRATED TO crud/pos.py]             exclude_none=True,
-# [MIGRATED TO crud/pos.py]             exclude={"confirm", "save_as_draft"},
-# [MIGRATED TO crud/pos.py]         )
-# [MIGRATED TO crud/pos.py]         draft.payload = serialized
-# [MIGRATED TO crud/pos.py]         db.add(draft)
-# [MIGRATED TO crud/pos.py]         flush_session(db)
-# [MIGRATED TO crud/pos.py]         db.refresh(draft)
-
-# [MIGRATED TO crud/pos.py]         details = {"store_id": payload.store_id}
-# [MIGRATED TO crud/pos.py]         if reason:
-# [MIGRATED TO crud/pos.py]             details["reason"] = reason
-# [MIGRATED TO crud/pos.py]         _log_action(
-# [MIGRATED TO crud/pos.py]             db,
-# [MIGRATED TO crud/pos.py]             action="pos_draft_saved",
-# [MIGRATED TO crud/pos.py]             entity_type="pos_draft",
-# [MIGRATED TO crud/pos.py]             entity_id=str(draft.id),
-# [MIGRATED TO crud/pos.py]             performed_by_id=saved_by_id,
-# [MIGRATED TO crud/pos.py]             details=json.dumps(details),
-# [MIGRATED TO crud/pos.py]         )
-# [MIGRATED TO crud/pos.py]         flush_session(db)
-# [MIGRATED TO crud/pos.py]         db.refresh(draft)
-# [MIGRATED TO crud/pos.py]         enqueue_sync_outbox(
-# [MIGRATED TO crud/pos.py]             db,
-# [MIGRATED TO crud/pos.py]             entity_type="pos_draft",
-# [MIGRATED TO crud/pos.py]             entity_id=str(draft.id),
-# [MIGRATED TO crud/pos.py]             operation="UPSERT",
-# [MIGRATED TO crud/pos.py]             payload=_pos_draft_payload(draft),
-# [MIGRATED TO crud/pos.py]         )
-# [MIGRATED TO crud/pos.py]     return draft
 
 
-# [MIGRATED TO crud/pos.py] def delete_pos_draft(db: Session, draft_id: int, *, removed_by_id: int | None = None) -> None:
-# [MIGRATED TO crud/pos.py]     statement = select(models.POSDraftSale).where(
-# [MIGRATED TO crud/pos.py]         models.POSDraftSale.id == draft_id)
-# [MIGRATED TO crud/pos.py]     draft = db.scalars(statement).first()
-# [MIGRATED TO crud/pos.py]     if draft is None:
-# [MIGRATED TO crud/pos.py]         raise LookupError("pos_draft_not_found")
-# [MIGRATED TO crud/pos.py]     store_id = draft.store_id
-# [MIGRATED TO crud/pos.py]     with transactional_session(db):
-# [MIGRATED TO crud/pos.py]         db.delete(draft)
-# [MIGRATED TO crud/pos.py]         flush_session(db)
-# [MIGRATED TO crud/pos.py]         _log_action(
-# [MIGRATED TO crud/pos.py]             db,
-# [MIGRATED TO crud/pos.py]             action="pos_draft_removed",
-# [MIGRATED TO crud/pos.py]             entity_type="pos_draft",
-# [MIGRATED TO crud/pos.py]             entity_id=str(draft_id),
-# [MIGRATED TO crud/pos.py]             performed_by_id=removed_by_id,
-# [MIGRATED TO crud/pos.py]             details=json.dumps({"store_id": store_id}),
-# [MIGRATED TO crud/pos.py]         )
-# [MIGRATED TO crud/pos.py]         flush_session(db)
-# [MIGRATED TO crud/pos.py]         enqueue_sync_outbox(
-# [MIGRATED TO crud/pos.py]             db,
-# [MIGRATED TO crud/pos.py]             entity_type="pos_draft",
-# [MIGRATED TO crud/pos.py]             entity_id=str(draft_id),
-# [MIGRATED TO crud/pos.py]             operation="DELETE",
-# [MIGRATED TO crud/pos.py]             payload={"id": draft_id, "store_id": store_id},
-# [MIGRATED TO crud/pos.py]         )
 
 
-# [MIGRATED TO crud/pos.py] def register_pos_sale(
-# [MIGRATED TO crud/pos.py]     db: Session,
-# [MIGRATED TO crud/pos.py]     payload: schemas.POSSaleRequest,
-# [MIGRATED TO crud/pos.py]     *,
-# [MIGRATED TO crud/pos.py]     performed_by_id: int,
-# [MIGRATED TO crud/pos.py]     reason: str | None = None,
-# [MIGRATED TO crud/pos.py] ) -> tuple[models.Sale, list[str], dict[str, object] | None, schemas.POSLoyaltySaleSummary | None]:
-# [MIGRATED TO crud/pos.py]     if not payload.confirm:
-# [MIGRATED TO crud/pos.py]         raise ValueError("pos_confirmation_required")
 
-# [MIGRATED TO crud/pos.py]     config = get_pos_config(db, payload.store_id)
-# [MIGRATED TO crud/pos.py]     sale_payload = schemas.SaleCreate(
-# [MIGRATED TO crud/pos.py]         store_id=payload.store_id,
-# [MIGRATED TO crud/pos.py]         customer_id=payload.customer_id,
-# [MIGRATED TO crud/pos.py]         customer_name=payload.customer_name,
-# [MIGRATED TO crud/pos.py]         payment_method=payload.payment_method,
-# [MIGRATED TO crud/pos.py]         discount_percent=payload.discount_percent,
-# [MIGRATED TO crud/pos.py]         notes=payload.notes,
-# [MIGRATED TO crud/pos.py]         items=[
-# [MIGRATED TO crud/pos.py]             schemas.SaleItemCreate(
-# [MIGRATED TO crud/pos.py]                 device_id=item.device_id,
-# [MIGRATED TO crud/pos.py]                 quantity=item.quantity,
-# [MIGRATED TO crud/pos.py]                 discount_percent=item.discount_percent,
-# [MIGRATED TO crud/pos.py]                 unit_price_override=getattr(
-# [MIGRATED TO crud/pos.py]                     item, "unit_price_override", None),  # // [PACK34-pricing]
-# [MIGRATED TO crud/pos.py]             )
-# [MIGRATED TO crud/pos.py]             for item in payload.items
-# [MIGRATED TO crud/pos.py]         ],
-# [MIGRATED TO crud/pos.py]     )
-# [MIGRATED TO crud/pos.py]     tax_value = config.tax_rate if payload.apply_taxes else Decimal("0")
-# [MIGRATED TO crud/pos.py]     sale = create_sale(
-# [MIGRATED TO crud/pos.py]         db,
-# [MIGRATED TO crud/pos.py]         sale_payload,
-# [MIGRATED TO crud/pos.py]         performed_by_id=performed_by_id,
-# [MIGRATED TO crud/pos.py]         tax_rate=tax_value,
-# [MIGRATED TO crud/pos.py]         reason=reason,
-# [MIGRATED TO crud/pos.py]     )
-# [MIGRATED TO crud/pos.py]     # Reasignar la bitácora de creación a entidad POS para evitar duplicidad con 'sale'
-# [MIGRATED TO crud/pos.py]     with transactional_session(db):
-# [MIGRATED TO crud/pos.py]         audit_stmt = (
-# [MIGRATED TO crud/pos.py]             select(models.AuditLog)
-# [MIGRATED TO crud/pos.py]             .where(
-# [MIGRATED TO crud/pos.py]                 models.AuditLog.action == "sale_registered",
-# [MIGRATED TO crud/pos.py]                 models.AuditLog.entity_type == "sale",
-# [MIGRATED TO crud/pos.py]                 models.AuditLog.entity_id == str(sale.id),
-# [MIGRATED TO crud/pos.py]             )
-# [MIGRATED TO crud/pos.py]             .order_by(models.AuditLog.created_at.desc())
-# [MIGRATED TO crud/pos.py]         )
-# [MIGRATED TO crud/pos.py]         audit_entry = db.scalars(audit_stmt).first()
-# [MIGRATED TO crud/pos.py]         if audit_entry is not None:
-# [MIGRATED TO crud/pos.py]             audit_entry.entity_type = "pos_sale"
-# [MIGRATED TO crud/pos.py]             db.add(audit_entry)
-# [MIGRATED TO crud/pos.py]             flush_session(db)
-# [MIGRATED TO crud/pos.py]     # Asignar tipo y número de documento para POS
-# [MIGRATED TO crud/pos.py]     hw = config.hardware_settings if isinstance(
-# [MIGRATED TO crud/pos.py]         config.hardware_settings, dict) else {}
-# [MIGRATED TO crud/pos.py]     default_doc = str(hw.get("default_document_type")
-# [MIGRATED TO crud/pos.py]                       or "TICKET").strip().upper() or "TICKET"
-# [MIGRATED TO crud/pos.py]     try:
-# [MIGRATED TO crud/pos.py]         doc_enum = models.POSDocumentType(default_doc)
-# [MIGRATED TO crud/pos.py]     except ValueError:
-# [MIGRATED TO crud/pos.py]         doc_enum = models.POSDocumentType.TICKET
-# [MIGRATED TO crud/pos.py]     document_number = f"{config.invoice_prefix}-{sale.id:06d}"
-# [MIGRATED TO crud/pos.py]     with transactional_session(db):
-# [MIGRATED TO crud/pos.py]         sale.document_type = doc_enum
-# [MIGRATED TO crud/pos.py]         sale.document_number = document_number
-# [MIGRATED TO crud/pos.py]         db.add(sale)
-# [MIGRATED TO crud/pos.py]         flush_session(db)
 
-# [MIGRATED TO crud/pos.py]     warnings: list[str] = []
-# [MIGRATED TO crud/pos.py]     loyalty_amount = Decimal("0")
-# [MIGRATED TO crud/pos.py]     if payload.payments:
-# [MIGRATED TO crud/pos.py]         for payment in payload.payments:
-# [MIGRATED TO crud/pos.py]             if payment.method == models.PaymentMethod.PUNTOS:
-# [MIGRATED TO crud/pos.py]                 loyalty_amount += to_decimal(payment.amount)
-# [MIGRATED TO crud/pos.py]     elif payload.payment_breakdown:
-# [MIGRATED TO crud/pos.py]         puntos_key = models.PaymentMethod.PUNTOS.value
-# [MIGRATED TO crud/pos.py]         if puntos_key in payload.payment_breakdown:
-# [MIGRATED TO crud/pos.py]             loyalty_amount = to_decimal(payload.payment_breakdown[puntos_key])
-# [MIGRATED TO crud/pos.py]     loyalty_amount = quantize_currency(loyalty_amount)
-# [MIGRATED TO crud/pos.py]     loyalty_summary: schemas.POSLoyaltySaleSummary | None = None
-# [MIGRATED TO crud/pos.py]     for item in payload.items:
-# [MIGRATED TO crud/pos.py]         device = get_device(db, payload.store_id, item.device_id)
-# [MIGRATED TO crud/pos.py]         if device.quantity <= 0:
-# [MIGRATED TO crud/pos.py]             warnings.append(
-# [MIGRATED TO crud/pos.py]                 f"{device.sku} sin existencias en la sucursal"
-# [MIGRATED TO crud/pos.py]             )
-# [MIGRATED TO crud/pos.py]         elif device.quantity <= 2:
-# [MIGRATED TO crud/pos.py]             warnings.append(
-# [MIGRATED TO crud/pos.py]                 f"Stock bajo de {device.sku}: quedan {device.quantity} unidades"
-# [MIGRATED TO crud/pos.py]             )
 
-# [MIGRATED TO crud/pos.py]     if payload.draft_id:
-# [MIGRATED TO crud/pos.py]         try:
-# [MIGRATED TO crud/pos.py]             delete_pos_draft(db, payload.draft_id,
-# [MIGRATED TO crud/pos.py]                              removed_by_id=performed_by_id)
-# [MIGRATED TO crud/pos.py]         except LookupError:
-# [MIGRATED TO crud/pos.py]             logger.debug(
-# [MIGRATED TO crud/pos.py]                 f"Borrador POS {payload.draft_id} no encontrado al confirmar la venta."
-# [MIGRATED TO crud/pos.py]             )
 
-# [MIGRATED TO crud/pos.py]     store_credit_redemptions: list[models.StoreCreditRedemption] = []
 
-# [MIGRATED TO crud/pos.py]     with transactional_session(db):
-# [MIGRATED TO crud/pos.py]         if payload.cash_session_id:
-# [MIGRATED TO crud/pos.py]             session = get_cash_session(db, payload.cash_session_id)
-# [MIGRATED TO crud/pos.py]             if session.status != models.CashSessionStatus.ABIERTO:
-# [MIGRATED TO crud/pos.py]                 raise ValueError("cash_session_not_open")
-# [MIGRATED TO crud/pos.py]             sale.cash_session_id = session.id
-# [MIGRATED TO crud/pos.py]             db.add(sale)
-# [MIGRATED TO crud/pos.py]             flush_session(db)
-# [MIGRATED TO crud/pos.py]             if payload.payments:
-# [MIGRATED TO crud/pos.py]                 breakdown = dict(session.payment_breakdown or {})
-# [MIGRATED TO crud/pos.py]                 for payment in payload.payments:
-# [MIGRATED TO crud/pos.py]                     try:
-# [MIGRATED TO crud/pos.py]                         total_amount = Decimal(str(payment.amount))
-# [MIGRATED TO crud/pos.py]                     except (TypeError, ValueError):
-# [MIGRATED TO crud/pos.py]                         continue
-# [MIGRATED TO crud/pos.py]                     tip_value = Decimal("0")
-# [MIGRATED TO crud/pos.py]                     if getattr(payment, "tip_amount", None) is not None:
-# [MIGRATED TO crud/pos.py]                         tip_value = Decimal(str(payment.tip_amount))
-# [MIGRATED TO crud/pos.py]                         tip_key = f"propina_{payment.method.value}"
-# [MIGRATED TO crud/pos.py]                         breakdown[tip_key] = float(
-# [MIGRATED TO crud/pos.py]                             Decimal(str(breakdown.get(tip_key, 0))) + tip_value
-# [MIGRATED TO crud/pos.py]                         )
-# [MIGRATED TO crud/pos.py]                     collected_key = f"cobrado_{payment.method.value}"
-# [MIGRATED TO crud/pos.py]                     breakdown[collected_key] = float(
-# [MIGRATED TO crud/pos.py]                         Decimal(str(breakdown.get(collected_key, 0)))
-# [MIGRATED TO crud/pos.py]                         + total_amount
-# [MIGRATED TO crud/pos.py]                         + tip_value
-# [MIGRATED TO crud/pos.py]                     )
-# [MIGRATED TO crud/pos.py]                 session.payment_breakdown = breakdown
-# [MIGRATED TO crud/pos.py]                 db.add(session)
-# [MIGRATED TO crud/pos.py]                 flush_session(db)
-# [MIGRATED TO crud/pos.py]             elif payload.payment_breakdown:
-# [MIGRATED TO crud/pos.py]                 breakdown = dict(session.payment_breakdown or {})
-# [MIGRATED TO crud/pos.py]                 for method_key, reported_amount in payload.payment_breakdown.items():
-# [MIGRATED TO crud/pos.py]                     try:
-# [MIGRATED TO crud/pos.py]                         method_enum = models.PaymentMethod(method_key)
-# [MIGRATED TO crud/pos.py]                     except ValueError:
-# [MIGRATED TO crud/pos.py]                         continue
-# [MIGRATED TO crud/pos.py]                     total_amount = to_decimal(reported_amount).quantize(
-# [MIGRATED TO crud/pos.py]                         Decimal("0.01"), rounding=ROUND_HALF_UP
-# [MIGRATED TO crud/pos.py]                     )
-# [MIGRATED TO crud/pos.py]                     if total_amount <= Decimal("0"):
-# [MIGRATED TO crud/pos.py]                         continue
-# [MIGRATED TO crud/pos.py]                     collected_key = f"cobrado_{method_enum.value}"
-# [MIGRATED TO crud/pos.py]                     breakdown[collected_key] = float(
-# [MIGRATED TO crud/pos.py]                         Decimal(str(breakdown.get(collected_key, 0)))
-# [MIGRATED TO crud/pos.py]                         + total_amount
-# [MIGRATED TO crud/pos.py]                     )
-# [MIGRATED TO crud/pos.py]                 session.payment_breakdown = breakdown
-# [MIGRATED TO crud/pos.py]                 db.add(session)
-# [MIGRATED TO crud/pos.py]                 flush_session(db)
-# [MIGRATED TO crud/pos.py]         db.refresh(sale)
 
-# [MIGRATED TO crud/pos.py]     if payload.payment_breakdown:
-# [MIGRATED TO crud/pos.py]         store_credit_key = models.PaymentMethod.NOTA_CREDITO.value
-# [MIGRATED TO crud/pos.py]         breakdown_value = payload.payment_breakdown.get(store_credit_key)
-# [MIGRATED TO crud/pos.py]         if breakdown_value is not None:
-# [MIGRATED TO crud/pos.py]             store_credit_amount = to_decimal(breakdown_value).quantize(
-# [MIGRATED TO crud/pos.py]                 Decimal("0.01"), rounding=ROUND_HALF_UP
-# [MIGRATED TO crud/pos.py]             )
-# [MIGRATED TO crud/pos.py]             if store_credit_amount > Decimal("0"):
-# [MIGRATED TO crud/pos.py]                 if not sale.customer_id:
-# [MIGRATED TO crud/pos.py]                     raise ValueError("store_credit_requires_customer")
-# [MIGRATED TO crud/pos.py]                 redemptions = redeem_store_credit_for_customer(
-# [MIGRATED TO crud/pos.py]                     db,
-# [MIGRATED TO crud/pos.py]                     customer_id=sale.customer_id,
-# [MIGRATED TO crud/pos.py]                     amount=store_credit_amount,
-# [MIGRATED TO crud/pos.py]                     sale_id=sale.id,
-# [MIGRATED TO crud/pos.py]                     notes=payload.notes,
-# [MIGRATED TO crud/pos.py]                     performed_by_id=performed_by_id,
-# [MIGRATED TO crud/pos.py]                     reason=reason,
-# [MIGRATED TO crud/pos.py]                 )
-# [MIGRATED TO crud/pos.py]                 store_credit_redemptions.extend(redemptions)
-# [MIGRATED TO crud/pos.py]                 warnings.append(
-# [MIGRATED TO crud/pos.py]                     f"Se aplicó nota de crédito por ${format_currency(store_credit_amount)}"
-# [MIGRATED TO crud/pos.py]                 )
 
-# [MIGRATED TO crud/pos.py]     loyalty_summary = apply_loyalty_for_sale(
-# [MIGRATED TO crud/pos.py]         db,
-# [MIGRATED TO crud/pos.py]         sale,
-# [MIGRATED TO crud/pos.py]         points_payment_amount=loyalty_amount,
-# [MIGRATED TO crud/pos.py]         performed_by_id=performed_by_id,
-# [MIGRATED TO crud/pos.py]         reason=reason,
-# [MIGRATED TO crud/pos.py]     )
 
-# [MIGRATED TO crud/pos.py]     payments_applied_total = Decimal("0")
-# [MIGRATED TO crud/pos.py]     payment_outcomes: list[CustomerPaymentOutcome] = []
-# [MIGRATED TO crud/pos.py]     if (
-# [MIGRATED TO crud/pos.py]         payload.payments
-# [MIGRATED TO crud/pos.py]         and sale.customer_id
-# [MIGRATED TO crud/pos.py]         and sale.payment_method == models.PaymentMethod.CREDITO
-# [MIGRATED TO crud/pos.py]     ):
-# [MIGRATED TO crud/pos.py]         for payment in payload.payments:
-# [MIGRATED TO crud/pos.py]             payment_amount = to_decimal(payment.amount).quantize(
-# [MIGRATED TO crud/pos.py]                 Decimal("0.01"), rounding=ROUND_HALF_UP
-# [MIGRATED TO crud/pos.py]             )
-# [MIGRATED TO crud/pos.py]             if payment_amount <= Decimal("0"):
-# [MIGRATED TO crud/pos.py]                 continue
+
+
             method_value = (
                 payment.method.value
                 if isinstance(payment.method, models.PaymentMethod)
@@ -16186,337 +13994,47 @@ def list_import_validation_details(
             models.ImportValidation.corregido.is_(corregido))
     if offset:
         statement = statement.offset(offset)
-# [MIGRATED TO crud/invoicing.py]     if limit is not None:
-# [MIGRATED TO crud/invoicing.py]         statement = statement.limit(limit)
-# [MIGRATED TO crud/invoicing.py]     return list(db.scalars(statement))
 
 
-# [MIGRATED TO crud/invoicing.py] def mark_import_validation_corrected(
-# [MIGRATED TO crud/invoicing.py]     db: Session, validation_id: int, *, corrected: bool = True
-# [MIGRATED TO crud/invoicing.py] ) -> models.ImportValidation:
-# [MIGRATED TO crud/invoicing.py]     validation = db.get(models.ImportValidation, validation_id)
-# [MIGRATED TO crud/invoicing.py]     if validation is None:
-# [MIGRATED TO crud/invoicing.py]         raise LookupError("validation_not_found")
-# [MIGRATED TO crud/invoicing.py]     with transactional_session(db):
-# [MIGRATED TO crud/invoicing.py]         validation.corregido = corrected
-# [MIGRATED TO crud/invoicing.py]         validation.fecha = datetime.now(timezone.utc)
-# [MIGRATED TO crud/invoicing.py]         db.add(validation)
-# [MIGRATED TO crud/invoicing.py]         flush_session(db)
-# [MIGRATED TO crud/invoicing.py]         db.refresh(validation)
-# [MIGRATED TO crud/invoicing.py]     return validation
 
 
-# [MIGRATED TO crud/invoicing.py] def get_import_validation_report(db: Session) -> schemas.ImportValidationSummary:
-# [MIGRATED TO crud/invoicing.py]     total_errors = db.scalar(
-# [MIGRATED TO crud/invoicing.py]         select(func.count()).where(
-# [MIGRATED TO crud/invoicing.py]             models.ImportValidation.severidad == "error",
-# [MIGRATED TO crud/invoicing.py]             models.ImportValidation.corregido.is_(False),
-# [MIGRATED TO crud/invoicing.py]         )
-# [MIGRATED TO crud/invoicing.py]     )
-# [MIGRATED TO crud/invoicing.py]     total_warnings = db.scalar(
-# [MIGRATED TO crud/invoicing.py]         select(func.count()).where(
-# [MIGRATED TO crud/invoicing.py]             models.ImportValidation.severidad == "advertencia",
-# [MIGRATED TO crud/invoicing.py]             models.ImportValidation.corregido.is_(False),
-# [MIGRATED TO crud/invoicing.py]         )
-# [MIGRATED TO crud/invoicing.py]     )
-# [MIGRATED TO crud/invoicing.py]     last_import = db.scalar(
-# [MIGRATED TO crud/invoicing.py]         select(models.InventoryImportTemp)
-# [MIGRATED TO crud/invoicing.py]         .order_by(models.InventoryImportTemp.fecha.desc())
-# [MIGRATED TO crud/invoicing.py]         .limit(1)
-# [MIGRATED TO crud/invoicing.py]     )
-# [MIGRATED TO crud/invoicing.py]     registros_revisados = last_import.total_registros if last_import else 0
-# [MIGRATED TO crud/invoicing.py]     duration = float(
-# [MIGRATED TO crud/invoicing.py]         last_import.duracion_segundos) if last_import and last_import.duracion_segundos is not None else None
     campos_faltantes: set[str] = set()
-# [MIGRATED TO crud/invoicing.py]     if last_import and last_import.columnas_detectadas:
-# [MIGRATED TO crud/invoicing.py]         for canonical, header in last_import.columnas_detectadas.items():
-# [MIGRATED TO crud/invoicing.py]             if header is None:
-# [MIGRATED TO crud/invoicing.py]                 campos_faltantes.add(canonical)
-# [MIGRATED TO crud/invoicing.py]     structure_statements = db.scalars(
-# [MIGRATED TO crud/invoicing.py]         select(models.ImportValidation.descripcion).where(
-# [MIGRATED TO crud/invoicing.py]             models.ImportValidation.tipo == "estructura",
-# [MIGRATED TO crud/invoicing.py]             models.ImportValidation.descripcion.ilike("Columna faltante:%"),
-# [MIGRATED TO crud/invoicing.py]         )
-# [MIGRATED TO crud/invoicing.py]     )
-# [MIGRATED TO crud/invoicing.py]     for description in structure_statements:
-# [MIGRATED TO crud/invoicing.py]         try:
-# [MIGRATED TO crud/invoicing.py]             _, column_name = description.split(":", 1)
-# [MIGRATED TO crud/invoicing.py]             column = column_name.strip()
-# [MIGRATED TO crud/invoicing.py]             if column:
-# [MIGRATED TO crud/invoicing.py]                 campos_faltantes.add(column)
-# [MIGRATED TO crud/invoicing.py]         except ValueError:
-# [MIGRATED TO crud/invoicing.py]             continue
-# [MIGRATED TO crud/invoicing.py]     return schemas.ImportValidationSummary(
-# [MIGRATED TO crud/invoicing.py]         registros_revisados=registros_revisados,
-# [MIGRATED TO crud/invoicing.py]         advertencias=int(total_warnings or 0),
-# [MIGRATED TO crud/invoicing.py]         errores=int(total_errors or 0),
-# [MIGRATED TO crud/invoicing.py]         campos_faltantes=sorted(campos_faltantes),
-# [MIGRATED TO crud/invoicing.py]         tiempo_total=duration,
-# [MIGRATED TO crud/invoicing.py]     )
 
 
 def create_dte_authorization(
-# [MIGRATED TO crud/invoicing.py]     db: Session,
-# [MIGRATED TO crud/invoicing.py]     payload: schemas.DTEAuthorizationCreate,
-# [MIGRATED TO crud/invoicing.py] ) -> models.DTEAuthorization:
-# [MIGRATED TO crud/invoicing.py]     document_type = payload.document_type.strip().upper()
-# [MIGRATED TO crud/invoicing.py]     serie = payload.serie.strip().upper()
-# [MIGRATED TO crud/invoicing.py]     store_id = payload.store_id
 
-# [MIGRATED TO crud/invoicing.py]     statement = select(models.DTEAuthorization).where(
-# [MIGRATED TO crud/invoicing.py]         func.upper(models.DTEAuthorization.document_type) == document_type,
-# [MIGRATED TO crud/invoicing.py]         func.upper(models.DTEAuthorization.serie) == serie,
-# [MIGRATED TO crud/invoicing.py]         models.DTEAuthorization.range_start <= payload.range_end,
-# [MIGRATED TO crud/invoicing.py]         models.DTEAuthorization.range_end >= payload.range_start,
-# [MIGRATED TO crud/invoicing.py]     )
-# [MIGRATED TO crud/invoicing.py]     if store_id is None:
-# [MIGRATED TO crud/invoicing.py]         statement = statement.where(models.DTEAuthorization.store_id.is_(None))
-# [MIGRATED TO crud/invoicing.py]     else:
-# [MIGRATED TO crud/invoicing.py]         statement = statement.where(
-# [MIGRATED TO crud/invoicing.py]             models.DTEAuthorization.store_id == store_id)
 
-# [MIGRATED TO crud/invoicing.py]     conflict = db.scalars(statement).first()
-# [MIGRATED TO crud/invoicing.py]     if conflict:
-# [MIGRATED TO crud/invoicing.py]         raise ValueError("dte_authorization_conflict")
 
-# [MIGRATED TO crud/invoicing.py]     authorization = models.DTEAuthorization(
-# [MIGRATED TO crud/invoicing.py]         store_id=store_id,
-# [MIGRATED TO crud/invoicing.py]         document_type=document_type,
         serie=serie,
-# [MIGRATED TO crud/invoicing.py]         range_start=payload.range_start,
-# [MIGRATED TO crud/invoicing.py]         range_end=payload.range_end,
-# [MIGRATED TO crud/invoicing.py]         current_number=payload.range_start,
-# [MIGRATED TO crud/invoicing.py]         cai=payload.cai,
-# [MIGRATED TO crud/invoicing.py]         expiration_date=payload.expiration_date,
-# [MIGRATED TO crud/invoicing.py]         active=payload.active,
-# [MIGRATED TO crud/invoicing.py]         notes=payload.notes,
-# [MIGRATED TO crud/invoicing.py]     )
-# [MIGRATED TO crud/invoicing.py]     db.add(authorization)
-# [MIGRATED TO crud/invoicing.py]     db.flush()
-# [MIGRATED TO crud/invoicing.py]     db.refresh(authorization)
-# [MIGRATED TO crud/invoicing.py]     return authorization
 
 
-# [MIGRATED TO crud/invoicing.py] def list_dte_authorizations(
-# [MIGRATED TO crud/invoicing.py]     db: Session,
     *,
-# [MIGRATED TO crud/invoicing.py]     store_id: int | None = None,
-# [MIGRATED TO crud/invoicing.py]     document_type: str | None = None,
-# [MIGRATED TO crud/invoicing.py]     active: bool | None = None,
-# [MIGRATED TO crud/invoicing.py] ) -> list[models.DTEAuthorization]:
-# [MIGRATED TO crud/invoicing.py]     statement = (
-# [MIGRATED TO crud/invoicing.py]         select(models.DTEAuthorization)
-# [MIGRATED TO crud/invoicing.py]         .order_by(models.DTEAuthorization.created_at.desc())
-# [MIGRATED TO crud/invoicing.py]     )
-# [MIGRATED TO crud/invoicing.py]     if store_id is not None:
-# [MIGRATED TO crud/invoicing.py]         statement = statement.where(
-# [MIGRATED TO crud/invoicing.py]             or_(
-# [MIGRATED TO crud/invoicing.py]                 models.DTEAuthorization.store_id == store_id,
-# [MIGRATED TO crud/invoicing.py]                 models.DTEAuthorization.store_id.is_(None),
-# [MIGRATED TO crud/invoicing.py]             )
-# [MIGRATED TO crud/invoicing.py]         )
-# [MIGRATED TO crud/invoicing.py]     if document_type:
-# [MIGRATED TO crud/invoicing.py]         statement = statement.where(
-# [MIGRATED TO crud/invoicing.py]             func.upper(models.DTEAuthorization.document_type)
-# [MIGRATED TO crud/invoicing.py]             == document_type.strip().upper()
-# [MIGRATED TO crud/invoicing.py]         )
-# [MIGRATED TO crud/invoicing.py]     if active is not None:
-# [MIGRATED TO crud/invoicing.py]         statement = statement.where(models.DTEAuthorization.active.is_(active))
-# [MIGRATED TO crud/invoicing.py]     return list(db.scalars(statement))
 
 
-# [MIGRATED TO crud/invoicing.py] def get_dte_authorization(db: Session, authorization_id: int) -> models.DTEAuthorization:
-# [MIGRATED TO crud/invoicing.py]     authorization = db.get(models.DTEAuthorization, authorization_id)
-# [MIGRATED TO crud/invoicing.py]     if authorization is None:
-# [MIGRATED TO crud/invoicing.py]         raise LookupError("dte_authorization_not_found")
-# [MIGRATED TO crud/invoicing.py]     return authorization
 
 
-# [MIGRATED TO crud/invoicing.py] def update_dte_authorization(
-# [MIGRATED TO crud/invoicing.py]     db: Session,
-# [MIGRATED TO crud/invoicing.py]     authorization_id: int,
-# [MIGRATED TO crud/invoicing.py]     payload: schemas.DTEAuthorizationUpdate,
-# [MIGRATED TO crud/invoicing.py] ) -> models.DTEAuthorization:
-# [MIGRATED TO crud/invoicing.py]     authorization = get_dte_authorization(db, authorization_id)
-
-# [MIGRATED TO crud/invoicing.py]     if payload.expiration_date is not None:
-# [MIGRATED TO crud/invoicing.py]         authorization.expiration_date = payload.expiration_date
-# [MIGRATED TO crud/invoicing.py]     if payload.notes is not None:
-# [MIGRATED TO crud/invoicing.py]         authorization.notes = payload.notes
-# [MIGRATED TO crud/invoicing.py]     if payload.active is not None:
-# [MIGRATED TO crud/invoicing.py]         authorization.active = payload.active
-
-# [MIGRATED TO crud/invoicing.py]     db.add(authorization)
-# [MIGRATED TO crud/invoicing.py]     db.flush()
-# [MIGRATED TO crud/invoicing.py]     db.refresh(authorization)
-# [MIGRATED TO crud/invoicing.py]     return authorization
 
 
-# [MIGRATED TO crud/invoicing.py] def reserve_dte_folio(
+
+
     db: Session,
-# [MIGRATED TO crud/invoicing.py]     authorization: models.DTEAuthorization,
-# [MIGRATED TO crud/invoicing.py] ) -> int:
-# [MIGRATED TO crud/invoicing.py]     next_number = authorization.current_number
-# [MIGRATED TO crud/invoicing.py]     if next_number < authorization.range_start:
-# [MIGRATED TO crud/invoicing.py]         next_number = authorization.range_start
-# [MIGRATED TO crud/invoicing.py]     if next_number > authorization.range_end:
-# [MIGRATED TO crud/invoicing.py]         raise ValueError("dte_authorization_exhausted")
-
-# [MIGRATED TO crud/invoicing.py]     authorization.current_number = next_number + 1
-# [MIGRATED TO crud/invoicing.py]     db.add(authorization)
-# [MIGRATED TO crud/invoicing.py]     db.flush()
-# [MIGRATED TO crud/invoicing.py]     db.refresh(authorization)
-# [MIGRATED TO crud/invoicing.py]     return next_number
 
 
-# [MIGRATED TO crud/invoicing.py] def register_dte_document(
-# [MIGRATED TO crud/invoicing.py]     db: Session,
-# [MIGRATED TO crud/invoicing.py]     *,
-# [MIGRATED TO crud/invoicing.py]     sale: models.Sale,
-# [MIGRATED TO crud/invoicing.py]     authorization: models.DTEAuthorization,
-# [MIGRATED TO crud/invoicing.py]     xml_content: str,
-# [MIGRATED TO crud/invoicing.py]     signature: str,
-# [MIGRATED TO crud/invoicing.py]     control_number: str,
-# [MIGRATED TO crud/invoicing.py]     correlative: int,
-# [MIGRATED TO crud/invoicing.py]     reference_code: str | None,
-# [MIGRATED TO crud/invoicing.py] ) -> models.DTEDocument:
-# [MIGRATED TO crud/invoicing.py]     document = models.DTEDocument(
-# [MIGRATED TO crud/invoicing.py]         sale_id=sale.id,
-# [MIGRATED TO crud/invoicing.py]         authorization_id=authorization.id if authorization else None,
-# [MIGRATED TO crud/invoicing.py]         document_type=authorization.document_type,
-# [MIGRATED TO crud/invoicing.py]         serie=authorization.serie,
-# [MIGRATED TO crud/invoicing.py]         correlative=correlative,
-# [MIGRATED TO crud/invoicing.py]         control_number=control_number,
-# [MIGRATED TO crud/invoicing.py]         cai=authorization.cai,
-# [MIGRATED TO crud/invoicing.py]         xml_content=xml_content,
-# [MIGRATED TO crud/invoicing.py]         signature=signature,
-# [MIGRATED TO crud/invoicing.py]         reference_code=reference_code,
-# [MIGRATED TO crud/invoicing.py]     )
-# [MIGRATED TO crud/invoicing.py]     sale.dte_status = models.DTEStatus.PENDIENTE
+
     sale.dte_reference = control_number
-# [MIGRATED TO crud/invoicing.py]     db.add(document)
-# [MIGRATED TO crud/invoicing.py]     db.add(sale)
-# [MIGRATED TO crud/invoicing.py]     db.flush()
-# [MIGRATED TO crud/invoicing.py]     db.refresh(document)
-# [MIGRATED TO crud/invoicing.py]     return document
 
 
-# [MIGRATED TO crud/invoicing.py] def log_dte_event(
-# [MIGRATED TO crud/invoicing.py]     db: Session,
-# [MIGRATED TO crud/invoicing.py]     *,
-# [MIGRATED TO crud/invoicing.py]     document: models.DTEDocument,
-# [MIGRATED TO crud/invoicing.py]     event_type: str,
-# [MIGRATED TO crud/invoicing.py]     status: models.DTEStatus,
-# [MIGRATED TO crud/invoicing.py]     detail: str | None,
-# [MIGRATED TO crud/invoicing.py]     performed_by_id: int | None,
-# [MIGRATED TO crud/invoicing.py] ) -> models.DTEEvent:
-# [MIGRATED TO crud/invoicing.py]     event = models.DTEEvent(
-# [MIGRATED TO crud/invoicing.py]         document=document,
-# [MIGRATED TO crud/invoicing.py]         event_type=event_type,
-# [MIGRATED TO crud/invoicing.py]         status=status,
-# [MIGRATED TO crud/invoicing.py]         detail=detail,
-# [MIGRATED TO crud/invoicing.py]         performed_by_id=performed_by_id,
-# [MIGRATED TO crud/invoicing.py]     )
-# [MIGRATED TO crud/invoicing.py]     db.add(event)
-# [MIGRATED TO crud/invoicing.py]     db.flush()
-# [MIGRATED TO crud/invoicing.py]     db.refresh(event)
-# [MIGRATED TO crud/invoicing.py]     return event
 
 
-# [MIGRATED TO crud/invoicing.py] def list_dte_documents(
-# [MIGRATED TO crud/invoicing.py]     db: Session,
-# [MIGRATED TO crud/invoicing.py]     *,
-# [MIGRATED TO crud/invoicing.py]     store_id: int | None = None,
-# [MIGRATED TO crud/invoicing.py]     sale_id: int | None = None,
     status: models.DTEStatus | str | None = None,
-# [MIGRATED TO crud/invoicing.py]     limit: int = 50,
-# [MIGRATED TO crud/invoicing.py]     offset: int = 0,
-# [MIGRATED TO crud/invoicing.py] ) -> list[models.DTEDocument]:
-# [MIGRATED TO crud/invoicing.py]     safe_limit = None if limit is None else max(1, min(limit, 200))
-# [MIGRATED TO crud/invoicing.py]     statement = (
-# [MIGRATED TO crud/invoicing.py]         select(models.DTEDocument)
-# [MIGRATED TO crud/invoicing.py]         .options(
-# [MIGRATED TO crud/invoicing.py]             joinedload(models.DTEDocument.sale).joinedload(models.Sale.store),
-# [MIGRATED TO crud/invoicing.py]             joinedload(models.DTEDocument.authorization),
-# [MIGRATED TO crud/invoicing.py]             selectinload(models.DTEDocument.events),
-# [MIGRATED TO crud/invoicing.py]             selectinload(models.DTEDocument.dispatch_entries),
-# [MIGRATED TO crud/invoicing.py]         )
-# [MIGRATED TO crud/invoicing.py]         .order_by(models.DTEDocument.created_at.desc())
-# [MIGRATED TO crud/invoicing.py]     )
-# [MIGRATED TO crud/invoicing.py]     if store_id is not None:
-# [MIGRATED TO crud/invoicing.py]         statement = statement.join(models.DTEDocument.sale).where(
-# [MIGRATED TO crud/invoicing.py]             models.Sale.store_id == store_id
-# [MIGRATED TO crud/invoicing.py]         )
-# [MIGRATED TO crud/invoicing.py]     if sale_id is not None:
-# [MIGRATED TO crud/invoicing.py]         statement = statement.where(models.DTEDocument.sale_id == sale_id)
-# [MIGRATED TO crud/invoicing.py]     if status is not None:
-# [MIGRATED TO crud/invoicing.py]         enum_status = (
-# [MIGRATED TO crud/invoicing.py]             status
-# [MIGRATED TO crud/invoicing.py]             if isinstance(status, models.DTEStatus)
-# [MIGRATED TO crud/invoicing.py]             else models.DTEStatus(status)
-# [MIGRATED TO crud/invoicing.py]         )
-# [MIGRATED TO crud/invoicing.py]         statement = statement.where(models.DTEDocument.status == enum_status)
-# [MIGRATED TO crud/invoicing.py]     if offset:
-# [MIGRATED TO crud/invoicing.py]         statement = statement.offset(offset)
-# [MIGRATED TO crud/invoicing.py]     if safe_limit is not None:
-# [MIGRATED TO crud/invoicing.py]         statement = statement.limit(safe_limit)
-# [MIGRATED TO crud/invoicing.py]     return list(db.scalars(statement))
 
 
-# [MIGRATED TO crud/invoicing.py] def get_dte_document(db: Session, document_id: int) -> models.DTEDocument:
-# [MIGRATED TO crud/invoicing.py]     document = db.get(models.DTEDocument, document_id)
     if document is None:
-# [MIGRATED TO crud/invoicing.py]         raise LookupError("dte_document_not_found")
-# [MIGRATED TO crud/invoicing.py]     return document
 
 
-# [MIGRATED TO crud/invoicing.py] def register_dte_ack(
-# [MIGRATED TO crud/invoicing.py]     db: Session,
-# [MIGRATED TO crud/invoicing.py]     *,
-# [MIGRATED TO crud/invoicing.py]     document: models.DTEDocument,
-# [MIGRATED TO crud/invoicing.py]     status: models.DTEStatus,
-# [MIGRATED TO crud/invoicing.py]     code: str | None,
-# [MIGRATED TO crud/invoicing.py]     detail: str | None,
-# [MIGRATED TO crud/invoicing.py]     received_at: datetime,
-# [MIGRATED TO crud/invoicing.py] ) -> models.DTEDocument:
-# [MIGRATED TO crud/invoicing.py]     ack_time = received_at
-# [MIGRATED TO crud/invoicing.py]     if ack_time.tzinfo is not None:
-# [MIGRATED TO crud/invoicing.py]         ack_time = ack_time.astimezone(timezone.utc).replace(tzinfo=None)
-# [MIGRATED TO crud/invoicing.py]     document.status = status
-# [MIGRATED TO crud/invoicing.py]     document.ack_code = code
-# [MIGRATED TO crud/invoicing.py]     document.ack_message = detail
-# [MIGRATED TO crud/invoicing.py]     document.acknowledged_at = ack_time
-# [MIGRATED TO crud/invoicing.py]     if document.sale:
-# [MIGRATED TO crud/invoicing.py]         document.sale.dte_status = status
-# [MIGRATED TO crud/invoicing.py]         if code:
-# [MIGRATED TO crud/invoicing.py]             document.sale.dte_reference = code
-# [MIGRATED TO crud/invoicing.py]     db.add(document)
-# [MIGRATED TO crud/invoicing.py]     if document.sale:
-# [MIGRATED TO crud/invoicing.py]         db.add(document.sale)
-# [MIGRATED TO crud/invoicing.py]     db.flush()
-# [MIGRATED TO crud/invoicing.py]     db.refresh(document)
-# [MIGRATED TO crud/invoicing.py]     return document
 
 
-# [MIGRATED TO crud/invoicing.py] def enqueue_dte_dispatch(
-# [MIGRATED TO crud/invoicing.py]     db: Session,
-# [MIGRATED TO crud/invoicing.py]     *,
     document: models.DTEDocument,
-# [MIGRATED TO crud/invoicing.py]     error_message: str | None,
-# [MIGRATED TO crud/invoicing.py] ) -> models.DTEDispatchQueue:
-# [MIGRATED TO crud/invoicing.py]     existing = db.scalar(
-# [MIGRATED TO crud/invoicing.py]         select(models.DTEDispatchQueue).where(
-# [MIGRATED TO crud/invoicing.py]             models.DTEDispatchQueue.document_id == document.id
-# [MIGRATED TO crud/invoicing.py]         )
-# [MIGRATED TO crud/invoicing.py]     )
-# [MIGRATED TO crud/invoicing.py]     now = datetime.now(timezone.utc)
-# [MIGRATED TO crud/invoicing.py]     if existing:
-# [MIGRATED TO crud/invoicing.py]         existing.status = models.DTEDispatchStatus.PENDING
-# [MIGRATED TO crud/invoicing.py]         existing.last_error = error_message
-# [MIGRATED TO crud/invoicing.py]         existing.scheduled_at = now
-# [MIGRATED TO crud/invoicing.py]         existing.updated_at = now
-# [MIGRATED TO crud/invoicing.py]         if existing.attempts <= 0:
-# [MIGRATED TO crud/invoicing.py]             existing.attempts = 0
         existing.document = document
         db.add(existing)
         entry = existing
