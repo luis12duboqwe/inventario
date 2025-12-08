@@ -1,5 +1,5 @@
 # Actualizado por Codex el 2025-10-20
-fastapi==0.123.0
+fastapi==0.124.0
 fastapi-limiter==0.1.6
 uvicorn[standard]==0.38.0
 sqlalchemy==2.0.44
