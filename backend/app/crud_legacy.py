@@ -9,6 +9,7 @@ import csv
 import json
 import math
 import re
+from pathlib import Path
 import secrets
 import textwrap
 from dataclasses import dataclass
@@ -50,8 +51,11 @@ from .services.purchases import assign_supplier_batch
 from .services.sales import consume_supplier_batch
 from .services.inventory import calculate_inventory_valuation
 from .crud.audit import _attach_last_audit_trails, log_audit_event as _log_action, get_last_audit_entries
-from .crud.customers import _validate_customer_credit
+from .crud.customers import _validate_customer_credit, _ensure_debt_respects_limit, _create_customer_ledger_entry, _sync_customer_ledger_entry
+from .crud.devices import _ensure_unique_identifier_payload
+from .crud.inventory import _hydrate_movement_references
 from .crud.loyalty import apply_loyalty_for_sale
+from .crud.purchases import _register_purchase_status_event
 from backend.app.crud.users import (
     get_user,
     get_user_by_username,
@@ -79,6 +83,8 @@ from .utils.decimal_helpers import (
     format_currency,
     calculate_weighted_average_cost,
 )
+from .utils.data_helpers import sync_supplier_ledger_entry as _sync_supplier_ledger_entry
+from .utils.ledger_helpers import create_supplier_ledger_entry as _create_supplier_ledger_entry
 from .utils.date_helpers import normalize_date_range
 from .utils.inventory_helpers import (
     device_value,
@@ -86,6 +92,7 @@ from .utils.inventory_helpers import (
     recalculate_store_inventory_value,
     device_category_expr,
 )
+from .utils.pos_helpers import pos_draft_payload as _pos_draft_payload
 from .utils.sync_helpers import (
     resolve_outbox_priority,
     priority_weight,
@@ -290,6 +297,43 @@ def _apply_store_credit_redemption(
         created_by_id=performed_by_id,
     )
     return redemption
+
+
+def _generate_store_credit_code(db: Session) -> str:
+    """Genera un código único para store credit."""
+    import uuid
+    while True:
+        code = f"SC-{uuid.uuid4().hex[:12].upper()}"
+        existing = db.scalar(select(models.StoreCredit.id).where(
+            models.StoreCredit.code == code))
+        if not existing:
+            return code
+
+
+def _store_credit_payload(credit: models.StoreCredit) -> dict[str, Any]:
+    """Serializa datos de StoreCredit para sync outbox."""
+    return {
+        "id": credit.id,
+        "code": credit.code,
+        "customer_id": credit.customer_id,
+        "issued_amount": float(credit.issued_amount),
+        "balance_amount": float(credit.balance_amount),
+        "status": credit.status.value if hasattr(credit.status, "value") else str(credit.status),
+        "issued_at": credit.issued_at.isoformat() if hasattr(credit.issued_at, "isoformat") else str(credit.issued_at),
+    }
+
+
+def _store_credit_redemption_payload(redemption: models.StoreCreditRedemption) -> dict[str, Any]:
+    """Serializa redenciones de crédito para sincronización híbrida."""
+    return {
+        "id": redemption.id,
+        "store_credit_id": redemption.store_credit_id,
+        "sale_id": redemption.sale_id,
+        "amount": float(to_decimal(redemption.amount)),
+        "notes": redemption.notes,
+        "created_at": redemption.created_at.isoformat(),
+        "created_by_id": redemption.created_by_id,
+    }
 
 
 def issue_store_credit(
@@ -2772,6 +2816,11 @@ def compute_purchase_suggestions(
         last_sale = row.last_sale
         span_days = normalized_lookback
         if first_sale and last_sale:
+            # Convertir a aware si son naive
+            if first_sale.tzinfo is None:
+                first_sale = first_sale.replace(tzinfo=timezone.utc)
+            if last_sale.tzinfo is None:
+                last_sale = last_sale.replace(tzinfo=timezone.utc)
             first_dt = max(first_sale, since)
             span_days = max(
                 1,
@@ -6004,9 +6053,9 @@ def get_inventory_movements_report(
 
     period_summaries = [
         schemas.MovementPeriodSummary(
-            periodo=period,
-            tipo_movimiento=movement_type,
-            total_cantidad=int(data["quantity"]),
+            periodo=str(period),
+            total_movimientos=1,
+            total_unidades=int(data["quantity"]),
             total_valor=to_decimal(data["value"]),
         )
         for (period, movement_type), data in sorted(period_map.items())
@@ -7302,7 +7351,7 @@ def enqueue_sync_outbox(
         db.refresh(entry)
         # Registrar auditoría de conflicto potencial si aplica.
         if conflict_flag:
-            log_audit_event(
+            _log_action(
                 db,
                 action="sync_conflict_potential",
                 entity_type=entity_type,
@@ -7882,7 +7931,7 @@ def resolve_outbox_conflicts(
                 "reason": reason,
                 "entity_id": entry.entity_id,
             }
-            log_audit_event(
+            _log_action(
                 db,
                 action="sync_conflict_resolved",
                 entity_type=entry.entity_type,
@@ -8040,9 +8089,14 @@ def get_store_sync_overview(
             else:
                 health = schemas.SyncBranchHealth.OPERATIVE
                 label = f"Actualizado el {timestamp_label}"
-                if last_timestamp and now - last_timestamp > stale_threshold:
-                    health = schemas.SyncBranchHealth.WARNING
-                    label = f"Sincronización antigua ({timestamp_label})"
+                if last_timestamp:
+                    # Convertir last_timestamp a aware si es naive
+                    ts = last_timestamp
+                    if ts.tzinfo is None:
+                        ts = ts.replace(tzinfo=timezone.utc)
+                    if now - ts > stale_threshold:
+                        health = schemas.SyncBranchHealth.WARNING
+                        label = f"Sincronización antigua ({timestamp_label})"
 
         pending_transfers = transfer_counts.get(key, 0)
         open_conflicts = conflict_counts.get(key, 0)
@@ -8353,6 +8407,24 @@ def _require_store_permission(
 
 
                 if reservation.device_id != device.id:
+                    raise ValueError("reservation_device_mismatch")
+                if reservation.status != models.InventoryState.RESERVADO:
+                    raise ValueError("reservation_not_active")
+                if reservation.quantity != item.quantity:
+                    raise ValueError("reservation_quantity_mismatch")
+                # Convertir expires_at a aware si es naive
+                expires = reservation.expires_at
+                if expires and expires.tzinfo is None:
+                    expires = expires.replace(tzinfo=timezone.utc)
+                if expires <= datetime.now(timezone.utc):
+                    raise ValueError("reservation_expired")
+            order_item = models.TransferOrderItem(
+                transfer_order=order,
+                device=device,
+                quantity=item.quantity,
+                reservation_id=reservation.id if reservation is not None else None,
+            )
+            db.add(order_item)
 
         _log_action(
             db,
@@ -8448,7 +8520,11 @@ def _apply_transfer_dispatch(
             raise ValueError("reservation_not_active")
         if reservation.quantity != item.quantity:
             raise ValueError("reservation_quantity_mismatch")
-        if reservation.expires_at <= datetime.now(timezone.utc):
+        # Convertir expires_at a aware si es naive
+        expires = reservation.expires_at
+        if expires and expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        if expires <= datetime.now(timezone.utc):
             raise ValueError("reservation_expired")
         reservation_map[item.reservation_id] = reservation
         reserved_allowances[item.device_id] = reserved_allowances.get(
@@ -8890,7 +8966,12 @@ def create_backup_job(
     triggered_by_id: int | None,
     reason: str | None = None,
 ) -> models.BackupJob:
+    archive_file = Path(archive_path)
+    filename = archive_file.name
+    archive_size = archive_file.stat().st_size if archive_file.exists() else 0
     job = models.BackupJob(
+        filename=filename,
+        file_path=str(archive_file),
         mode=mode,
         pdf_path=pdf_path,
         archive_path=archive_path,
@@ -8901,8 +8982,11 @@ def create_backup_job(
         critical_directory=critical_directory,
         components=components,
         total_size_bytes=total_size_bytes,
+        file_size_bytes=archive_size,
         notes=notes,
         triggered_by_id=triggered_by_id,
+        executed_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     with transactional_session(db):
         db.add(job)
@@ -10731,6 +10815,20 @@ def _apply_repair_parts(  # // [PACK37-backend]
     return order.parts_cost
 
 
+def _repair_payload(order: models.RepairOrder) -> dict[str, Any]:
+    """Serializa datos de RepairOrder para sync outbox."""
+    return {
+        "id": order.id,
+        "store_id": order.store_id,
+        "status": order.status.value if hasattr(order.status, "value") else str(order.status),
+        "imei": order.imei,
+        "device_model": order.device_model,
+        "parts_cost": float(order.parts_cost),
+        "labor_cost": float(order.labor_cost),
+        "opened_at": order.opened_at.isoformat() if hasattr(order.opened_at, "isoformat") else str(order.opened_at),
+    }
+
+
 def create_repair_order(
     db: Session,
     payload: schemas.RepairOrderCreate,
@@ -11312,6 +11410,7 @@ def get_warranty_metrics(
     )
     claims_open = 0
     claims_resolved = 0
+    claims_rejected = 0
     total_days = 0
     for assignment in assignments:
         coverage_days = max((assignment.expiration_date -
@@ -11325,6 +11424,8 @@ def get_warranty_metrics(
                 claims_open += 1
             if claim.status == models.WarrantyClaimStatus.RESUELTO:
                 claims_resolved += 1
+            if claim.status == models.WarrantyClaimStatus.CANCELADO:
+                claims_rejected += 1
 
     average_days = float(total_days / total) if total else 0.0
     return schemas.WarrantyMetrics(
@@ -11333,6 +11434,7 @@ def get_warranty_metrics(
         expired_assignments=expired,
         claims_open=claims_open,
         claims_resolved=claims_resolved,
+        claims_rejected=claims_rejected,
         expiring_soon=expiring,
         average_coverage_days=round(average_days, 2),
         generated_at=datetime.now(timezone.utc),
@@ -11706,6 +11808,9 @@ def create_reservation(
 ) -> models.InventoryReservation:
     if quantity <= 0:
         raise ValueError("reservation_invalid_quantity")
+    # Convertir expires_at a aware si es naive
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
     if expires_at <= datetime.now(timezone.utc):
         raise ValueError("reservation_invalid_expiration")
 
@@ -11773,6 +11878,12 @@ def renew_reservation(
     reservation = get_inventory_reservation(db, reservation_id)
     if reservation.status != models.InventoryState.RESERVADO:
         raise ValueError("reservation_not_active")
+    # Convertir expires_at a aware si es naive
+    expires = reservation.expires_at
+    if expires and expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
     if expires_at <= datetime.now(timezone.utc):
         raise ValueError("reservation_invalid_expiration")
 
@@ -12205,7 +12316,11 @@ def create_sale(
                 raise ValueError("reservation_not_active")
             if reservation.quantity != item.quantity:
                 raise ValueError("reservation_quantity_mismatch")
-            if reservation.expires_at <= datetime.now(timezone.utc):
+            # Convertir expires_at a aware si es naive
+            expires = reservation.expires_at
+            if expires and expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+            if expires <= datetime.now(timezone.utc):
                 raise ValueError("reservation_expired")
             reservation_map[reservation.id] = reservation
             reserved_allowances[item.device_id] = reserved_allowances.get(
@@ -13084,6 +13199,7 @@ def _rma_sync_payload(rma: models.RMARequest) -> dict[str, Any]:
         "device_id": rma.device_id,
         "status": rma.status.value,
         "disposition": rma.disposition.value,
+        "reason": rma.reason,
         "notes": rma.notes,
         "repair_order_id": rma.repair_order_id,
         "replacement_sale_id": rma.replacement_sale_id,
@@ -13114,6 +13230,14 @@ def create_rma_request(
     if payload.replacement_sale_id is not None:
         get_sale(db, payload.replacement_sale_id)
 
+    reason: str | None = None
+    if sale_return is not None:
+        reason = sale_return.reason
+    elif purchase_return is not None:
+        reason = purchase_return.reason
+    if reason is None:
+        reason = payload.notes or "RMA registrada"
+
     with transactional_session(db):
         rma = models.RMARequest(
             sale_return_id=sale_return.id if sale_return else None,
@@ -13121,6 +13245,7 @@ def create_rma_request(
             store_id=store_id,
             device_id=device_id,
             disposition=payload.disposition,
+            reason=reason,
             notes=payload.notes,
             repair_order_id=payload.repair_order_id,
             replacement_sale_id=payload.replacement_sale_id,
@@ -13552,6 +13677,25 @@ def list_operations_history(
 
 
 # // [POS-promotions]
+def _build_pos_promotions_response(config: models.POSConfig) -> schemas.POSPromotionsResponse:
+    """Construye la respuesta de promotiones desde POSConfig."""
+    promotions_config = config.promotions_config or {}
+    feature_flags_data = promotions_config.get("feature_flags", {})
+
+    return schemas.POSPromotionsResponse(
+        store_id=config.store_id,
+        feature_flags=schemas.POSPromotionFeatureFlags(
+            volume=feature_flags_data.get("volume", False),
+            combos=feature_flags_data.get("combos", False),
+            coupons=feature_flags_data.get("coupons", False),
+        ),
+        volume_promotions=promotions_config.get("volume_promotions", []),
+        combo_promotions=promotions_config.get("combo_promotions", []),
+        coupons=promotions_config.get("coupons", []),
+        updated_at=config.updated_at,
+    )
+
+
 def get_pos_promotions(db: Session, store_id: int) -> schemas.POSPromotionsResponse:
     config = get_pos_config(db, store_id)
     return _build_pos_promotions_response(config)

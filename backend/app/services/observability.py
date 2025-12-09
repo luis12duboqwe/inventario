@@ -52,7 +52,11 @@ def _extend_latency_samples(
     for stat in stats:
         oldest_seconds: float | None = None
         if stat.oldest_pending is not None:
-            delta = reference - stat.oldest_pending
+            # Convertir a aware si es naive
+            oldest = stat.oldest_pending
+            if oldest.tzinfo is None:
+                oldest = oldest.replace(tzinfo=timezone.utc)
+            delta = reference - oldest
             oldest_seconds = max(delta.total_seconds(), 0.0)
         samples.append(
             schemas.ObservabilityLatencySample(
@@ -164,14 +168,17 @@ def build_observability_snapshot(db: Session) -> schemas.ObservabilitySnapshot:
     ]
 
     now = datetime.now(timezone.utc)
-    latency_samples, latency_values = _extend_latency_samples(outbox_stats, now)
+    latency_samples, latency_values = _extend_latency_samples(
+        outbox_stats, now)
     average_latency = (
         sum(latency_values) / len(latency_values) if latency_values else None
     )
     latency_summary = schemas.ObservabilityLatencySummary(
         average_seconds=_round_seconds(average_latency),
-        percentile_95_seconds=_round_seconds(_percentile(latency_values, 0.95)),
-        max_seconds=_round_seconds(max(latency_values) if latency_values else None),
+        percentile_95_seconds=_round_seconds(
+            _percentile(latency_values, 0.95)),
+        max_seconds=_round_seconds(
+            max(latency_values) if latency_values else None),
         samples=latency_samples,
     )
 
@@ -215,7 +222,8 @@ def build_observability_snapshot(db: Session) -> schemas.ObservabilitySnapshot:
     notifications.extend(_resolve_sync_notifications(outbox_stats))
     notifications.extend(_resolve_dte_notifications(db, now))
 
-    operational_alerts = observability_alerts.collect_operational_notifications(db)
+    operational_alerts = observability_alerts.collect_operational_notifications(
+        db)
     notifications.extend(operational_alerts.notifications)
     if operational_alerts.newly_logged:
         observability_alerts.dispatch_external_notifications(

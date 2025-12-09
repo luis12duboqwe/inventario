@@ -12,12 +12,15 @@ from sqlalchemy.orm import Session, joinedload
 
 from .. import models, schemas
 from ..core.roles import ADMIN, GERENTE
-from ..core.transactions import transactional_session
+from ..core.transactions import flush_session, transactional_session
 from ..services import inventory_accounting, inventory_audit
 from ..utils import audit_trail as audit_trail_utils
 from ..utils.cache import TTLCache
+from ..config import settings
+from ..core.settings import inventory_alert_settings
 from .audit import get_last_audit_entries
 from .audit import log_audit_event as _log_action
+from .sync import enqueue_sync_outbox
 from .common import to_decimal
 from .devices import _recalculate_sale_price, get_device
 from .stores import get_store, recalculate_store_inventory_value
@@ -84,10 +87,10 @@ def _normalize_date_range(
 
 
 def _device_value(device: models.Device) -> Decimal:
-    if device.costo_unitario and device.costo_unitario > 0:
-        return to_decimal(device.costo_unitario) * device.quantity
     if device.unit_price and device.unit_price > 0:
         return to_decimal(device.unit_price) * device.quantity
+    if device.costo_unitario and device.costo_unitario > 0:
+        return to_decimal(device.costo_unitario) * device.quantity
     return Decimal("0.00")
 
 
@@ -471,6 +474,101 @@ def create_inventory_movement(
         total_value = recalculate_store_inventory_value(db, store_id)
         setattr(movement, "store_inventory_value", total_value)
 
+        _log_action(
+            db,
+            action="inventory_movement",
+            entity_type="inventory_movement",
+            entity_id=str(movement.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps(
+                {
+                    "device_id": device.id,
+                    "store_id": store_id,
+                    "movement_type": payload.tipo_movimiento.value,
+                    "quantity": payload.cantidad,
+                    "comment": movement.comment,
+                }
+            ),
+        )
+
+        # Registrar también sobre la entidad de dispositivo para trazabilidad en bitácora.
+        _log_action(
+            db,
+            action="inventory_movement",
+            entity_type="device",
+            entity_id=str(device.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps(
+                {
+                    "movement_id": movement.id,
+                    "store_id": store_id,
+                    "movement_type": payload.tipo_movimiento.value,
+                    "quantity": payload.cantidad,
+                    "comment": movement.comment,
+                }
+            ),
+        )
+
+        new_quantity = device.quantity
+        quantity_delta = new_quantity - previous_quantity
+        variance_threshold = max(
+            1,
+            inventory_alert_settings.adjustment_variance_threshold,
+            settings.inventory_adjustment_variance_threshold,
+        )
+
+        if (
+            payload.tipo_movimiento == models.MovementType.ADJUST
+            and quantity_delta != 0
+        ):
+            adjustment_reason = (
+                f", motivo={movement.comment}" if movement.comment else ""
+            )
+            if abs(quantity_delta) >= variance_threshold:
+                _log_action(
+                    db,
+                    action="inventory_adjustment_alert",
+                    entity_type="device",
+                    entity_id=str(device.id),
+                    performed_by_id=performed_by_id,
+                    details=(
+                        "Ajuste manual registrado; inconsistencia detectada"
+                        f" en la sucursal {store.name}. stock_previo={previous_quantity}, "
+                        f"stock_actual={new_quantity}, variacion={quantity_delta:+d}"
+                        f", umbral={variance_threshold}{adjustment_reason}"
+                    ),
+                )
+
+        if new_quantity <= settings.inventory_low_stock_threshold:
+            _log_action(
+                db,
+                action="inventory_low_stock_alert",
+                entity_type="device",
+                entity_id=str(device.id),
+                performed_by_id=performed_by_id,
+                details=(
+                    "Stock bajo detectado"
+                    f" en la sucursal {store.name}. dispositivo={device.sku}, "
+                    f"stock_actual={new_quantity}, umbral={settings.inventory_low_stock_threshold}"
+                ),
+            )
+
+        enqueue_sync_outbox(
+            db,
+            entity_type="inventory",
+            entity_id=str(movement.id),
+            operation="UPSERT",
+            payload={
+                "id": movement.id,
+                "store_id": store_id,
+                "device_id": device.id,
+                "movement_type": payload.tipo_movimiento.value,
+                "quantity": payload.cantidad,
+                "comment": movement.comment,
+                "unit_cost": float(movement_unit_cost or Decimal("0")),
+            },
+        )
+
         return movement
 
 
@@ -524,6 +622,46 @@ def list_inventory_summary(
     if limit is not None:
         statement = statement.limit(limit)
     return list(db.scalars(statement).unique())
+
+
+def list_incomplete_devices(
+    db: Session,
+    *,
+    store_id: int | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[models.Device]:
+    """Devuelve dispositivos marcados como incompletos, con opción a filtrar por sucursal."""
+
+    statement = (
+        select(models.Device)
+        .options(joinedload(models.Device.store))
+        .where(models.Device.completo.is_(False))
+        .order_by(models.Device.id.desc())
+    )
+
+    if store_id is not None:
+        statement = statement.where(models.Device.store_id == store_id)
+    if offset:
+        statement = statement.offset(offset)
+    if limit is not None:
+        statement = statement.limit(limit)
+
+    return list(db.scalars(statement).unique())
+
+
+def count_incomplete_devices(db: Session, *, store_id: int | None = None) -> int:
+    """Cuenta los dispositivos incompletos para habilitar paginación."""
+
+    statement = (
+        select(func.count())
+        .select_from(models.Device)
+        .where(models.Device.completo.is_(False))
+    )
+    if store_id is not None:
+        statement = statement.where(models.Device.store_id == store_id)
+
+    return int(db.scalar(statement) or 0)
 
 
 def list_devices_below_minimum_thresholds(
@@ -1562,12 +1700,15 @@ __all__ = [
     "get_known_import_column_patterns",
     "get_top_selling_products",
     "invalidate_inventory_movements_cache",
+    "list_incomplete_devices",
     "list_devices_below_minimum_thresholds",
     "list_import_validations",
     "list_inventory_import_history",
     "list_inventory_reservations",
     "list_inventory_summary",
     "register_inventory_movement",
+    "count_incomplete_devices",
     "release_reservation",
     "renew_reservation",
+    "_hydrate_movement_references",
 ]

@@ -20,6 +20,19 @@ from .warehouses import ensure_default_warehouse
 def _recalculate_sale_price(device: models.Device) -> None:
     base_cost = to_decimal(device.costo_unitario)
     margin = to_decimal(device.margen_porcentaje)
+    provided_price = to_decimal(device.unit_price)
+
+    # Preservar precio de venta si el usuario lo proporcionó explícitamente (> 0)
+    if provided_price > 0:
+        device.precio_venta = provided_price
+        return
+
+    # Si no hay costo definido, dejar precios en cero
+    if base_cost <= 0:
+        device.unit_price = Decimal("0")
+        device.precio_venta = Decimal("0")
+        return
+
     sale_factor = Decimal("1") + (margin / Decimal("100"))
     recalculated = (
         base_cost * sale_factor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -73,6 +86,14 @@ def create_device(
     performed_by_id: int | None = None
 ) -> models.Device:
     with transactional_session(db):
+        # Validar unicidad contra tabla devices y device_identifiers
+        _ensure_unique_identifiers(
+            db,
+            imei=payload.imei,
+            serial=payload.serial,
+            exclude_device_id=None,
+        )
+
         # 1. Validar almacén
         warehouse_id = payload.warehouse_id
         if not warehouse_id:
@@ -180,6 +201,15 @@ def update_device(
         # Detectar cambios
         changes: list[str] = []
         payload_dict = payload.model_dump(exclude_unset=True)
+
+        # Validar unicidad de identifiers si se actualizan
+        if "imei" in payload_dict or "serial" in payload_dict:
+            _ensure_unique_identifiers(
+                db,
+                imei=payload_dict.get("imei"),
+                serial=payload_dict.get("serial"),
+                exclude_device_id=device_id,
+            )
 
         for field, value in payload_dict.items():
             if field == "imagen_url" and value is not None:

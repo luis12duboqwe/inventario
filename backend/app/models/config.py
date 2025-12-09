@@ -119,7 +119,19 @@ class BackupJob(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     file_path: Mapped[str] = mapped_column(String(512), nullable=False)
+    archive_path: Mapped[str] = mapped_column(String(512), nullable=False)
+    pdf_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    sql_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    json_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    config_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    metadata_path: Mapped[str | None] = mapped_column(
+        String(512), nullable=True)
+    critical_directory: Mapped[str | None] = mapped_column(
+        String(512), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     file_size_bytes: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0)
+    total_size_bytes: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0)
     mode: Mapped[BackupMode] = mapped_column(
         Enum(BackupMode, name="backup_mode"), nullable=False
@@ -129,12 +141,24 @@ class BackupJob(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, nullable=False
     )
+    executed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
     created_by_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("usuarios.id_usuario"), nullable=True, index=True)
+    triggered_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("usuarios.id_usuario"), nullable=True, index=True
+    )
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="completed")
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     triggered_by: Mapped[User | None] = relationship(
-        "User", back_populates="backup_jobs"
+        "User", back_populates="backup_jobs", foreign_keys="BackupJob.triggered_by_id"
     )

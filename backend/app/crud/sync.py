@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
-from sqlalchemy import select, func, case
+from datetime import datetime, timezone
+
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from .. import models
@@ -46,6 +48,7 @@ def enqueue_sync_outbox(
     entity_id: str,
     operation: str,
     payload: dict[str, object],
+    store_id: int | None = None,
     priority: models.SyncOutboxPriority | None = None,
 ) -> models.SyncOutbox:
     with transactional_session(db):
@@ -92,6 +95,19 @@ def enqueue_sync_outbox(
                 entry.conflict_flag = True
                 entry.version += 1
         db.add(entry)
+
+        if conflict_flag:
+            # Registrar alerta de posible conflicto para auditoría del sincronizador.
+            log_entry = models.SystemLog(
+                usuario=None,
+                modulo="inventario",
+                accion="sync_conflict_potential",
+                descripcion=f"Conflicto detectado en {entity_type}:{entity_id}",
+                fecha=datetime.now(timezone.utc),
+                nivel=models.SystemLogLevel.WARNING,
+                audit_log=None,
+            )
+            db.add(log_entry)
         return entry
 
 

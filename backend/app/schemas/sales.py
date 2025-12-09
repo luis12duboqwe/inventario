@@ -26,6 +26,7 @@ from ..models import (
     CashSessionStatus,
 )
 from .audit import AuditTrailInfo
+from .repairs import RepairOrderCreate
 from .customers import (
     CustomerDebtSnapshot,
     CreditScheduleEntry,
@@ -211,6 +212,7 @@ class WarrantySaleSummary(BaseModel):
 class WarrantyClaimCreate(BaseModel):
     claim_type: WarrantyClaimType
     notes: str | None = Field(default=None, max_length=500)
+    repair_order: RepairOrderCreate | None = None
     repair_order_id: int | None = Field(default=None, ge=1)
 
     @field_validator("notes")
@@ -225,6 +227,7 @@ class WarrantyClaimCreate(BaseModel):
 class WarrantyClaimStatusUpdate(BaseModel):
     status: WarrantyClaimStatus
     notes: str | None = Field(default=None, max_length=500)
+    repair_order_id: int | None = Field(default=None, ge=1)
     resolved_at: datetime | None = None
 
     @field_validator("notes")
@@ -237,10 +240,31 @@ class WarrantyClaimStatusUpdate(BaseModel):
 
 
 class WarrantyMetrics(BaseModel):
-    active_warranties: int
+    total_assignments: int
+    active_assignments: int
+    expired_assignments: int
     claims_open: int
-    claims_resolved_30d: int
-    claims_rejected_30d: int
+    claims_resolved: int
+    claims_rejected: int
+    expiring_soon: int
+    average_coverage_days: float
+    generated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc))
+
+    @computed_field
+    @property
+    def active_warranties(self) -> int:
+        return self.active_assignments
+
+    @computed_field
+    @property
+    def claims_resolved_30d(self) -> int:
+        return self.claims_resolved
+
+    @computed_field
+    @property
+    def claims_rejected_30d(self) -> int:
+        return self.claims_rejected
 
 
 class WarrantyClaimResponse(BaseModel):

@@ -12,7 +12,8 @@ from sqlalchemy.sql import select
 
 from backend.app import models
 from backend.app.utils.decimal_helpers import to_decimal
-from backend.app.crud.common import transactional_session, enqueue_sync_outbox
+from backend.app.core.transactions import transactional_session
+from backend.app.crud.sync import enqueue_sync_outbox
 
 
 def hydrate_movement_references(

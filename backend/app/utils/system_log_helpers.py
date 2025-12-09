@@ -1,5 +1,5 @@
 """Utilidades para logs del sistema y errores."""
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any
 from sqlalchemy.orm import Session
 
@@ -17,7 +17,7 @@ def create_system_log(
 ) -> models.SystemLog:
     """
     Crea una entrada en el log del sistema.
-    
+
     Args:
         db: Sesión de base de datos
         nivel: Nivel de severidad (info, warning, error, critical)
@@ -25,7 +25,7 @@ def create_system_log(
         modulo: Módulo del sistema
         usuario_id: ID del usuario (opcional)
         detalles: Detalles adicionales en JSON (opcional)
-        
+
     Returns:
         Entrada de log creada
     """
@@ -45,29 +45,20 @@ def create_system_log(
 def purge_system_logs(
     db: Session,
     *,
-    before_date: datetime,
-    nivel: str | None = None,
+    retention_days: int,
+    keep_critical: bool = False,
 ) -> int:
-    """
-    Elimina logs del sistema anteriores a una fecha.
-    
-    Args:
-        db: Sesión de base de datos
-        before_date: Eliminar logs anteriores a esta fecha
-        nivel: Si se proporciona, solo eliminar logs de este nivel
-        
-    Returns:
-        Número de registros eliminados
-    """
-    query = db.query(models.SystemLog).filter(
-        models.SystemLog.timestamp < before_date
-    )
-    
-    if nivel:
-        query = query.filter(models.SystemLog.nivel == nivel)
-    
-    count = query.count()
+    """Elimina logs del sistema respetando retención y opcionalmente preserva críticos."""
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+    query = db.query(models.SystemLog).filter(models.SystemLog.fecha < cutoff)
+
+    if keep_critical:
+        query = query.filter(models.SystemLog.nivel !=
+                             models.SystemLogLevel.CRITICAL)
+
+    removed = query.count()
     query.delete(synchronize_session=False)
     db.flush()
-    
-    return count
+
+    return removed

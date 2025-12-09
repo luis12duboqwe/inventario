@@ -132,7 +132,10 @@ class User(Base):
         "AuditLog", back_populates="performed_by", passive_deletes=True
     )
     backup_jobs: Mapped[list["BackupJob"]] = relationship(
-        "BackupJob", back_populates="triggered_by", passive_deletes=True
+        "BackupJob",
+        back_populates="triggered_by",
+        passive_deletes=True,
+        foreign_keys="BackupJob.triggered_by_id",
     )
     store: Mapped[Store | None] = relationship(
         "Store",
@@ -223,7 +226,7 @@ class ActiveSession(Base):
         Integer, ForeignKey("usuarios.id_usuario", ondelete="CASCADE"), nullable=False, index=True
     )
     session_token: Mapped[str] = mapped_column(
-        String(64), nullable=False, unique=True, index=True
+        String(128), nullable=False, unique=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow)
@@ -290,3 +293,33 @@ class PasswordResetToken(Base):
 
     user: Mapped[User] = relationship(
         "User", back_populates="password_reset_tokens")
+
+
+class StoreMembership(Base):
+    """Vincula usuarios con tiendas y sus permisos de transferencias."""
+    __tablename__ = "store_memberships"
+    __table_args__ = (UniqueConstraint(
+        "user_id", "store_id", name="uq_user_store"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("usuarios.id_usuario", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    store_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    can_create_transfer: Mapped[bool] = mapped_column(default=False)
+    can_receive_transfer: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user: Mapped[User] = relationship("User")
+    store: Mapped[Any] = relationship("Store")

@@ -31,7 +31,8 @@ def requeue_failed_outbox_entries(db: Session) -> list[models.SyncOutbox]:
     now = datetime.now(timezone.utc)
     candidates = crud.list_sync_outbox(
         db,
-        statuses=(models.SyncOutboxStatus.FAILED, models.SyncOutboxStatus.PENDING),
+        statuses=(models.SyncOutboxStatus.FAILED,
+                  models.SyncOutboxStatus.PENDING),
         limit=200,
     )
 
@@ -43,8 +44,13 @@ def requeue_failed_outbox_entries(db: Session) -> list[models.SyncOutbox]:
             continue
         if entry.status == models.SyncOutboxStatus.PENDING and entry.attempt_count == 0:
             continue
-        if entry.last_attempt_at and now - entry.last_attempt_at < retry_after:
-            continue
+        if entry.last_attempt_at:
+            # Convertir a aware si es naive
+            last_attempt = entry.last_attempt_at
+            if last_attempt.tzinfo is None:
+                last_attempt = last_attempt.replace(tzinfo=timezone.utc)
+            if now - last_attempt < retry_after:
+                continue
         ready_ids.append(entry.id)
 
     if not ready_ids:
@@ -165,9 +171,12 @@ def run_sync_cycle(
 ) -> dict[str, object]:
     """Procesa la cola híbrida marcando eventos enviados y registrando discrepancias."""
 
-    selected_statuses = tuple(statuses) if statuses else (models.SyncOutboxStatus.PENDING,)
-    pending_entries = crud.list_sync_outbox(db, statuses=selected_statuses, limit=500)
-    filtered = [entry for entry in pending_entries if _entry_matches_store(entry, store_id)]
+    selected_statuses = tuple(statuses) if statuses else (
+        models.SyncOutboxStatus.PENDING,)
+    pending_entries = crud.list_sync_outbox(
+        db, statuses=selected_statuses, limit=500)
+    filtered = [
+        entry for entry in pending_entries if _entry_matches_store(entry, store_id)]
     processed: list[models.SyncOutbox] = []
     if filtered:
         processed = crud.mark_outbox_entries_sent(
@@ -184,7 +193,8 @@ def run_sync_cycle(
             processed_entries=len(processed),
             store_filter=store_id,
         )
-    crud.log_sync_discrepancies(db, discrepancies, performed_by_id=performed_by_id)
+    crud.log_sync_discrepancies(
+        db, discrepancies, performed_by_id=performed_by_id)
     return {"processed": len(processed), "discrepancies": discrepancies}
 
 
@@ -215,7 +225,8 @@ class SyncScheduler:
             try:
                 await self._task
             except asyncio.CancelledError:  # pragma: no cover - cancel path
-                logger.debug("Ejecución automática de sincronización cancelada.")
+                logger.debug(
+                    "Ejecución automática de sincronización cancelada.")
             self._task = None
 
     async def _run(self) -> None:
@@ -245,7 +256,8 @@ class SyncScheduler:
                     processed_events = int(result.get("processed", 0))
                     differences = result.get("discrepancies", [])
                     differences_count = (
-                        len(differences) if isinstance(differences, list) else 0
+                        len(differences) if isinstance(
+                            differences, list) else 0
                     )
             except Exception as exc:  # pragma: no cover - logged error path
                 status = models.SyncStatus.FAILED

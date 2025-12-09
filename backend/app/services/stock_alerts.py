@@ -56,7 +56,8 @@ class StockAlertsService:
                     extra_payload["projected_days"] = None
                 avg_daily = forecast.get("average_daily_sales")
                 extra_payload["average_daily_sales"] = (
-                    float(avg_daily) if isinstance(avg_daily, (int, float)) else None
+                    float(avg_daily) if isinstance(
+                        avg_daily, (int, float)) else None
                 )
                 trend = forecast.get("trend")
                 if isinstance(trend, str):
@@ -66,7 +67,8 @@ class StockAlertsService:
                     extra_payload["confidence"] = float(confidence)
                 sold_units = forecast.get("sold_units")
                 if isinstance(sold_units, (int, float)) and sold_units > 0:
-                    insights.append(f"{int(sold_units)} uds vendidas en ventana histórica")
+                    insights.append(
+                        f"{int(sold_units)} uds vendidas en ventana histórica")
                 projected = extra_payload.get("projected_days")
                 if isinstance(projected, int):
                     if projected <= 3:
@@ -101,11 +103,12 @@ class StockAlertsService:
         threshold: int | None = None,
         performed_by_id: int | None = None,
     ) -> StockAlertResult:
-        normalized_threshold = self._inventory_service.normalize_threshold(threshold)
+        normalized_threshold = self._inventory_service.normalize_threshold(
+            threshold)
         metrics = crud.compute_inventory_metrics(
             db, low_stock_threshold=normalized_threshold
         )
-        raw_devices = metrics.get("low_stock_devices", [])
+        raw_devices = metrics.get("low_stock", [])
         devices = [
             schemas.LowStockDevice.model_validate(entry)
             for entry in raw_devices

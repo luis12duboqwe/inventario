@@ -288,5 +288,425 @@
     "error": null,
     "created_at": "2025-12-02T18:28:34.675221+00:00",
     "finished_at": "2025-12-02T18:28:34.682359+00:00"
+  },
+  "3cf6c954-70b5-4fcc-aaf4-ac791c50c701": {
+    "id": "3cf6c954-70b5-4fcc-aaf4-ac791c50c701",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "failed",
+    "output_path": null,
+    "error": "AttributeError: module 'backend.app.models' has no attribute 'CashRegisterEntry'\nTraceback (most recent call last):\n  File \"/workspaces/inventario/backend/app/services/async_jobs.py\", line 126, in run_cash_report_job\n    entries = crud.list_cash_entries(\n              ^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspaces/inventario/backend/app/crud_legacy.py\", line 15064, in list_cash_entries\n    select(models.CashRegisterEntry)\n           ^^^^^^^^^^^^^^^^^^^^^^^^\nAttributeError: module 'backend.app.models' has no attribute 'CashRegisterEntry'\n",
+    "created_at": "2025-12-08T17:42:32.904238+00:00",
+    "finished_at": "2025-12-08T17:42:32.907886+00:00"
+  },
+  "b3e8882b-38e4-4d04-abce-3a31fabdd30c": {
+    "id": "b3e8882b-38e4-4d04-abce-3a31fabdd30c",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "failed",
+    "output_path": null,
+    "error": "AttributeError: module 'backend.app.models' has no attribute 'CashRegisterEntry'\nTraceback (most recent call last):\n  File \"/workspaces/inventario/backend/app/services/async_jobs.py\", line 126, in run_cash_report_job\n    entries = crud.list_cash_entries(\n              ^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspaces/inventario/backend/app/crud_legacy.py\", line 15064, in list_cash_entries\n    select(models.CashRegisterEntry)\n           ^^^^^^^^^^^^^^^^^^^^^^^^\nAttributeError: module 'backend.app.models' has no attribute 'CashRegisterEntry'\n",
+    "created_at": "2025-12-08T18:07:20.032422+00:00",
+    "finished_at": "2025-12-08T18:07:20.036095+00:00"
+  },
+  "9be711ae-c061-4fe7-af6b-5eb3070d993c": {
+    "id": "9be711ae-c061-4fe7-af6b-5eb3070d993c",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "failed",
+    "output_path": null,
+    "error": "AttributeError: module 'backend.app.models' has no attribute 'CashRegisterEntry'\nTraceback (most recent call last):\n  File \"/workspaces/inventario/backend/app/services/async_jobs.py\", line 126, in run_cash_report_job\n    entries = crud.list_cash_entries(\n              ^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspaces/inventario/backend/app/crud_legacy.py\", line 15064, in list_cash_entries\n    select(models.CashRegisterEntry)\n           ^^^^^^^^^^^^^^^^^^^^^^^^\nAttributeError: module 'backend.app.models' has no attribute 'CashRegisterEntry'\n",
+    "created_at": "2025-12-08T18:12:01.139714+00:00",
+    "finished_at": "2025-12-08T18:12:01.143608+00:00"
+  },
+  "220b08c5-2eda-43e7-9444-ba914ab53cbe": {
+    "id": "220b08c5-2eda-43e7-9444-ba914ab53cbe",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "failed",
+    "output_path": null,
+    "error": "AttributeError: module 'backend.app.models' has no attribute 'CashRegisterEntry'\nTraceback (most recent call last):\n  File \"/workspaces/inventario/backend/app/services/async_jobs.py\", line 126, in run_cash_report_job\n    entries = crud.list_cash_entries(\n              ^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspaces/inventario/backend/app/crud_legacy.py\", line 15087, in list_cash_entries\n    select(models.CashRegisterEntry)\n           ^^^^^^^^^^^^^^^^^^^^^^^^\nAttributeError: module 'backend.app.models' has no attribute 'CashRegisterEntry'\n",
+    "created_at": "2025-12-08T18:20:59.503539+00:00",
+    "finished_at": "2025-12-08T18:20:59.507478+00:00"
+  },
+  "d7264573-b10e-4919-bee4-fa7348f2f2c3": {
+    "id": "d7264573-b10e-4919-bee4-fa7348f2f2c3",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "failed",
+    "output_path": null,
+    "error": "AttributeError: module 'backend.app.models' has no attribute 'CashRegisterEntry'\nTraceback (most recent call last):\n  File \"/workspaces/inventario/backend/app/services/async_jobs.py\", line 126, in run_cash_report_job\n    entries = crud.list_cash_entries(\n              ^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspaces/inventario/backend/app/crud_legacy.py\", line 15087, in list_cash_entries\n    select(models.CashRegisterEntry)\n           ^^^^^^^^^^^^^^^^^^^^^^^^\nAttributeError: module 'backend.app.models' has no attribute 'CashRegisterEntry'\n",
+    "created_at": "2025-12-08T18:23:36.968025+00:00",
+    "finished_at": "2025-12-08T18:23:36.972096+00:00"
+  },
+  "ae62c7d7-1b54-4851-8691-fa07cf36bcda": {
+    "id": "ae62c7d7-1b54-4851-8691-fa07cf36bcda",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "failed",
+    "output_path": null,
+    "error": "AttributeError: module 'backend.app.models' has no attribute 'CashRegisterEntry'\nTraceback (most recent call last):\n  File \"/workspaces/inventario/backend/app/services/async_jobs.py\", line 126, in run_cash_report_job\n    entries = crud.list_cash_entries(\n              ^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspaces/inventario/backend/app/crud_legacy.py\", line 15102, in list_cash_entries\n    select(models.CashRegisterEntry)\n           ^^^^^^^^^^^^^^^^^^^^^^^^\nAttributeError: module 'backend.app.models' has no attribute 'CashRegisterEntry'\n",
+    "created_at": "2025-12-08T18:27:55.696053+00:00",
+    "finished_at": "2025-12-08T18:27:55.699999+00:00"
+  },
+  "a37a9d5e-cc45-468b-a87a-ba483cc6aaec": {
+    "id": "a37a9d5e-cc45-468b-a87a-ba483cc6aaec",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "failed",
+    "output_path": null,
+    "error": "AttributeError: module 'backend.app.models' has no attribute 'CashRegisterEntry'\nTraceback (most recent call last):\n  File \"/workspaces/inventario/backend/app/services/async_jobs.py\", line 126, in run_cash_report_job\n    entries = crud.list_cash_entries(\n              ^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspaces/inventario/backend/app/crud_legacy.py\", line 15102, in list_cash_entries\n    select(models.CashRegisterEntry)\n           ^^^^^^^^^^^^^^^^^^^^^^^^\nAttributeError: module 'backend.app.models' has no attribute 'CashRegisterEntry'\n",
+    "created_at": "2025-12-08T18:30:20.289679+00:00",
+    "finished_at": "2025-12-08T18:30:20.293956+00:00"
+  },
+  "33922d95-bb28-403b-a4d9-88b7ceb579f5": {
+    "id": "33922d95-bb28-403b-a4d9-88b7ceb579f5",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "failed",
+    "output_path": null,
+    "error": "AttributeError: module 'backend.app.models' has no attribute 'CashRegisterEntry'\nTraceback (most recent call last):\n  File \"/workspaces/inventario/backend/app/services/async_jobs.py\", line 126, in run_cash_report_job\n    entries = crud.list_cash_entries(\n              ^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspaces/inventario/backend/app/crud_legacy.py\", line 15102, in list_cash_entries\n    select(models.CashRegisterEntry)\n           ^^^^^^^^^^^^^^^^^^^^^^^^\nAttributeError: module 'backend.app.models' has no attribute 'CashRegisterEntry'\n",
+    "created_at": "2025-12-08T18:35:15.543674+00:00",
+    "finished_at": "2025-12-08T18:35:15.547972+00:00"
+  },
+  "6969434d-c3d4-4b0c-b3f0-3631236c7d34": {
+    "id": "6969434d-c3d4-4b0c-b3f0-3631236c7d34",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "failed",
+    "output_path": null,
+    "error": "AttributeError: module 'backend.app.models' has no attribute 'CashRegisterEntry'\nTraceback (most recent call last):\n  File \"/workspaces/inventario/backend/app/services/async_jobs.py\", line 126, in run_cash_report_job\n    entries = crud.list_cash_entries(\n              ^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspaces/inventario/backend/app/crud_legacy.py\", line 15102, in list_cash_entries\n    select(models.CashRegisterEntry)\n           ^^^^^^^^^^^^^^^^^^^^^^^^\nAttributeError: module 'backend.app.models' has no attribute 'CashRegisterEntry'\n",
+    "created_at": "2025-12-08T18:37:48.774150+00:00",
+    "finished_at": "2025-12-08T18:37:48.778492+00:00"
+  },
+  "36683704-3ec1-477b-9be0-586733642abf": {
+    "id": "36683704-3ec1-477b-9be0-586733642abf",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "failed",
+    "output_path": null,
+    "error": "AttributeError: module 'backend.app.models' has no attribute 'CashRegisterEntry'\nTraceback (most recent call last):\n  File \"/workspaces/inventario/backend/app/services/async_jobs.py\", line 126, in run_cash_report_job\n    entries = crud.list_cash_entries(\n              ^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspaces/inventario/backend/app/crud_legacy.py\", line 15102, in list_cash_entries\n    select(models.CashRegisterEntry)\n           ^^^^^^^^^^^^^^^^^^^^^^^^\nAttributeError: module 'backend.app.models' has no attribute 'CashRegisterEntry'\n",
+    "created_at": "2025-12-08T18:41:17.523403+00:00",
+    "finished_at": "2025-12-08T18:41:17.527788+00:00"
+  },
+  "df54b5a0-d654-4b10-91ec-5a614ef3f1a8": {
+    "id": "df54b5a0-d654-4b10-91ec-5a614ef3f1a8",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "failed",
+    "output_path": null,
+    "error": "AttributeError: module 'backend.app.models' has no attribute 'CashRegisterEntry'\nTraceback (most recent call last):\n  File \"/workspaces/inventario/backend/app/services/async_jobs.py\", line 126, in run_cash_report_job\n    entries = crud.list_cash_entries(\n              ^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspaces/inventario/backend/app/crud_legacy.py\", line 15102, in list_cash_entries\n    select(models.CashRegisterEntry)\n           ^^^^^^^^^^^^^^^^^^^^^^^^\nAttributeError: module 'backend.app.models' has no attribute 'CashRegisterEntry'\n",
+    "created_at": "2025-12-08T18:43:44.555905+00:00",
+    "finished_at": "2025-12-08T18:43:44.560307+00:00"
+  },
+  "0ee0d4e0-16bc-4e81-9830-c066b808d4f2": {
+    "id": "0ee0d4e0-16bc-4e81-9830-c066b808d4f2",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "failed",
+    "output_path": null,
+    "error": "AttributeError: module 'backend.app.models' has no attribute 'CashRegisterEntry'\nTraceback (most recent call last):\n  File \"/workspaces/inventario/backend/app/services/async_jobs.py\", line 126, in run_cash_report_job\n    entries = crud.list_cash_entries(\n              ^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspaces/inventario/backend/app/crud_legacy.py\", line 15105, in list_cash_entries\n    select(models.CashRegisterEntry)\n           ^^^^^^^^^^^^^^^^^^^^^^^^\nAttributeError: module 'backend.app.models' has no attribute 'CashRegisterEntry'\n",
+    "created_at": "2025-12-08T18:48:18.925043+00:00",
+    "finished_at": "2025-12-08T18:48:18.929459+00:00"
+  },
+  "d92f6f4b-4b3a-419a-b120-87eecf90eed4": {
+    "id": "d92f6f4b-4b3a-419a-b120-87eecf90eed4",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "failed",
+    "output_path": null,
+    "error": "AttributeError: module 'backend.app.models' has no attribute 'CashRegisterEntry'\nTraceback (most recent call last):\n  File \"/workspaces/inventario/backend/app/services/async_jobs.py\", line 126, in run_cash_report_job\n    entries = crud.list_cash_entries(\n              ^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspaces/inventario/backend/app/crud_legacy.py\", line 15105, in list_cash_entries\n    select(models.CashRegisterEntry)\n           ^^^^^^^^^^^^^^^^^^^^^^^^\nAttributeError: module 'backend.app.models' has no attribute 'CashRegisterEntry'\n",
+    "created_at": "2025-12-08T18:51:06.696555+00:00",
+    "finished_at": "2025-12-08T18:51:06.701171+00:00"
+  },
+  "79b8abb2-6b2d-435e-b42e-8efaa63c1316": {
+    "id": "79b8abb2-6b2d-435e-b42e-8efaa63c1316",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-19/test_async_cash_report_job_run0/cash_reports/cierre_1_79b8abb2-6b2d-435e-b42e-8efaa63c1316.pdf",
+    "error": null,
+    "created_at": "2025-12-08T19:05:12.071048+00:00",
+    "finished_at": "2025-12-08T19:05:12.079855+00:00"
+  },
+  "19315fc1-da56-4c10-bc3b-f0df113458e7": {
+    "id": "19315fc1-da56-4c10-bc3b-f0df113458e7",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-20/test_async_cash_report_job_run0/cash_reports/cierre_1_19315fc1-da56-4c10-bc3b-f0df113458e7.pdf",
+    "error": null,
+    "created_at": "2025-12-08T19:07:47.149943+00:00",
+    "finished_at": "2025-12-08T19:07:47.158515+00:00"
+  },
+  "c6fe3045-33b1-4912-a8d3-61a064bc18b2": {
+    "id": "c6fe3045-33b1-4912-a8d3-61a064bc18b2",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-21/test_async_cash_report_job_run0/cash_reports/cierre_1_c6fe3045-33b1-4912-a8d3-61a064bc18b2.pdf",
+    "error": null,
+    "created_at": "2025-12-08T19:11:35.597914+00:00",
+    "finished_at": "2025-12-08T19:11:35.607062+00:00"
+  },
+  "4100ec4d-7a08-49ae-96b7-da15fe73052c": {
+    "id": "4100ec4d-7a08-49ae-96b7-da15fe73052c",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-22/test_async_cash_report_job_run0/cash_reports/cierre_1_4100ec4d-7a08-49ae-96b7-da15fe73052c.pdf",
+    "error": null,
+    "created_at": "2025-12-08T19:18:14.275392+00:00",
+    "finished_at": "2025-12-08T19:18:14.283952+00:00"
+  },
+  "44c7e224-08ce-4500-97d7-e1bad4eb48dc": {
+    "id": "44c7e224-08ce-4500-97d7-e1bad4eb48dc",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-23/test_async_cash_report_job_run0/cash_reports/cierre_1_44c7e224-08ce-4500-97d7-e1bad4eb48dc.pdf",
+    "error": null,
+    "created_at": "2025-12-08T19:22:00.511374+00:00",
+    "finished_at": "2025-12-08T19:22:00.520171+00:00"
+  },
+  "351f9bfe-e5ed-49cc-8150-ef6f24ba3971": {
+    "id": "351f9bfe-e5ed-49cc-8150-ef6f24ba3971",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-24/test_async_cash_report_job_run0/cash_reports/cierre_1_351f9bfe-e5ed-49cc-8150-ef6f24ba3971.pdf",
+    "error": null,
+    "created_at": "2025-12-08T19:27:43.318409+00:00",
+    "finished_at": "2025-12-08T19:27:43.327001+00:00"
+  },
+  "ac52f138-adfc-4bd7-be5e-31103c4330ae": {
+    "id": "ac52f138-adfc-4bd7-be5e-31103c4330ae",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-25/test_async_cash_report_job_run0/cash_reports/cierre_1_ac52f138-adfc-4bd7-be5e-31103c4330ae.pdf",
+    "error": null,
+    "created_at": "2025-12-08T19:30:36.386556+00:00",
+    "finished_at": "2025-12-08T19:30:36.395512+00:00"
+  },
+  "f5c80274-9baa-49cc-9fde-b67b8e77c53d": {
+    "id": "f5c80274-9baa-49cc-9fde-b67b8e77c53d",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-26/test_async_cash_report_job_run0/cash_reports/cierre_1_f5c80274-9baa-49cc-9fde-b67b8e77c53d.pdf",
+    "error": null,
+    "created_at": "2025-12-08T19:33:52.933081+00:00",
+    "finished_at": "2025-12-08T19:33:52.942229+00:00"
+  },
+  "8da41f8f-ffb2-4403-beb0-dde73a50071b": {
+    "id": "8da41f8f-ffb2-4403-beb0-dde73a50071b",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-27/test_async_cash_report_job_run0/cash_reports/cierre_1_8da41f8f-ffb2-4403-beb0-dde73a50071b.pdf",
+    "error": null,
+    "created_at": "2025-12-08T19:36:29.001255+00:00",
+    "finished_at": "2025-12-08T19:36:29.010660+00:00"
+  },
+  "9234fb8c-100a-4550-85eb-97d688a74c54": {
+    "id": "9234fb8c-100a-4550-85eb-97d688a74c54",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-28/test_async_cash_report_job_run0/cash_reports/cierre_1_9234fb8c-100a-4550-85eb-97d688a74c54.pdf",
+    "error": null,
+    "created_at": "2025-12-08T19:40:21.298769+00:00",
+    "finished_at": "2025-12-08T19:40:21.310769+00:00"
+  },
+  "0f129bf9-7938-4ab5-a200-167efd3332b2": {
+    "id": "0f129bf9-7938-4ab5-a200-167efd3332b2",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-29/test_async_cash_report_job_run0/cash_reports/cierre_1_0f129bf9-7938-4ab5-a200-167efd3332b2.pdf",
+    "error": null,
+    "created_at": "2025-12-08T19:45:59.026939+00:00",
+    "finished_at": "2025-12-08T19:45:59.035884+00:00"
+  },
+  "32ba071c-9211-48ac-b909-e75580a2f5e9": {
+    "id": "32ba071c-9211-48ac-b909-e75580a2f5e9",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-30/test_async_cash_report_job_run0/cash_reports/cierre_1_32ba071c-9211-48ac-b909-e75580a2f5e9.pdf",
+    "error": null,
+    "created_at": "2025-12-08T19:48:30.645491+00:00",
+    "finished_at": "2025-12-08T19:48:30.655033+00:00"
+  },
+  "c14e354a-8c01-48ba-8a49-a38b397d6185": {
+    "id": "c14e354a-8c01-48ba-8a49-a38b397d6185",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-31/test_async_cash_report_job_run0/cash_reports/cierre_1_c14e354a-8c01-48ba-8a49-a38b397d6185.pdf",
+    "error": null,
+    "created_at": "2025-12-08T19:54:58.263841+00:00",
+    "finished_at": "2025-12-08T19:54:58.273292+00:00"
+  },
+  "396fb5dc-27e5-47bd-ac12-0200e85b7d44": {
+    "id": "396fb5dc-27e5-47bd-ac12-0200e85b7d44",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-32/test_async_cash_report_job_run0/cash_reports/cierre_1_396fb5dc-27e5-47bd-ac12-0200e85b7d44.pdf",
+    "error": null,
+    "created_at": "2025-12-08T19:58:38.351339+00:00",
+    "finished_at": "2025-12-08T19:58:38.360828+00:00"
+  },
+  "88e5e31e-8605-4476-9e15-3b572a8e3748": {
+    "id": "88e5e31e-8605-4476-9e15-3b572a8e3748",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-33/test_async_cash_report_job_run0/cash_reports/cierre_1_88e5e31e-8605-4476-9e15-3b572a8e3748.pdf",
+    "error": null,
+    "created_at": "2025-12-08T20:01:12.712782+00:00",
+    "finished_at": "2025-12-08T20:01:12.722241+00:00"
+  },
+  "f3e0846a-065b-4129-81b2-2c52bfb10b8c": {
+    "id": "f3e0846a-065b-4129-81b2-2c52bfb10b8c",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-34/test_async_cash_report_job_run0/cash_reports/cierre_1_f3e0846a-065b-4129-81b2-2c52bfb10b8c.pdf",
+    "error": null,
+    "created_at": "2025-12-08T20:05:08.942139+00:00",
+    "finished_at": "2025-12-08T20:05:08.951914+00:00"
+  },
+  "23e53d1d-8965-41ca-b321-f4328289ceeb": {
+    "id": "23e53d1d-8965-41ca-b321-f4328289ceeb",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-36/test_async_cash_report_job_run0/cash_reports/cierre_1_23e53d1d-8965-41ca-b321-f4328289ceeb.pdf",
+    "error": null,
+    "created_at": "2025-12-08T20:19:13.654670+00:00",
+    "finished_at": "2025-12-08T20:19:13.664186+00:00"
+  },
+  "0dbd71df-c8d9-4bd2-8712-77a3c6fe9e5a": {
+    "id": "0dbd71df-c8d9-4bd2-8712-77a3c6fe9e5a",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-37/test_async_cash_report_job_run0/cash_reports/cierre_1_0dbd71df-c8d9-4bd2-8712-77a3c6fe9e5a.pdf",
+    "error": null,
+    "created_at": "2025-12-08T20:22:48.938290+00:00",
+    "finished_at": "2025-12-08T20:22:48.950370+00:00"
+  },
+  "6b7cd07f-19bf-4172-991e-1b378866cd02": {
+    "id": "6b7cd07f-19bf-4172-991e-1b378866cd02",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-38/test_async_cash_report_job_run0/cash_reports/cierre_1_6b7cd07f-19bf-4172-991e-1b378866cd02.pdf",
+    "error": null,
+    "created_at": "2025-12-08T20:27:39.998548+00:00",
+    "finished_at": "2025-12-08T20:27:40.008312+00:00"
+  },
+  "3ad7374f-0aba-4536-83e3-6db95c69a42b": {
+    "id": "3ad7374f-0aba-4536-83e3-6db95c69a42b",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-39/test_async_cash_report_job_run0/cash_reports/cierre_1_3ad7374f-0aba-4536-83e3-6db95c69a42b.pdf",
+    "error": null,
+    "created_at": "2025-12-08T20:31:49.103360+00:00",
+    "finished_at": "2025-12-08T20:31:49.113101+00:00"
+  },
+  "72fe9cf6-937b-4e20-8b78-2960bd367233": {
+    "id": "72fe9cf6-937b-4e20-8b78-2960bd367233",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-40/test_async_cash_report_job_run0/cash_reports/cierre_1_72fe9cf6-937b-4e20-8b78-2960bd367233.pdf",
+    "error": null,
+    "created_at": "2025-12-08T20:37:05.548929+00:00",
+    "finished_at": "2025-12-08T20:37:05.559210+00:00"
+  },
+  "c19da676-68b4-45b8-8440-e4ab547942a5": {
+    "id": "c19da676-68b4-45b8-8440-e4ab547942a5",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-41/test_async_cash_report_job_run0/cash_reports/cierre_1_c19da676-68b4-45b8-8440-e4ab547942a5.pdf",
+    "error": null,
+    "created_at": "2025-12-08T20:59:50.272070+00:00",
+    "finished_at": "2025-12-08T20:59:50.282924+00:00"
+  },
+  "742525a1-a99f-4b61-a5c5-ac0eeddf62a3": {
+    "id": "742525a1-a99f-4b61-a5c5-ac0eeddf62a3",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-42/test_async_cash_report_job_run0/cash_reports/cierre_1_742525a1-a99f-4b61-a5c5-ac0eeddf62a3.pdf",
+    "error": null,
+    "created_at": "2025-12-08T21:14:53.251086+00:00",
+    "finished_at": "2025-12-08T21:14:53.261183+00:00"
+  },
+  "4215ea44-add6-489d-ac50-dadfb83574cf": {
+    "id": "4215ea44-add6-489d-ac50-dadfb83574cf",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-46/test_async_cash_report_job_run0/cash_reports/cierre_1_4215ea44-add6-489d-ac50-dadfb83574cf.pdf",
+    "error": null,
+    "created_at": "2025-12-08T22:04:21.390288+00:00",
+    "finished_at": "2025-12-08T22:04:21.400556+00:00"
+  },
+  "0be586ad-bb3b-4416-a254-13022fbf1a28": {
+    "id": "0be586ad-bb3b-4416-a254-13022fbf1a28",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-48/test_async_cash_report_job_run0/cash_reports/cierre_1_0be586ad-bb3b-4416-a254-13022fbf1a28.pdf",
+    "error": null,
+    "created_at": "2025-12-08T22:34:16.150826+00:00",
+    "finished_at": "2025-12-08T22:34:16.161200+00:00"
+  },
+  "ac8ea8ad-b0e2-43fd-bd09-49fe59d4fa68": {
+    "id": "ac8ea8ad-b0e2-43fd-bd09-49fe59d4fa68",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-49/test_async_cash_report_job_run0/cash_reports/cierre_1_ac8ea8ad-b0e2-43fd-bd09-49fe59d4fa68.pdf",
+    "error": null,
+    "created_at": "2025-12-08T23:04:37.674071+00:00",
+    "finished_at": "2025-12-08T23:04:37.685522+00:00"
+  },
+  "b7d06c59-5864-44e3-8102-d97a7f4f1e5d": {
+    "id": "b7d06c59-5864-44e3-8102-d97a7f4f1e5d",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-50/test_async_cash_report_job_run0/cash_reports/cierre_1_b7d06c59-5864-44e3-8102-d97a7f4f1e5d.pdf",
+    "error": null,
+    "created_at": "2025-12-08T23:19:38.802829+00:00",
+    "finished_at": "2025-12-08T23:19:38.813299+00:00"
+  },
+  "b4db1b99-b030-401b-bab0-a0d835fce093": {
+    "id": "b4db1b99-b030-401b-bab0-a0d835fce093",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-51/test_async_cash_report_job_run0/cash_reports/cierre_1_b4db1b99-b030-401b-bab0-a0d835fce093.pdf",
+    "error": null,
+    "created_at": "2025-12-08T23:43:41.921068+00:00",
+    "finished_at": "2025-12-08T23:43:41.932143+00:00"
+  },
+  "566edcef-dca5-4e3f-9b3c-6b7b650869e6": {
+    "id": "566edcef-dca5-4e3f-9b3c-6b7b650869e6",
+    "session_id": 1,
+    "job_type": "cash_report",
+    "status": "completed",
+    "output_path": "/tmp/pytest-of-vscode/pytest-52/test_async_cash_report_job_run0/cash_reports/cierre_1_566edcef-dca5-4e3f-9b3c-6b7b650869e6.pdf",
+    "error": null,
+    "created_at": "2025-12-09T00:25:22.369279+00:00",
+    "finished_at": "2025-12-09T00:25:22.379621+00:00"
   }
 }
