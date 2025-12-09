@@ -278,13 +278,17 @@ class PriceResolution(BaseModel):
     """Resultado de resolver un precio con base en listas disponibles."""
 
     device_id: int = Field(..., ge=1)
+    scope: str | None = Field(default=None, max_length=50)
     price_list_id: int | None = Field(default=None, ge=1)
     price_list_name: str | None = Field(default=None, max_length=120)
     base_price: Decimal = Field(..., ge=Decimal("0"))
     final_price: Decimal = Field(..., ge=Decimal("0"))
     discount_applied: Decimal = Field(default=Decimal("0"))
+    discount_percentage: float | None = Field(default=None, ge=0, le=100)
     currency: str = Field(default="MXN")
     applied_rule: str | None = None
+    priority: int | None = Field(default=None, ge=0)
+    source: str | None = Field(default=None, max_length=50)
 
     @field_serializer("base_price", "final_price", "discount_applied")
     @classmethod

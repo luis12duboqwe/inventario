@@ -143,3 +143,13 @@ class TransferOrderItem(Base):
     reservation: Mapped[Optional["InventoryReservation"]] = relationship(
         "InventoryReservation"
     )
+
+    @property
+    def device_name(self) -> str:
+        """Nombre del dispositivo desde la relación."""
+        return self.device.name if self.device else ""
+
+    @property
+    def sku(self) -> str:
+        """SKU del dispositivo desde la relación."""
+        return self.device.sku if self.device else ""

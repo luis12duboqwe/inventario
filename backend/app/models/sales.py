@@ -75,10 +75,14 @@ class POSConfig(Base):
         String(255), nullable=True)
     printer_name: Mapped[str | None] = mapped_column(
         String(120), nullable=True)
+    printer_profile: Mapped[str | None] = mapped_column(
+        String(120), nullable=True)
     hardware_settings: Mapped[dict[str, Any] |
                               None] = mapped_column(JSON, nullable=True)
     promotions_config: Mapped[dict[str, Any] |
                               None] = mapped_column(JSON, nullable=True)
+    quick_product_ids: Mapped[list[int]] = mapped_column(
+        JSON, nullable=False, default=[], server_default="[]")
     tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=0)
     auto_print: Mapped[bool] = mapped_column(Boolean, default=False)
     require_customer: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -301,6 +305,11 @@ class Sale(Base):
     dte_documents: Mapped[list["DTEDocument"]] = relationship(
         "DTEDocument", back_populates="sale", cascade="all, delete-orphan"
     )
+    fiscal_documents: Mapped[list["FiscalDocument"]] = relationship(
+        "FiscalDocument",
+        back_populates="reference",
+        cascade="all, delete-orphan",
+    )
 
 
 class SaleItem(Base):
@@ -445,6 +454,12 @@ class WarrantyAssignment(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
     )
 
     sale_item: Mapped[SaleItem] = relationship(
@@ -646,12 +661,12 @@ class DTEDocument(Base):
         nullable=False,
         index=True,
     )
-    # authorization_id: Mapped[int] = mapped_column(
-    #     Integer,
-    #     ForeignKey("dte_authorizations.id", ondelete="SET NULL"),
-    #     nullable=True,
-    #     index=True,
-    # )
+    authorization_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("dte_authorizations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     document_type: Mapped[str] = mapped_column(
         String(30), nullable=False, index=True)
     serie: Mapped[str] = mapped_column(String(12), nullable=False, index=True)
@@ -673,8 +688,92 @@ class DTEDocument(Base):
     acknowledged_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
 
     sale: Mapped[Sale] = relationship("Sale", back_populates="dte_documents")
+    authorization: Mapped["DTEAuthorization | None"] = relationship(
+        "DTEAuthorization")
+    queue: Mapped[list["DTEDispatchQueue"]] = relationship(
+        "DTEDispatchQueue", back_populates="document", cascade="all, delete-orphan"
+    )
+
+
+class DTEAuthorization(Base):
+    """Autorización DTE para rango de series."""
+    __tablename__ = "dte_authorizations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    document_type: Mapped[str] = mapped_column(
+        String(30), nullable=False, index=True)
+    serie: Mapped[str] = mapped_column(String(12), nullable=False)
+    range_start: Mapped[int] = mapped_column(Integer, nullable=False)
+    range_end: Mapped[int] = mapped_column(Integer, nullable=False)
+    current_number: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0)
+    cai: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    expiration_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    store_id: Mapped[int | None] = mapped_column(
+        "sucursal_id",
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    store: Mapped[Store | None] = relationship("Store")
+
+
+class DTEDispatchQueue(Base):
+    """Cola de despacho para documentos DTE."""
+    __tablename__ = "dte_dispatch_queue"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    document_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("dte_documents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    status: Mapped[DTEDispatchStatus] = mapped_column(
+        Enum(DTEDispatchStatus, name="dte_dispatch_status"),
+        nullable=False,
+        default=DTEDispatchStatus.PENDING,
+    )
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scheduled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    document: Mapped[DTEDocument] = relationship(
+        "DTEDocument", back_populates="queue")
 
 
 class CashRegisterSession(Base):
@@ -761,6 +860,18 @@ class RMARequest(Base):
         nullable=True,
         index=True,
     )
+    repair_order_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("repair_orders.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    replacement_sale_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("ventas.id_venta", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     store_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("sucursales.id_sucursal", ondelete="RESTRICT"),
@@ -770,10 +881,16 @@ class RMARequest(Base):
     device_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("devices.id", ondelete="RESTRICT"), nullable=False, index=True
     )
+    disposition: Mapped[ReturnDisposition] = mapped_column(
+        Enum(ReturnDisposition, name="return_disposition"),
+        nullable=False,
+        default=ReturnDisposition.VENDIBLE,
+    )
     status: Mapped[RMAStatus] = mapped_column(
         Enum(RMAStatus, name="rma_status"), nullable=False, default=RMAStatus.PENDIENTE
     )
-    reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     resolution_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
@@ -782,6 +899,12 @@ class RMARequest(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
+    )
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("usuarios.id_usuario", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
 
     sale_return: Mapped[SaleReturn | None] = relationship(
@@ -792,6 +915,41 @@ class RMARequest(Base):
     )
     store: Mapped[Store] = relationship("Store")
     device: Mapped[Device] = relationship("Device")
+    repair_order: Mapped[RepairOrder | None] = relationship("RepairOrder")
+    replacement_sale: Mapped[Sale | None] = relationship("Sale")
+    created_by: Mapped[User | None] = relationship("User")
+    history: Mapped[list["RMAEvent"]] = relationship(
+        "RMAEvent", back_populates="rma", cascade="all, delete-orphan"
+    )
+
+
+class RMAEvent(Base):
+    __tablename__ = "rma_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    rma_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("rma_requests.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    status: Mapped[RMAStatus] = mapped_column(
+        Enum(RMAStatus, name="rma_status"), nullable=False
+    )
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("usuarios.id_usuario", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    rma: Mapped[RMARequest] = relationship(
+        "RMARequest", back_populates="history")
+    created_by: Mapped[User | None] = relationship("User")
 
 
 class CashSession(Base):
@@ -879,6 +1037,60 @@ class CashEntry(Base):
         "CashSession", back_populates="entries")
     created_by: Mapped[User | None] = relationship("User")
 
+
+class POSDraftSale(Base):
+    __tablename__ = "pos_draft_sales"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    store_id: Mapped[int] = mapped_column(
+        "sucursal_id",
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    payload: Mapped[dict[str, Any]] = mapped_column(
+        JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+
+class FiscalDocument(Base):
+    __tablename__ = "fiscal_documents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    document_type: Mapped[str] = mapped_column(
+        String(30), nullable=False, index=True)
+    document_number: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True)
+    reference_sale_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("ventas.id_venta", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="created")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    reference: Mapped[Sale] = relationship(
+        "Sale", back_populates="fiscal_documents", foreign_keys=[reference_sale_id]
+    )
+
+
+# Alias for compatibility
+CashRegisterEntry = CashEntry
 
 # Export Enums for compatibility
 RETURN_DISPOSITION_ENUM = Enum(ReturnDisposition, name="return_disposition")

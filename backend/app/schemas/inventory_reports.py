@@ -347,10 +347,13 @@ class LowStockDevice(BaseModel):
     name: str
     quantity: int
     unit_price: Decimal
+    minimum_stock: int | None = None
+    reorder_point: int | None = None
 
 
 class InventoryAlertDevice(LowStockDevice):
     severity: Literal["critical", "warning", "notice"]
+    minimum_stock: int | None = None
     projected_days: int | None = None
     average_daily_sales: float | None = None
     trend: str | None = None
@@ -381,6 +384,8 @@ class InventoryAlertsResponse(BaseModel):
 
 
 class MinimumStockAlert(LowStockDevice):
+    minimum_stock: int | None = None
+    reorder_point: int | None = None
     below_minimum: bool = False
     below_reorder_point: bool = False
 

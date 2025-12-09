@@ -34,7 +34,8 @@ def _serialize_rma(rma: models.RMARequest) -> schemas.RMARecord:
         purchase_return_id=rma.purchase_return_id,
         repair_order_id=rma.repair_order_id,
         replacement_sale_id=rma.replacement_sale_id,
-        history=[_serialize_history(event) for event in rma.history],
+        history=[_serialize_history(event).model_dump()
+                 for event in rma.history],
     )
 
 
@@ -50,7 +51,8 @@ def authorize_rma(
     notes: str | None,
     actor_id: int,
 ) -> schemas.RMARecord:
-    rma = crud.authorize_rma_request(db, rma_id, notes=notes, actor_id=actor_id)
+    rma = crud.authorize_rma_request(
+        db, rma_id, notes=notes, actor_id=actor_id)
     return _serialize_rma(rma)
 
 
@@ -61,7 +63,8 @@ def process_rma(
     payload: schemas.RMAUpdate,
     actor_id: int,
 ) -> schemas.RMARecord:
-    rma = crud.process_rma_request(db, rma_id, payload=payload, actor_id=actor_id)
+    rma = crud.process_rma_request(
+        db, rma_id, payload=payload, actor_id=actor_id)
     return _serialize_rma(rma)
 
 
@@ -72,7 +75,8 @@ def close_rma(
     payload: schemas.RMAUpdate,
     actor_id: int,
 ) -> schemas.RMARecord:
-    rma = crud.close_rma_request(db, rma_id, payload=payload, actor_id=actor_id)
+    rma = crud.close_rma_request(
+        db, rma_id, payload=payload, actor_id=actor_id)
     return _serialize_rma(rma)
 
 

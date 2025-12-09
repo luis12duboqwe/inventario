@@ -113,7 +113,8 @@ class InMemoryRepository:
         return store
 
     def list_stores(self, limit: int = 50, offset: int = 0) -> list[Store]:
-        stores = sorted(self.stores.values(), key=lambda store: store.name.lower())
+        stores = sorted(self.stores.values(),
+                        key=lambda store: store.name.lower())
         return _apply_pagination(stores, limit=limit, offset=offset)
 
     def get_store(self, store_id: int) -> Store:
@@ -156,7 +157,8 @@ class InMemoryRepository:
     def list_devices(self, store_id: int, limit: int = 50, offset: int = 0) -> list[Device]:
         store = self.get_store(store_id)
         devices = sorted(
-            [device for device in self.devices.values() if device.store_id == store.id],
+            [device for device in self.devices.values() if device.store_id ==
+             store.id],
             key=lambda device: device.sku.lower(),
         )
         return _apply_pagination(devices, limit=limit, offset=offset)
@@ -173,9 +175,11 @@ def _validate_store_payload(payload: dict[str, Any]) -> dict[str, Any]:
     location = _optional_string(payload, "location", max_length=255)
     phone = _optional_string(payload, "phone", max_length=30)
     manager = _optional_string(payload, "manager", max_length=120)
-    status = _optional_string(payload, "status", default="activa", max_length=30)
+    status = _optional_string(
+        payload, "status", default="activa", max_length=30)
     code = _optional_string(payload, "code", max_length=20)
-    timezone = _optional_string(payload, "timezone", default="UTC", max_length=50)
+    timezone = _optional_string(
+        payload, "timezone", default="UTC", max_length=50)
     return {
         "name": name,
         "location": location,

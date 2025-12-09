@@ -1319,6 +1319,7 @@ __all__ = [
     "build_global_report_overview",
     "count_audit_logs",
     "create_system_log",
+    "_create_system_log",
     "export_audit_logs_csv",
     "get_audit_acknowledgements_map",
     "get_last_audit_entries",
@@ -1328,5 +1329,10 @@ __all__ = [
     "list_system_errors",
     "list_system_logs",
     "log_audit_event",
+    "_log_action",
     "register_system_error",
 ]
+
+# Aliases para compatibilidad con código legacy
+_create_system_log = create_system_log
+_log_action = log_audit_event

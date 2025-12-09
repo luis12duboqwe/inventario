@@ -217,12 +217,22 @@ class CustomerPrivacyRequest(Base):
         nullable=False,
         default=PrivacyRequestStatus.PROCESADA,
     )
+    reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
     details: Mapped[str | None] = mapped_column(String(255), nullable=True)
     consent_snapshot: Mapped[dict[str, Any]] = mapped_column(
         JSON, nullable=False, default=dict
     )
     masked_fields: Mapped[list[str]] = mapped_column(
         JSON, nullable=False, default=list
+    )
+    requested_by_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("usuarios.id_usuario", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=datetime.utcnow
@@ -240,7 +250,12 @@ class CustomerPrivacyRequest(Base):
     customer: Mapped[Customer] = relationship(
         "Customer", back_populates="privacy_requests"
     )
-    processed_by: Mapped[Optional["User"]] = relationship("User")
+    requested_by: Mapped[Optional["User"]] = relationship(
+        "User", foreign_keys=[requested_by_id]
+    )
+    processed_by: Mapped[Optional["User"]] = relationship(
+        "User", foreign_keys=[processed_by_id]
+    )
 
 
 class CustomerLedgerEntryType(str, enum.Enum):
@@ -543,6 +558,12 @@ class StoreCreditRedemption(Base):
         Numeric(12, 2), nullable=False, default=Decimal("0")
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("usuarios.id_usuario", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, nullable=False
     )
@@ -551,6 +572,7 @@ class StoreCreditRedemption(Base):
         "StoreCredit", back_populates="redemptions"
     )
     sale: Mapped["Sale | None"] = relationship("Sale")
+    created_by: Mapped["User | None"] = relationship("User")
 
 
 # Export Enums for compatibility

@@ -672,82 +672,159 @@ def update_purchase_vendor(
 def compute_purchase_suggestions(
     db: Session,
     *,
-    store_id: int | None = None,
-    weeks_history: int = 4,
-    safety_stock_days: int = 7,
-) -> list[dict]:
-    """
-    Genera sugerencias de compra basadas en rotación de inventario.
-    Calcula venta diaria promedio (ADS) y sugiere reabastecimiento.
-    """
-    # 1. Calcular fecha de inicio para análisis de ventas
-    start_date = datetime.now(timezone.utc) - timedelta(weeks=weeks_history)
+    store_ids: list[int] | None = None,
+    lookback_days: int = 30,
+    minimum_stock: int | None = None,
+    planning_horizon_days: int = 14,
+) -> schemas.PurchaseSuggestionsResponse:
+    """Genera sugerencias de compra alineadas al esquema esperado por el router."""
 
-    # 2. Obtener ventas por producto en el periodo
-    sales_query = (
+    now = datetime.now(timezone.utc)
+    start_date = now - timedelta(days=lookback_days)
+
+    sales_stmt = (
         select(
-            models.DetalleVenta.producto_id,
-            func.sum(models.DetalleVenta.cantidad).label("total_sold"),
+            models.Sale.store_id,
+            models.SaleItem.device_id,
+            func.sum(models.SaleItem.quantity).label("total_sold"),
         )
-        .join(models.Venta)
-        .where(models.Venta.fecha >= start_date)
-        .where(models.Venta.estado != "cancelada")
-        .group_by(models.DetalleVenta.producto_id)
+        .join(models.SaleItem, models.SaleItem.sale_id == models.Sale.id)
+        .where(models.Sale.created_at >= start_date)
+        .where(models.Sale.status != "CANCELADA")
+        .group_by(models.Sale.store_id, models.SaleItem.device_id)
     )
+    if store_ids:
+        sales_stmt = sales_stmt.where(models.Sale.store_id.in_(store_ids))
 
-    if store_id:
-        # Asumiendo que Venta tiene store_id o relación con usuario->sucursal
-        # Por ahora simplificado, idealmente filtrar por tienda
-        pass
+    sales_data = db.execute(sales_stmt).all()
+    sales_map: dict[tuple[int, int], int] = {
+        (row.store_id, row.device_id): int(row.total_sold or 0)
+        for row in sales_data
+    }
 
-    sales_data = db.execute(sales_query).all()
-    sales_map = {row.producto_id: row.total_sold for row in sales_data}
+    devices_stmt = select(models.Device).where(
+        models.Device.is_deleted.is_(False))
+    if store_ids:
+        devices_stmt = devices_stmt.where(
+            models.Device.store_id.in_(store_ids))
+    devices = list(db.scalars(devices_stmt).all())
 
-    # 3. Obtener inventario actual
-    devices = db.execute(
-        select(models.Device).where(models.Device.estado == "disponible")
-    ).scalars().all()
+    store_ids_in_scope = {device.store_id for device in devices}
+    stores_stmt = select(models.Store).where(
+        models.Store.id.in_(store_ids_in_scope))
+    stores = {store.id: store.name for store in db.scalars(stores_stmt).all()}
 
-    # Agrupar inventario por modelo/SKU (simplificado por ID de dispositivo base si aplica)
-    # En este modelo, Device es un item individual. Para sugerencias de compra,
-    # necesitamos agrupar por "tipo de producto" (ej. iPhone 13 128GB).
-    # Como Device es individual, usamos atributos para agrupar.
-    inventory_count = defaultdict(int)
-    product_info = {}
+    vendor_names = {
+        device.proveedor.strip().lower()
+        for device in devices
+        if device.proveedor
+    }
+    vendor_stmt = select(models.Proveedor).where(
+        func.lower(models.Proveedor.nombre).in_(vendor_names)
+    ) if vendor_names else None
+    vendor_map: dict[str, models.Proveedor] = {}
+    if vendor_stmt is not None:
+        vendor_map = {
+            vendor.nombre.lower(): vendor for vendor in db.scalars(vendor_stmt).all()
+        }
+
+    supplier_stmt = select(models.Supplier).where(
+        func.lower(models.Supplier.name).in_(vendor_names)
+    ) if vendor_names else None
+    supplier_map: dict[str, models.Supplier] = {}
+    if supplier_stmt is not None:
+        supplier_map = {
+            supplier.name.lower(): supplier for supplier in db.scalars(supplier_stmt).all()
+        }
+
+    suggestions_by_store: dict[int,
+                               list[schemas.PurchaseSuggestionItem]] = defaultdict(list)
+    total_items = 0
+    min_stock_value = minimum_stock if minimum_stock is not None else None
 
     for device in devices:
-        # Clave de agrupación: Marca + Modelo + Capacidad
-        key = (device.marca, device.modelo, device.capacidad_gb)
-        inventory_count[key] += 1
-        if key not in product_info:
-            product_info[key] = {
-                "marca": device.marca,
-                "modelo": device.modelo,
-                "capacidad": device.capacidad_gb,
-                "sample_device_id": device.id,  # Para referencia
-            }
+        current_qty = int(device.quantity or 0)
+        total_sold = sales_map.get((device.store_id, device.id), 0)
+        average_daily_sales = float(total_sold) / float(lookback_days or 1)
 
-    suggestions = []
-    days_analyzed = weeks_history * 7
+        min_threshold = min_stock_value if min_stock_value is not None else int(
+            device.minimum_stock or 0)
+        desired_by_minimum = max(min_threshold - current_qty, 0)
+        desired_by_projection = 0
+        if average_daily_sales > 0:
+            projected_needed = math.ceil(
+                average_daily_sales * planning_horizon_days)
+            desired_by_projection = max(projected_needed - current_qty, 0)
 
-    for key, current_stock in inventory_count.items():
-        # Estimar ventas para este grupo
-        # Esto es complejo porque sales_map está por device_id (que es único).
-        # Necesitamos mapear ventas históricas a este grupo también.
-        # Por simplicidad en esta migración, usamos un placeholder o lógica simplificada.
-        # En un sistema real, se necesita una tabla de "Producto/SKU" separada de "Device/Item".
+        suggested_quantity = max(desired_by_minimum, desired_by_projection)
+        if suggested_quantity <= 0:
+            continue
 
-        # Lógica placeholder: Si stock < 2, sugerir comprar 5
-        if current_stock < 2:
-            suggestions.append({
-                "product_name": f"{key[0]} {key[1]} {key[2]}GB",
-                "current_stock": current_stock,
-                "suggested_quantity": 5,
-                "reason": "Stock bajo crítico",
-                "estimated_cost": 0,  # Requiere costo promedio
-            })
+        supplier_id: int | None = None
+        supplier_name: str | None = None
+        normalized_vendor = device.proveedor.strip().lower() if device.proveedor else None
+        if normalized_vendor:
+            supplier = vendor_map.get(normalized_vendor)
+            if supplier:
+                supplier_id = supplier.id_proveedor
+                supplier_name = supplier.nombre
+            else:
+                supplier_entry = supplier_map.get(normalized_vendor)
+                if supplier_entry:
+                    supplier_id = supplier_entry.id
+                    supplier_name = supplier_entry.name
 
-    return suggestions
+        reason = "below_minimum" if current_qty < max(
+            min_threshold, 0) else "projected_consumption"
+        projected_days = int(
+            current_qty / average_daily_sales) if average_daily_sales > 0 else None
+
+        suggestion = schemas.PurchaseSuggestionItem(
+            store_id=device.store_id,
+            store_name=stores.get(device.store_id, ""),
+            supplier_id=supplier_id,
+            supplier_name=supplier_name,
+            device_id=device.id,
+            sku=device.sku,
+            name=device.name,
+            current_quantity=current_qty,
+            minimum_stock=min_threshold,
+            suggested_quantity=int(suggested_quantity),
+            average_daily_sales=average_daily_sales,
+            projected_coverage_days=projected_days,
+            last_30_days_sales=total_sold,
+            unit_cost=_to_decimal(device.costo_unitario),
+            reason=reason,
+        )
+        suggestions_by_store[device.store_id].append(suggestion)
+        total_items += 1
+
+    stores_payload: list[schemas.PurchaseSuggestionStore] = []
+    for store_id, items in suggestions_by_store.items():
+        total_suggested = sum(item.suggested_quantity for item in items)
+        total_value = float(
+            sum(_to_decimal(item.unit_cost) * Decimal(item.suggested_quantity)
+                for item in items)
+        )
+        stores_payload.append(
+            schemas.PurchaseSuggestionStore(
+                store_id=store_id,
+                store_name=stores.get(store_id, ""),
+                total_suggested=total_suggested,
+                total_value=total_value,
+                items=items,
+            )
+        )
+
+    response = schemas.PurchaseSuggestionsResponse(
+        generated_at=now,
+        lookback_days=lookback_days,
+        planning_horizon_days=planning_horizon_days,
+        minimum_stock=min_stock_value or 0,
+        total_items=total_items,
+        stores=stores_payload,
+    )
+    return response
 
 
 def export_purchase_vendors_csv(
@@ -1395,4 +1472,5 @@ __all__ = [
     "receive_purchase_order",
     "set_purchase_vendor_status",
     "update_purchase_vendor",
+    "_register_purchase_status_event",
 ]

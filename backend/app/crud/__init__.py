@@ -40,7 +40,15 @@ Módulos nuevos preparados para migración (4):
 - invoicing (0 exports): Facturación electrónica DTE (13 funciones planificadas)
 """
 
-# Imports explícitos desde módulos especializados
+# TODO: Migrar funciones desde crud_legacy.py a módulos especializados
+# Nota: crud_legacy aún usa wildcard por compatibilidad con 31 routers.
+# Se mantiene mientras se migran funciones a módulos especializados.
+#
+# Importamos legacy primero para que los módulos especializados sobrescriban
+# cualquier firma obsoleta (por ejemplo list_sales/start_date, métricas).
+from ..crud_legacy import *  # noqa: F401,F403
+
+# Imports explícitos desde módulos especializados (sobrescriben legacy cuando coinciden)
 # Nota: Los submódulos controlan sus exports mediante __all__
 from .users import *  # noqa: F401,F403
 from .devices import *  # noqa: F401,F403
@@ -61,7 +69,5 @@ from .analytics import *  # noqa: F401,F403
 from .transfers import *  # noqa: F401,F403
 from .invoicing import *  # noqa: F401,F403
 
-# TODO: Migrar funciones desde crud_legacy.py a módulos especializados
-# Nota: crud_legacy aún usa wildcard por compatibilidad con 31 routers.
-# Se mantiene mientras se migran funciones a módulos especializados.
-from ..crud_legacy import *  # noqa: F401,F403
+# Utilidades adicionales expuestas para compatibilidad
+from ..utils.system_log_helpers import purge_system_logs  # noqa: F401

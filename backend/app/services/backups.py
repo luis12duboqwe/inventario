@@ -22,6 +22,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from .. import crud, models
+from ..database import Base as DatabaseBase
 from ..config import settings as app_settings
 from ..core.transactions import transactional_session
 from . import encryption
@@ -96,6 +97,8 @@ def _json_default(value: Any) -> Any:
         return value.value
     if isinstance(value, Path):
         return str(value)
+    if isinstance(value, set):
+        return list(value)
     raise TypeError(f"Tipo no serializable para JSON: {type(value)!r}")
 
 
@@ -124,7 +127,7 @@ def _dump_database_sql(db: Session) -> bytes:
             "No se pudo obtener la conexión activa para generar el volcado SQL")
 
     statements: list[str] = ["BEGIN TRANSACTION;\n"]
-    metadata = models.Base.metadata
+    metadata = DatabaseBase.metadata
     for table in metadata.sorted_tables:
         if table.name in {"backup_jobs"}:
             continue

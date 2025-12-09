@@ -1,6 +1,10 @@
 """Esquemas Pydantic centralizados para la API de Softmobile Central."""
 from __future__ import annotations
 
+from ..models import (
+    PaymentMethod,
+)
+
 from .common import (
     HealthStatusResponse,
     RootWelcomeResponse,
@@ -76,6 +80,18 @@ from .transfers import (
     TransferReportFilters,
     TransferReportItem,
     TransferReportTotals,
+)
+
+from .feedback import (
+    FeedbackCategory,
+    FeedbackPriority,
+    FeedbackStatus,
+    FeedbackCreate,
+    FeedbackResponse,
+    FeedbackStatusUpdate,
+    FeedbackMetrics,
+    FeedbackSummary,
+    FeedbackUsageHotspot,
 )
 
 from .users import (
@@ -643,6 +659,7 @@ from .cloud_agent import (
 )
 
 __all__ = [
+    "PaymentMethod",
     "HealthStatusResponse",
     "RootWelcomeResponse",
     "LanDatabaseSummary",

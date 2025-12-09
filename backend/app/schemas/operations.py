@@ -119,20 +119,21 @@ class RMAHistoryEntry(BaseModel):
 
 
 class RMACreate(BaseModel):
-    sale_id: int | None = Field(default=None, ge=1)
-    purchase_id: int | None = Field(default=None, ge=1)
-    device_id: int = Field(..., ge=1)
-    quantity: int = Field(..., ge=1)
-    reason: str = Field(..., min_length=5, max_length=255)
+    sale_return_id: int | None = Field(default=None, ge=1)
+    purchase_return_id: int | None = Field(default=None, ge=1)
+    disposition: ReturnDisposition = ReturnDisposition.VENDIBLE
     notes: str | None = Field(default=None, max_length=500)
+    repair_order_id: int | None = Field(default=None, ge=1)
+    replacement_sale_id: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def _validate_source(self) -> "RMACreate":
-        if not self.sale_id and not self.purchase_id:
-            raise ValueError("Debe especificar una venta o compra origen.")
-        if self.sale_id and self.purchase_id:
+        if not self.sale_return_id and not self.purchase_return_id:
             raise ValueError(
-                "No puede especificar venta y compra simultáneamente.")
+                "Debe especificar una devolución de venta o compra.")
+        if self.sale_return_id and self.purchase_return_id:
+            raise ValueError(
+                "No puede especificar devolución de venta y compra simultáneamente.")
         return self
 
 
@@ -140,21 +141,22 @@ class RMAUpdate(BaseModel):
     status: RMAStatus | None = None
     notes: str | None = Field(default=None, max_length=500)
     resolution: str | None = Field(default=None, max_length=500)
+    disposition: ReturnDisposition | None = None
+    repair_order_id: int | None = Field(default=None, ge=1)
+    replacement_sale_id: int | None = Field(default=None, ge=1)
 
 
 class RMARecord(BaseModel):
     id: int
     status: RMAStatus
-    sale_id: int | None
-    purchase_id: int | None
-    device_id: int
-    quantity: int
-    reason: str
+    sale_return_id: int | None
+    purchase_return_id: int | None
+    store_id: int | None = None
+    device_id: int | None = None
+    disposition: ReturnDisposition
     notes: str | None
-    resolution: str | None
-    created_at: datetime
-    updated_at: datetime
-    created_by_id: int | None
+    repair_order_id: int | None = None
+    replacement_sale_id: int | None = None
     history: list[RMAHistoryEntry] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
@@ -239,3 +241,4 @@ class RMAHistoryEntry(BaseModel):
     message: str | None = None
     created_at: datetime
     created_by_id: int | None = None
+    created_by_name: str | None = None

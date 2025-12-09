@@ -10,11 +10,12 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Integer,
+    JSON,
     String,
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 
 from backend.app.database import Base
 from backend.app.models.users import User
@@ -99,11 +100,15 @@ class SyncOutbox(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     entity_type: Mapped[str] = mapped_column(
         String(120), nullable=False, index=True)
+    event_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(
+        String(120), nullable=True, unique=True, index=True)
     entity_id: Mapped[str] = mapped_column(String(80), nullable=False)
     operation: Mapped[str] = mapped_column(String(40), nullable=False)
     _payload: Mapped[str] = mapped_column("payload", Text, nullable=False)
-    attempt_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0)
+    attempts: Mapped[int] = mapped_column(
+        "attempts", Integer, nullable=False, default=0)
+    attempt_count = synonym("attempts")
     last_attempt_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True)
     status: Mapped[SyncOutboxStatus] = mapped_column(
@@ -116,8 +121,9 @@ class SyncOutbox(Base):
         nullable=False,
         default=SyncOutboxPriority.NORMAL,
     )
-    error_message: Mapped[str | None] = mapped_column(
+    last_error: Mapped[str | None] = mapped_column(
         String(255), nullable=True)
+    error_message = synonym("last_error")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -154,3 +160,47 @@ class SyncOutbox(Base):
         self._payload = json.dumps(value, ensure_ascii=False, default=str)
 
     payload = property(_get_payload, _set_payload)
+
+
+class SyncQueue(Base):
+    __tablename__ = "sync_queue"
+    __table_args__ = (
+        UniqueConstraint("idempotency_key", name="uq_sync_queue_idempotency"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    event_type: Mapped[str] = mapped_column(
+        String(120), nullable=False, index=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict)
+    idempotency_key: Mapped[str | None] = mapped_column(
+        String(120), nullable=True, index=True)
+    status: Mapped[SyncQueueStatus] = mapped_column(
+        Enum(SyncQueueStatus, name="sync_queue_status"),
+        nullable=False,
+        default=SyncQueueStatus.PENDING,
+    )
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class SyncAttempt(Base):
+    __tablename__ = "sync_attempts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    queue_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("sync_queue.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    success: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False)
+    error_message: Mapped[str | None] = mapped_column(
+        String(255), nullable=True)
+    attempted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow)
+
+    queue: Mapped["SyncQueue"] = relationship("SyncQueue")

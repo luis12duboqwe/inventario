@@ -470,6 +470,7 @@ def create_sale(
                     customer=customer,
                     entry_type=models.CustomerLedgerEntryType.SALE,
                     amount=sale.total_amount,
+                    reference_type="sale",
                     reference_id=str(sale.id),
                     performed_by_id=performed_by_id,
                     notes=f"Venta a crédito #{sale.id}",
@@ -1055,27 +1056,32 @@ def build_cash_close_report(
     date_to: datetime,
     store_id: int | None = None,
 ) -> schemas.CashCloseReport:
-    # 1. Sales Gross
+    # 1. Ventas brutas
     sales_query = select(func.sum(models.Sale.total_amount)).where(
         models.Sale.status != "CANCELADA",
         models.Sale.created_at >= date_from,
-        models.Sale.created_at <= date_to
+        models.Sale.created_at <= date_to,
     )
     if store_id:
         sales_query = sales_query.where(models.Sale.store_id == store_id)
 
     sales_gross = db.scalar(sales_query) or Decimal("0.0")
 
-    # 2. Refunds
-    returns_query = select(
-        func.sum(models.SaleReturn.quantity * models.SaleItem.unit_price)
-    ).join(models.Sale, models.SaleReturn.sale_id == models.Sale.id)\
-     .join(models.SaleItem, and_(
-         models.SaleReturn.sale_id == models.SaleItem.sale_id,
-         models.SaleReturn.device_id == models.SaleItem.device_id
-     )).where(
-         models.SaleReturn.created_at >= date_from,
-         models.SaleReturn.created_at <= date_to
+    # 2. Devoluciones
+    returns_query = (
+        select(func.sum(models.SaleReturn.quantity * models.SaleItem.unit_price))
+        .join(models.Sale, models.SaleReturn.sale_id == models.Sale.id)
+        .join(
+            models.SaleItem,
+            and_(
+                models.SaleReturn.sale_id == models.SaleItem.sale_id,
+                models.SaleReturn.device_id == models.SaleItem.device_id,
+            ),
+        )
+        .where(
+            models.SaleReturn.created_at >= date_from,
+            models.SaleReturn.created_at <= date_to,
+        )
     )
 
     if store_id:
@@ -1083,10 +1089,43 @@ def build_cash_close_report(
 
     refunds = db.scalar(returns_query) or Decimal("0.0")
 
-    # 3. Incomes / Expenses (Placeholder)
+    # 3. Aperturas de caja en el día
+    opening_stmt = select(func.coalesce(func.sum(models.CashRegisterSession.opening_amount), 0)).where(
+        models.CashRegisterSession.opened_at >= date_from,
+        models.CashRegisterSession.opened_at <= date_to,
+    )
+    if store_id:
+        opening_stmt = opening_stmt.where(
+            models.CashRegisterSession.store_id == store_id)
+    opening = to_decimal(db.scalar(opening_stmt) or 0).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+
+    # 4. Movimientos manuales de caja
+    entries_stmt = (
+        select(models.CashRegisterEntry.entry_type, func.coalesce(
+            func.sum(models.CashRegisterEntry.amount), 0))
+        .join(models.CashRegisterSession, models.CashRegisterEntry.session_id == models.CashRegisterSession.id)
+        .where(
+            models.CashRegisterEntry.created_at >= date_from,
+            models.CashRegisterEntry.created_at <= date_to,
+        )
+        .group_by(models.CashRegisterEntry.entry_type)
+    )
+    if store_id:
+        entries_stmt = entries_stmt.where(
+            models.CashRegisterSession.store_id == store_id)
+
     incomes = Decimal("0.0")
     expenses = Decimal("0.0")
-    opening = Decimal("0.0")
+    for entry_type, total in db.execute(entries_stmt):
+        normalized_total = to_decimal(total).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        if entry_type == models.CashEntryType.INGRESO:
+            incomes = normalized_total
+        elif entry_type == models.CashEntryType.EGRESO:
+            expenses = normalized_total
 
     closing_suggested = opening + sales_gross - refunds + incomes - expenses
 
@@ -1096,7 +1135,7 @@ def build_cash_close_report(
         refunds=float(refunds),
         incomes=float(incomes),
         expenses=float(expenses),
-        closing_suggested=float(closing_suggested)
+        closing_suggested=float(closing_suggested),
     )
 
 

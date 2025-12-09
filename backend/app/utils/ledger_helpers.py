@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from backend.app import models
 from backend.app.utils.decimal_helpers import to_decimal
-from backend.app.crud.common import flush_session
+from backend.app.core.transactions import flush_session
 
 
 def ensure_debt_respects_limit(credit_limit: Decimal, outstanding: Decimal) -> None:

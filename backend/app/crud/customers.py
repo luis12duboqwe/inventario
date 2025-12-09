@@ -336,11 +336,16 @@ def _create_customer_ledger_entry(
     entry_type: models.CustomerLedgerEntryType,
     amount: Decimal,
     note: str | None = None,
+    notes: str | None = None,
     reference_type: str | None = None,
     reference_id: str | None = None,
     details: dict[str, object] | None = None,
+    performed_by_id: int | None = None,
     created_by_id: int | None = None,
 ) -> models.CustomerLedgerEntry:
+    """Crea una entrada en el ledger del cliente admitiendo alias legados."""
+    note_value = note or notes
+    created_by = created_by_id or performed_by_id
     entry = models.CustomerLedgerEntry(
         customer_id=customer.id,
         entry_type=entry_type,
@@ -351,9 +356,9 @@ def _create_customer_ledger_entry(
         balance_after=_to_decimal(customer.outstanding_debt).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         ),
-        note=note,
+        note=note_value,
         details=details or {},
-        created_by_id=created_by_id,
+        created_by_id=created_by,
     )
     db.add(entry)
     flush_session(db)
@@ -732,4 +737,5 @@ __all__ = [
     "get_customer",
     "list_customers",
     "update_customer",
+    "_ensure_debt_respects_limit",
 ]
