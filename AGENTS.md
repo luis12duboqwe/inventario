@@ -429,3 +429,76 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Frontend: el panel **Importar desde Excel (inteligente)** muestra progreso, tabla de coincidencias con reasignaciones manuales, notas de advertencia/éxito, descargas PDF/CSV y el historial reciente; la pestaña **Correcciones pendientes** permite resolver fichas marcadas como incompletas directamente desde la UI.【F:frontend/src/modules/inventory/pages/InventoryPage.tsx†L135-L1675】【F:frontend/src/styles.css†L5814-L6068】
 - Pruebas ejecutadas: `pytest` y Vitest cubren importaciones con overrides, creación automática de sucursales, rechazo de overrides inválidos y refresco de dispositivos incompletos tras la edición.【F:backend/tests/test_inventory_smart_import.py†L1-L145】【F:frontend/src/modules/inventory/pages/**tests**/InventoryPage.test.tsx†L1-L840】
 - Resultado verificado: dataset de 2 filas (1 completa, 1 incompleta) genera advertencia «IMEI faltante», crea la sucursal «Sucursal Norte» y deja un registro pendiente accesible desde la pestaña de correcciones, confirmando que la importación continúa aunque falten columnas críticas.【F:backend/tests/test_inventory_smart_import.py†L52-L137】【F:frontend/src/modules/inventory/pages/**tests**/InventoryPage.test.tsx†L562-L720】
+
+## Modularización de CRUD — Fase 2 (06/12/2025)
+
+### Plan de Migración Completado (Opción C)
+
+- **Estado**: Preparación completada sin migración de código
+- **Objetivo**: Reducir `backend/app/crud_legacy.py` (16,493 líneas, 264 funciones) mediante extracción incremental a módulos especializados
+- **Estrategia**: Opción C (Preparación) implementada; migración real pospuesta para PRs incrementales futuras
+
+### Módulos Preparados (4/4)
+
+Se crearon 4 módulos especializados con documentación completa, listos para recibir funciones:
+
+1. **backend/app/crud/pos.py** - Punto de Venta
+   - Funciones documentadas: 15 principales (get_pos_config, register_pos_sale, cash_session, etc.)
+   - Dependencias: sales, inventory, devices
+   - Ubicaciones mapeadas: líneas 3954-15633 en crud_legacy.py
+   - Estado: `__all__ = []` (listo para migración)
+
+2. **backend/app/crud/analytics.py** - Analítica y Reportes
+   - Funciones documentadas: 12 (calculate_rotation_analytics, calculate_aging_analytics, etc.)
+   - Dependencias: sales, inventory, stores
+   - Estado: `__all__ = []` (listo para migración)
+
+3. **backend/app/crud/transfers.py** - Transferencias entre Sucursales
+   - Funciones documentadas: 10 (create_transfer_order, dispatch, receive, etc.)
+   - Dependencias: inventory, stores, sync
+   - Estado: `__all__ = []` (listo para migración)
+
+4. **backend/app/crud/invoicing.py** - Facturación Electrónica (DTE)
+   - Funciones documentadas: 13 (get_dte_document, dispatch, validate, etc.)
+   - Dependencias: sales, customers, servicios externos
+   - Estado: `__all__ = []` (listo para migración)
+
+### Próximos Pasos (PRs Futuras)
+
+La migración real seguirá el enfoque **Opción B (Incremental)**:
+
+1. **PR 1 - POS**: Migrar `crud/pos.py` (15 funciones, ~1-2h)
+   - Crear aliases en crud_legacy para compatibilidad
+   - Actualizar `__all__` con funciones exportadas
+   - Validar con `pytest backend/tests/test_pos.py`
+
+2. **PR 2 - Analytics**: Migrar `crud/analytics.py` (12 funciones, ~45min)
+3. **PR 3 - Transfers**: Migrar `crud/transfers.py` (10 funciones, ~30min)
+4. **PR 4 - Invoicing**: Migrar `crud/invoicing.py` (13 funciones, ~45min)
+5. **PR 5 - Limpieza**: Remover aliases deprecated (después de validar en producción)
+
+### Patrón de Compatibilidad
+
+Durante la migración, se mantendrán aliases en `crud_legacy.py`:
+
+```python
+# En crud_legacy.py después de migrar función
+from .crud.pos import get_pos_config as _get_pos_config_new
+
+def get_pos_config(*args, **kwargs):
+    """DEPRECATED: Use crud.pos.get_pos_config. Alias maintained for compatibility."""
+    return _get_pos_config_new(*args, **kwargs)
+```
+
+### Documentación de Referencia
+
+- **Plan completo**: `PHASE2_MIGRATION_PLAN.md`
+- **Estado detallado**: `PHASE2_STATUS.md`
+- **Resumen ejecutivo**: `PHASE2_SUMMARY.md`
+- **Métricas objetivo**: Reducir crud_legacy.py de 16,493 a ~10,000 líneas (-39%)
+
+### Reglas para Agentes
+
+16. **Modularización CRUD**: No migrar funciones de `crud_legacy.py` a módulos especializados sin seguir el plan documentado. Los módulos `pos.py`, `analytics.py`, `transfers.py` e `invoicing.py` están preparados pero vacíos (`__all__ = []`). Cualquier migración debe hacerse en PR separada siguiendo la estrategia incremental con aliases de compatibilidad.
+17. **Imports de CRUD**: Los módulos especializados ya están importados en `backend/app/crud/__init__.py`. No modificar el orden de imports ni agregar funciones a los nuevos módulos sin actualizar su `__all__` correspondiente.
+18. **Testing de migración**: Antes de migrar cualquier función, verificar que existen tests para ella. Ejecutar los tests antes y después de la migración para asegurar que no se rompe funcionalidad.
