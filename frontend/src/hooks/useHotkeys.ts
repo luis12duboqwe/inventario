@@ -12,8 +12,6 @@ type HotkeyAction = (e: KeyboardEvent) => void;
 
 const EMPTY_DEPS: readonly unknown[] = [];
 
-const EMPTY_DEPS: readonly unknown[] = [];
-
 export function useHotkeys(
   keyCombo: string | KeyCombo,
   callback: HotkeyAction,
