@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - recovery/rec-0004-legacy-recovery
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
