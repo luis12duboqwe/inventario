@@ -1,0 +1,68 @@
+name: REC-0004 backend baseline
+
+on:
+  push:
+    branches:
+      - recovery/rec-0004-backend-baseline
+    paths:
+      - requirements.txt
+      - backend/**
+      - .github/workflows/recovery-rec-0004-backend-baseline.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - requirements.txt
+      - backend/**
+      - .github/workflows/recovery-rec-0004-backend-baseline.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend-baseline:
+    if: github.event_name != 'pull_request' || github.head_ref == 'recovery/rec-0004-backend-baseline'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: sqlite:///:memory:
+      JWT_SECRET_KEY: rec0004-test-secret-key-only
+      ACCESS_TOKEN_EXPIRE_MINUTES: '60'
+      REFRESH_TOKEN_EXPIRE_DAYS: '7'
+      CORS_ORIGINS: '["http://testserver"]'
+      SOFTMOBILE_BOOTSTRAP_TOKEN: rec0004-bootstrap-token
+      SOFTMOBILE_ENABLE_SCHEDULER: '0'
+      SOFTMOBILE_ENABLE_BACKUP_SCHEDULER: '0'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Compile backend Python
+        run: python -m compileall -q backend
+
+      - name: Import FastAPI application
+        run: |
+          python - <<'PY'
+          from backend.app.main import app
+          print(f"REC-0004 app imported: {app.title} {app.version}")
+          print(f"REC-0004 routes mounted: {len(app.routes)}")
+          PY
+
+      - name: Collect backend tests
+        run: pytest --collect-only -q backend/tests
+
+      - name: Run focused smoke tests
+        run: pytest -q backend/tests/test_http_simple_app.py backend/tests/test_routes_bootstrap.py backend/tests/test_auth_pack28.py
