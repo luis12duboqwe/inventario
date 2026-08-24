@@ -25,9 +25,9 @@ export default function ImportModal({ open = false, onClose = () => {} }: Props)
       }
     >
       <div className="ui-field">
-        <label className="ui-field__label">Archivo</label>
+        <label htmlFor="inventory-import-file" className="ui-field__label">Archivo</label>
         <div className="ui-field__control">
-          <input type="file" accept=".csv,.xlsx" className="ui-field__input" />
+          <input id="inventory-import-file" type="file" accept=".csv,.xlsx" className="ui-field__input" />
         </div>
       </div>
     </Modal>

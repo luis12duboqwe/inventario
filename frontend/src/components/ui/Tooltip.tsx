@@ -9,7 +9,7 @@ type TooltipProps = {
 
 function Tooltip({ content, children, position = "top" }: TooltipProps) {
   return (
-    <div className={styles.tooltipWrapper} tabIndex={0} aria-label={content}>
+    <div className={styles.tooltipWrapper}>
       {children}
       <div className={`${styles.tooltip} ${styles[position]}`} role="tooltip">
         {content}

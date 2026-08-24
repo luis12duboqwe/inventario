@@ -11,8 +11,8 @@ import {
   type InventoryReceivingLineInput,
   type InventoryReceivingRequest,
 } from "@api/inventory";
-import { createSale, type SaleCreateInput } from "../../api/sales";
-import { type PaymentMethod } from "../../api/types";
+import { createSale, type SaleCreateInput } from "@api/sales";
+import { type PaymentMethod } from "@api/types";
 import PageHeader from "@components/ui/PageHeader";
 import POSQuickScan from "../modules/sales/components/pos/POSQuickScan";
 import { useDashboard } from "../modules/dashboard/context/DashboardContext";
