@@ -1,0 +1,97 @@
+name: REC-0004 backend baseline v2
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - requirements.txt
+      - backend/**
+      - .github/workflows/recovery-rec-0004-backend-baseline-v2.yml
+  push:
+    branches:
+      - recovery/rec-0004-backend-baseline-v2
+    paths:
+      - requirements.txt
+      - backend/**
+      - .github/workflows/recovery-rec-0004-backend-baseline-v2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend-baseline:
+    if: github.event_name != 'pull_request' || github.head_ref == 'recovery/rec-0004-backend-baseline-v2'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: sqlite:///:memory:
+      JWT_SECRET_KEY: rec0004-test-secret-key-only
+      ACCESS_TOKEN_EXPIRE_MINUTES: '60'
+      REFRESH_TOKEN_EXPIRE_DAYS: '7'
+      CORS_ORIGINS: '["http://testserver"]'
+      SOFTMOBILE_BOOTSTRAP_TOKEN: rec0004-bootstrap-token
+      SOFTMOBILE_ENABLE_SCHEDULER: '0'
+      SOFTMOBILE_ENABLE_BACKUP_SCHEDULER: '0'
+    steps:
+      - name: Checkout recovery branch
+        uses: actions/checkout@v4
+        with:
+          ref: recovery/rec-0004-backend-baseline-v2
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install requirements
+        id: install
+        continue-on-error: true
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Compile backend
+        id: compile
+        continue-on-error: true
+        run: python -m compileall -q backend
+
+      - name: Import FastAPI application
+        id: app_import
+        continue-on-error: true
+        run: |
+          python - <<'PY'
+          from backend.app.main import app
+          print(f'app_title={app.title}')
+          print(f'app_version={app.version}')
+          print(f'routes_mounted={len(app.routes)}')
+          PY
+
+      - name: Collect backend tests
+        id: collect
+        continue-on-error: true
+        run: pytest --collect-only -q backend/tests
+
+      - name: Run authentication and HTTP smoke tests
+        id: smoke
+        continue-on-error: true
+        run: pytest -q backend/tests/test_http_simple_app.py backend/tests/test_routes_bootstrap.py backend/tests/test_auth_pack28.py
+
+      - name: Report baseline result
+        if: always()
+        run: |
+          echo "install=${{ steps.install.outcome }}"
+          echo "compile=${{ steps.compile.outcome }}"
+          echo "app_import=${{ steps.app_import.outcome }}"
+          echo "collect=${{ steps.collect.outcome }}"
+          echo "smoke=${{ steps.smoke.outcome }}"
+          if [ "${{ steps.install.outcome }}" != "success" ] || \
+             [ "${{ steps.compile.outcome }}" != "success" ] || \
+             [ "${{ steps.app_import.outcome }}" != "success" ] || \
+             [ "${{ steps.collect.outcome }}" != "success" ] || \
+             [ "${{ steps.smoke.outcome }}" != "success" ]; then
+            exit 1
+          fi
