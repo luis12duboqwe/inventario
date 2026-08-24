@@ -4,7 +4,7 @@
 
 Solo `luis12duboqwe/inventario`.
 
-Este documento registra decisiones de recuperación del toolchain. No declara que el frontend esté terminado ni que todas sus pruebas pasen.
+Este documento registra la recuperación reproducible del toolchain frontend. No declara que toda la deuda TypeScript del producto esté resuelta; esa deuda queda trazada en REC-0005 (#764).
 
 ## Causa confirmada del daño
 
@@ -17,7 +17,7 @@ Hallazgos principales:
 - PR #727 añadió `@vitejs/plugin-react` 5.1.1 sin sustituir una entrada 4.x ya existente, generando una clave duplicada.
 - PR #728 actualizó Recharts 3.4.1 → 3.5.1 de forma independiente.
 - PR #730 actualizó ESLint 9.39.0 → 9.39.1.
-- Con el paso de más merges, `package.json` y la sección raíz de `package-lock.json` terminaron con claves duplicadas y una coma ausente.
+- Con merges posteriores, `package.json` y la sección raíz de `package-lock.json` terminaron con claves duplicadas y una coma ausente.
 
 Por tanto, el problema no se corrige revirtiendo el último PR ni copiando `inventario-main`.
 
@@ -51,18 +51,31 @@ Se conserva React 18 porque:
 - Vite 7.1.12
 - `@vitejs/plugin-react` 5.1.1
 - TypeScript 5.9.3
-- Vitest 4.0.6
+- Vitest 4.0.14
 - `@vitest/coverage-v8` 4.0.14
 - ESLint 9.39.1
 - Playwright 1.57.0
 - `@playwright/test` 1.57.0
 - `vite-plugin-pwa` 1.2.0
 
-Las dependencias directas se fijan sin `^` durante la recuperación para evitar que regenerar el lockfile meses después introduzca upgrades silenciosos.
+Las dependencias directas se fijan sin `^` durante la recuperación para evitar upgrades silenciosos al regenerar meses después.
+
+### Transitivas de Motion
+
+`framer-motion` 12.23.24 permitía rangos de dependencias transitivas. Una resolución limpia en 2026 instaló `motion-dom` 12.43.0 / `motion-utils` 12.39.0 y Vitest falló porque el contrato de exports ya no coincidía con la versión histórica de Framer Motion. El último lockfile coherente del propio repositorio usaba:
+
+- `motion-dom` 12.23.23
+- `motion-utils` 12.23.6
+
+Por ello se fijan mediante `overrides`. Con ese par los tests vuelven a ejecutar correctamente.
 
 ### Nota sobre TypeScript
 
-El manifiesto histórico declaraba `typescript: ^5.4.0`, pero el último `package-lock.json` coherente resolvía realmente **TypeScript 5.9.3**. Fijar literalmente `5.4.0` produjo `ERESOLVE`/`typescript@undefined` durante una generación limpia del lockfile. Se fija 5.9.3 porque es la versión efectivamente registrada en el lock histórico y satisface el peer `>=4.8.4 <6.0.0` de `@typescript-eslint/parser` 8.46.4.
+El manifiesto histórico declaraba `typescript: ^5.4.0`, pero el último `package-lock.json` coherente resolvía realmente **TypeScript 5.9.3**. Fijar literalmente 5.4.0 produjo `ERESOLVE` durante una generación limpia. Se fija 5.9.3 porque es la versión efectivamente registrada en el lock histórico y satisface el peer `>=4.8.4 <6.0.0` de `@typescript-eslint/parser` 8.46.4.
+
+### Nota sobre Vitest
+
+`@vitest/coverage-v8` 4.0.14 exige Vitest 4.0.14 como peer. Mantener Vitest 4.0.6 generaba `ERESOLVE`, por lo que ambos quedan alineados en 4.0.14.
 
 ## React Router
 
@@ -70,30 +83,37 @@ El frontend actual utiliza APIs y estructura de React Router v6. La actualizaci�
 
 ## PWA
 
-`frontend/vite.config.ts` importa `vite-plugin-pwa`, por lo que la dependencia se mantiene explícitamente en `frontend/package.json`. La existencia adicional de un `package.json` raíz con esa dependencia se revisará como deuda de estructura en una tarea posterior; REC-0002 no elimina todavía archivos raíz sin analizar sus consumidores.
+`frontend/vite.config.ts` importa `vite-plugin-pwa`, por lo que la dependencia se mantiene explícitamente en `frontend/package.json`. La existencia adicional de un `package.json` raíz con esa dependencia se revisará como deuda de estructura posterior; REC-0002 no elimina archivos raíz sin analizar sus consumidores.
+
+## Correcciones mínimas necesarias para recuperar tests/build
+
+Además del manifiesto se corrigieron blockers reproducibles descubiertos al validar el árbol actual:
+
+- mock duplicado/sintácticamente roto en el test de rutas de Reparaciones;
+- imports API incorrectos en `MobileWorkspace`;
+- asociaciones label/control que bloqueaban ESLint;
+- wrapper de Tooltip marcado como elemento interactivo sin semántica adecuada;
+- dependencia dinámica del hook `useHotkeys` estabilizada.
+
+No se ampliaron funcionalidades dentro de REC-0002.
 
 ## Lockfile
 
-El lockfile corrupto no se reutiliza como fuente de verdad. El proceso de recuperación fija primero las dependencias directas con evidencia histórica y después genera un `package-lock.json` nuevo desde cero con npm 10 / Node 20.19. El lock resultante congela las dependencias transitivas de esa instalación.
+El lockfile corrupto no se reutiliza como fuente de verdad. Se fijan dependencias directas con evidencia histórica y se genera un `package-lock.json` limpio. El lock resultante congela la resolución transitiva aceptada.
 
-El lockfile final solo se acepta si:
+## Evidencia final — 2026-08-24
 
-- es JSON válido;
-- refleja exactamente las dependencias directas del manifiesto;
-- resuelve React y ReactDOM al mismo major esperado;
-- permite `npm ci` en Node 20.19;
-- permite ejecutar typecheck, tests y build sin fallar por instalación.
+Validación inmutable sobre el HEAD de recuperación, usando Node 20.19 y sin `--force` ni `legacy-peer-deps`:
 
-## Validación pendiente
+- JSON de `package.json` y `package-lock.json`: **PASS**
+- lockfile coincide con el manifiesto (`npm install --package-lock-only` sin diff): **PASS**
+- `npm ci --ignore-scripts --no-audit --no-fund`: **PASS**
+- `npm run lint`: **PASS**, 0 errores; 9 warnings no bloqueantes
+- `npm run test`: **PASS**, **28 archivos / 88 tests**
+- `npm run build`: **PASS**, Vite 7.1.12; PWA genera service worker y 151 entradas de precache
 
-Después de cerrar la generación del lockfile se ejecutarán como mínimo:
+`npm run typecheck:strict` todavía detecta deuda previa de contratos/tipos en varias áreas. No se desactiva ni se excluyen carpetas: el baseline y los grupos de errores quedaron registrados en #764 (REC-0005), que será el frente específico para dejar ese check verde.
 
-```text
-npm ci
-npm run typecheck:strict
-npm run lint
-npm run test
-npm run build
-```
+## Resultado REC-0002
 
-Los fallos de código descubiertos por esas pruebas no deben ocultarse relajando peer dependencies o desactivando checks; se registrarán y corregirán de forma separada cuando corresponda.
+El frontend vuelve a ser instalable, testeable y compilable desde un checkout limpio con un manifiesto y lockfile coherentes. La recuperación de dependencias queda cerrada; la deuda de tipado estricto continúa de forma explícita y separada.
