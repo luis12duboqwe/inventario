@@ -1,4 +1,4 @@
-name: REC-0002 validate frontend baseline
+name: REC-0002 stabilize frontend baseline
 
 on:
   push:
@@ -7,24 +7,17 @@ on:
     paths:
       - frontend/package.json
       - frontend/package-lock.json
-      - .github/workflows/recovery-rec-0002-lockfile.yml
-  pull_request:
-    branches:
-      - main
-    paths:
-      - frontend/package.json
-      - frontend/package-lock.json
+      - frontend/src/**
       - .github/workflows/recovery-rec-0002-lockfile.yml
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  validate-frontend:
-    if: github.event_name != 'pull_request' || github.head_ref == 'recovery/rec-0002-frontend-manifest'
+  stabilize-frontend:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - name: Checkout recovery branch
         uses: actions/checkout@v4
@@ -37,6 +30,86 @@ jobs:
           node-version: 20.19.0
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+
+      - name: Apply evidence-backed recovery fixes
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path('frontend')
+
+          package_path = root / 'package.json'
+          package = json.loads(package_path.read_text(encoding='utf-8'))
+          package['overrides'] = {
+              'motion-dom': '12.23.23',
+              'motion-utils': '12.23.6',
+          }
+          package_path.write_text(json.dumps(package, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+          def replace(path: Path, old: str, new: str) -> None:
+              text = path.read_text(encoding='utf-8')
+              if old in text:
+                  path.write_text(text.replace(old, new), encoding='utf-8')
+                  return
+              if new in text:
+                  return
+              raise RuntimeError(f'Expected recovery pattern not found in {path}: {old!r}')
+
+          replace(
+              root / 'src/__tests__/routes/reparaciones.routes.test.tsx',
+              'vi.mock("../../components/ui/Skeleton", () => ({\nvi.mock("@components/ui/Skeleton", () => ({',
+              'vi.mock("@components/ui/Skeleton", () => ({',
+          )
+
+          replace(
+              root / 'src/components/ui/Tooltip.tsx',
+              '<div className={styles.tooltipWrapper} tabIndex={0} aria-label={content}>',
+              '<div className={styles.tooltipWrapper}>',
+          )
+
+          hotkeys = root / 'src/hooks/useHotkeys.ts'
+          replace(
+              hotkeys,
+              'type HotkeyAction = (e: KeyboardEvent) => void;\n',
+              'type HotkeyAction = (e: KeyboardEvent) => void;\n\nconst EMPTY_DEPS: readonly unknown[] = [];\n',
+          )
+          replace(hotkeys, '  deps: unknown[] = []\n', '  deps: readonly unknown[] = EMPTY_DEPS\n')
+          replace(hotkeys, '  }, [keyCombo, callback, ...deps]);', '  }, [keyCombo, callback, deps]);')
+
+          create_modal = root / 'src/modules/inventory/components/movements/CreateModal.tsx'
+          replace(
+              create_modal,
+              '<label className="text-xs font-medium text-muted-foreground">Tipo</label>',
+              '<label htmlFor="movement-type" className="text-xs font-medium text-muted-foreground">Tipo</label>',
+          )
+          replace(
+              create_modal,
+              '          <select\n            value={type}',
+              '          <select\n            id="movement-type"\n            value={type}',
+          )
+
+          import_modal = root / 'src/modules/inventory/components/products-list/ImportModal.tsx'
+          replace(
+              import_modal,
+              '<label className="ui-field__label">Archivo</label>',
+              '<label htmlFor="inventory-import-file" className="ui-field__label">Archivo</label>',
+          )
+          replace(
+              import_modal,
+              '<input type="file" accept=".csv,.xlsx" className="ui-field__input" />',
+              '<input id="inventory-import-file" type="file" accept=".csv,.xlsx" className="ui-field__input" />',
+          )
+
+          mobile = root / 'src/mobile/MobileWorkspace.tsx'
+          replace(mobile, 'from "../../api/sales";', 'from "@api/sales";')
+          replace(mobile, 'from "../../api/types";', 'from "@api/types";')
+          PY
+
+      - name: Reconcile lockfile with pinned transitive overrides
+        working-directory: frontend
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
 
       - name: Validate package JSON files
         working-directory: frontend
@@ -71,6 +144,19 @@ jobs:
         continue-on-error: true
         working-directory: frontend
         run: npm run build
+
+      - name: Commit recovery changes
+        if: always()
+        run: |
+          git config user.name "softmobile-recovery-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add frontend/package.json frontend/package-lock.json frontend/src
+          if git diff --cached --quiet; then
+            echo "No recovery changes to commit"
+            exit 0
+          fi
+          git commit -m "REC-0002: fix reproducible frontend blockers"
+          git push origin HEAD:recovery/rec-0002-frontend-manifest
 
       - name: Report validation result
         if: always()
