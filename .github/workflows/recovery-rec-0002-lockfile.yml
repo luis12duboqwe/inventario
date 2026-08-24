@@ -1,4 +1,4 @@
-name: REC-0002 regenerate frontend lockfile
+name: REC-0002 validate frontend baseline
 
 on:
   push:
@@ -18,13 +18,13 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  regenerate-lockfile:
+  validate-frontend:
     if: github.event_name != 'pull_request' || github.head_ref == 'recovery/rec-0002-frontend-manifest'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - name: Checkout recovery branch
         uses: actions/checkout@v4
@@ -35,12 +35,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20.19.0
-
-      - name: Generate clean lockfile from pinned manifest
-        working-directory: frontend
-        run: |
-          rm -f package-lock.json
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund --loglevel=notice
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Validate package JSON files
         working-directory: frontend
@@ -48,14 +44,44 @@ jobs:
           node -e "JSON.parse(require('fs').readFileSync('package.json','utf8'))"
           node -e "JSON.parse(require('fs').readFileSync('package-lock.json','utf8'))"
 
-      - name: Commit regenerated lockfile
+      - name: Clean install from lockfile
+        working-directory: frontend
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Strict TypeScript check
+        id: typecheck
+        continue-on-error: true
+        working-directory: frontend
+        run: npm run typecheck:strict
+
+      - name: ESLint
+        id: lint
+        continue-on-error: true
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Vitest
+        id: tests
+        continue-on-error: true
+        working-directory: frontend
+        run: npm run test
+
+      - name: Production build
+        id: build
+        continue-on-error: true
+        working-directory: frontend
+        run: npm run build
+
+      - name: Report validation result
+        if: always()
         run: |
-          git config user.name "softmobile-recovery-bot"
-          git config user.email "actions@users.noreply.github.com"
-          git add frontend/package-lock.json
-          if git diff --cached --quiet; then
-            echo "package-lock.json already matches package.json"
-            exit 0
+          echo "typecheck=${{ steps.typecheck.outcome }}"
+          echo "lint=${{ steps.lint.outcome }}"
+          echo "tests=${{ steps.tests.outcome }}"
+          echo "build=${{ steps.build.outcome }}"
+          if [ "${{ steps.typecheck.outcome }}" != "success" ] || \
+             [ "${{ steps.lint.outcome }}" != "success" ] || \
+             [ "${{ steps.tests.outcome }}" != "success" ] || \
+             [ "${{ steps.build.outcome }}" != "success" ]; then
+            exit 1
           fi
-          git commit -m "REC-0002: regenerate coherent frontend lockfile"
-          git push origin HEAD:recovery/rec-0002-frontend-manifest
