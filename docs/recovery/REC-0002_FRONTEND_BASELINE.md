@@ -50,7 +50,7 @@ Se conserva React 18 porque:
 - Node >=20.19.0
 - Vite 7.1.12
 - `@vitejs/plugin-react` 5.1.1
-- TypeScript 5.4.0
+- TypeScript 5.9.3
 - Vitest 4.0.6
 - `@vitest/coverage-v8` 4.0.14
 - ESLint 9.39.1
@@ -59,6 +59,10 @@ Se conserva React 18 porque:
 - `vite-plugin-pwa` 1.2.0
 
 Las dependencias directas se fijan sin `^` durante la recuperación para evitar que regenerar el lockfile meses después introduzca upgrades silenciosos.
+
+### Nota sobre TypeScript
+
+El manifiesto histórico declaraba `typescript: ^5.4.0`, pero el último `package-lock.json` coherente resolvía realmente **TypeScript 5.9.3**. Fijar literalmente `5.4.0` produjo `ERESOLVE`/`typescript@undefined` durante una generación limpia del lockfile. Se fija 5.9.3 porque es la versión efectivamente registrada en el lock histórico y satisface el peer `>=4.8.4 <6.0.0` de `@typescript-eslint/parser` 8.46.4.
 
 ## React Router
 
@@ -70,7 +74,7 @@ El frontend actual utiliza APIs y estructura de React Router v6. La actualizaci�
 
 ## Lockfile
 
-Para evitar partir del archivo corrupto, se recuperó inicialmente el blob del último lockfile coherente anterior a las actualizaciones defectuosas. Sobre esa base, GitHub Actions reconcilia `package-lock.json` usando el manifiesto de recuperación.
+El lockfile corrupto no se reutiliza como fuente de verdad. El proceso de recuperación fija primero las dependencias directas con evidencia histórica y después genera un `package-lock.json` nuevo desde cero con npm 10 / Node 20.19. El lock resultante congela las dependencias transitivas de esa instalación.
 
 El lockfile final solo se acepta si:
 
@@ -82,7 +86,7 @@ El lockfile final solo se acepta si:
 
 ## Validación pendiente
 
-Después de cerrar la reconciliación del lockfile se ejecutarán como mínimo:
+Después de cerrar la generación del lockfile se ejecutarán como mínimo:
 
 ```text
 npm ci
