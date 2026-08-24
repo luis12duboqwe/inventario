@@ -52,7 +52,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          pytest -q backend/tests --tb=no > /tmp/rec0004-pytest.log 2>&1
+          pytest -q backend/tests --tb=no --maxfail=10 > /tmp/rec0004-pytest.log 2>&1
           rc=$?
           echo '=== REC-0004 FAILED/ERROR TESTS ==='
           grep -E '^(FAILED|ERROR) ' /tmp/rec0004-pytest.log || true
