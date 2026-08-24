@@ -8,23 +8,15 @@ on:
       - requirements.txt
       - backend/**
       - .github/workflows/recovery-rec-0004-backend-baseline.yml
-  pull_request:
-    branches:
-      - main
-    paths:
-      - requirements.txt
-      - backend/**
-      - .github/workflows/recovery-rec-0004-backend-baseline.yml
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   backend-baseline:
-    if: github.event_name != 'pull_request' || github.head_ref == 'recovery/rec-0004-backend-baseline'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       DATABASE_URL: sqlite:///:memory:
       JWT_SECRET_KEY: rec0004-test-secret-key-only
@@ -35,8 +27,10 @@ jobs:
       SOFTMOBILE_ENABLE_SCHEDULER: '0'
       SOFTMOBILE_ENABLE_BACKUP_SCHEDULER: '0'
     steps:
-      - name: Checkout
+      - name: Checkout recovery branch
         uses: actions/checkout@v4
+        with:
+          ref: recovery/rec-0004-backend-baseline
 
       - name: Setup Python 3.11
         uses: actions/setup-python@v5
@@ -45,24 +39,91 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
 
-      - name: Install backend dependencies
+      - name: Run reproducible backend baseline
+        id: baseline
+        continue-on-error: true
+        shell: bash
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          set +e
+          mkdir -p /tmp/rec0004
 
-      - name: Compile backend Python
-        run: python -m compileall -q backend
+          python -m pip install --upgrade pip > /tmp/rec0004/pip-upgrade.log 2>&1
+          pip install -r requirements.txt > /tmp/rec0004/install.log 2>&1
+          INSTALL=$?
 
-      - name: Import FastAPI application
-        run: |
-          python - <<'PY'
+          python -m compileall -q backend > /tmp/rec0004/compile.log 2>&1
+          COMPILE=$?
+
+          python - <<'PY' > /tmp/rec0004/import.log 2>&1
           from backend.app.main import app
-          print(f"REC-0004 app imported: {app.title} {app.version}")
-          print(f"REC-0004 routes mounted: {len(app.routes)}")
+          print(f"app_title={app.title}")
+          print(f"app_version={app.version}")
+          print(f"routes_mounted={len(app.routes)}")
           PY
+          IMPORT=$?
 
-      - name: Collect backend tests
-        run: pytest --collect-only -q backend/tests
+          pytest --collect-only -q backend/tests > /tmp/rec0004/collect.log 2>&1
+          COLLECT=$?
 
-      - name: Run focused smoke tests
-        run: pytest -q backend/tests/test_http_simple_app.py backend/tests/test_routes_bootstrap.py backend/tests/test_auth_pack28.py
+          pytest -q backend/tests/test_http_simple_app.py backend/tests/test_routes_bootstrap.py backend/tests/test_auth_pack28.py > /tmp/rec0004/smoke.log 2>&1
+          SMOKE=$?
+
+          {
+            echo '# REC-0004 — Resultado baseline backend'
+            echo
+            echo 'Repositorio: `luis12duboqwe/inventario`'
+            echo
+            echo 'Entorno: GitHub Actions / Ubuntu / Python 3.11 / SQLite efímero.'
+            echo
+            echo '## Estados'
+            echo
+            echo "- instalación requirements: exit ${INSTALL}"
+            echo "- compileall backend: exit ${COMPILE}"
+            echo "- import backend.app.main: exit ${IMPORT}"
+            echo "- pytest --collect-only: exit ${COLLECT}"
+            echo "- smoke tests: exit ${SMOKE}"
+            echo
+            echo '## Importación de aplicación'
+            echo '```text'
+            tail -n 80 /tmp/rec0004/import.log
+            echo '```'
+            echo
+            echo '## Colección de tests'
+            echo '```text'
+            tail -n 120 /tmp/rec0004/collect.log
+            echo '```'
+            echo
+            echo '## Smoke tests'
+            echo '```text'
+            tail -n 160 /tmp/rec0004/smoke.log
+            echo '```'
+            echo
+            echo '## Instalación — últimas líneas'
+            echo '```text'
+            tail -n 80 /tmp/rec0004/install.log
+            echo '```'
+          } > docs/recovery/REC-0004_BACKEND_BASELINE_RESULTS.md
+
+          if [ "$INSTALL" -ne 0 ] || [ "$COMPILE" -ne 0 ] || [ "$IMPORT" -ne 0 ] || [ "$COLLECT" -ne 0 ] || [ "$SMOKE" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Commit baseline report
+        if: always()
+        run: |
+          git config user.name "softmobile-recovery-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add docs/recovery/REC-0004_BACKEND_BASELINE_RESULTS.md
+          if git diff --cached --quiet; then
+            echo "No report changes"
+            exit 0
+          fi
+          git commit -m "REC-0004: record backend baseline results"
+          git push origin HEAD:recovery/rec-0004-backend-baseline
+
+      - name: Enforce baseline result
+        if: always()
+        run: |
+          if [ "${{ steps.baseline.outcome }}" != "success" ]; then
+            exit 1
+          fi
