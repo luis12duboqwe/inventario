@@ -8,6 +8,13 @@ on:
       - requirements.txt
       - backend/**
       - .github/workflows/recovery-rec-0004-backend-baseline.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - requirements.txt
+      - backend/**
+      - .github/workflows/recovery-rec-0004-backend-baseline.yml
   workflow_dispatch:
 
 permissions:
@@ -15,6 +22,7 @@ permissions:
 
 jobs:
   backend-baseline:
+    if: github.event_name != 'pull_request' || github.head_ref == 'recovery/rec-0004-backend-baseline'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
