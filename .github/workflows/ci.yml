@@ -4,13 +4,12 @@ on:
   push:
     branches:
       - main
-      - recovery/rec-0003-canonical-ci
   pull_request:
     branches:
       - main
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: softmobile-ci-${{ github.workflow }}-${{ github.ref }}
@@ -18,9 +17,9 @@ concurrency:
 
 jobs:
   backend:
-    name: Backend · install, smoke, pytest
+    name: Backend · install, compile, smoke, pytest
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 50
     env:
       PYTHONPATH: ${{ github.workspace }}
       DATABASE_URL: sqlite:///./ci_softmobile.db
@@ -38,87 +37,11 @@ jobs:
       SOFTMOBILE_ENABLE_2FA: '0'
       SOFTMOBILE_ENABLE_HYBRID_PREP: '1'
     steps:
-      - name: Checkout recovery branch
-        uses: actions/checkout@v4
-        with:
-          ref: recovery/rec-0003-canonical-ci
-
-      - name: Restore historically verified pricing resolver
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("backend/app/crud_legacy.py")
-          text = path.read_text(encoding="utf-8")
-          fn_marker = "def resolve_price_for_device("
-          fn_start = text.index(fn_marker)
-          effective = "    effective_date = reference_date or date.today()\n"
-          effective_start = text.index(effective, fn_start)
-          body_start = effective_start + len(effective)
-          best_marker = "    best_match: tuple[models.PriceList, models.PriceListItem] | None = None"
-          best_start = text.index(best_marker, body_start)
-
-          current_middle = text[body_start:best_start]
-          if "validity_condition = and_(" in current_middle and "def _priority(" in current_middle:
-              print("pricing resolver already restored")
-          else:
-              historical = '''
-
-    validity_condition = and_(
-        or_(models.PriceList.valid_from.is_(None), models.PriceList.valid_from <= effective_date),
-        or_(models.PriceList.valid_until.is_(None), models.PriceList.valid_until >= effective_date),
-    )
-
-    statement = (
-        select(models.PriceListItem, models.PriceList)
-        .join(models.PriceList, models.PriceListItem.price_list_id == models.PriceList.id)
-        .where(models.PriceListItem.device_id == device_id)
-        .where(models.PriceList.is_active.is_(True))
-        .where(validity_condition)
-    )
-
-    results = db.execute(statement).all()
-
-    def _priority(price_list: models.PriceList) -> int:
-        if (
-            store_id is not None
-            and customer_id is not None
-            and price_list.store_id == store_id
-            and price_list.customer_id == customer_id
-        ):
-            return 1
-        if (
-            customer_id is not None
-            and price_list.customer_id == customer_id
-            and price_list.store_id is None
-        ):
-            return 2
-        if (
-            store_id is not None
-            and price_list.store_id == store_id
-            and price_list.customer_id is None
-        ):
-            return 3
-        if price_list.store_id is None and price_list.customer_id is None:
-            return 4
-        return 99
-
-'''
-              path.write_text(text[:body_start] + historical + text[best_start:], encoding="utf-8")
-              print("restored resolve_price_for_device from same-repository historical implementation")
-          PY
-
-          if ! git diff --quiet -- backend/app/crud_legacy.py; then
-            git config user.name "softmobile-recovery-bot"
-            git config user.email "actions@users.noreply.github.com"
-            git add backend/app/crud_legacy.py
-            git commit -m "REC-0004: restore corrupted price resolver"
-            git push origin HEAD:recovery/rec-0003-canonical-ci
-          fi
+      - name: Checkout
+        uses: actions/checkout@v7
 
       - name: Setup Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
           cache: pip
@@ -144,8 +67,13 @@ jobs:
       - name: Collect backend tests
         run: pytest --collect-only -q backend/tests
 
-      - name: Authentication, HTTP and pricing smoke tests
-        run: pytest -q backend/tests/test_http_simple_app.py backend/tests/test_routes_bootstrap.py backend/tests/test_auth_pack28.py backend/tests/test_price_lists.py
+      - name: Critical smoke tests
+        run: |
+          pytest -q \
+            backend/tests/test_http_simple_app.py \
+            backend/tests/test_routes_bootstrap.py \
+            backend/tests/test_auth_pack28.py \
+            backend/tests/test_price_lists.py
 
       - name: Full backend suite
         run: pytest -q backend/tests
@@ -156,10 +84,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node 20.19
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '20.19.0'
           cache: npm
@@ -198,10 +126,10 @@ jobs:
     continue-on-error: true
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node 20.19
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '20.19.0'
           cache: npm
