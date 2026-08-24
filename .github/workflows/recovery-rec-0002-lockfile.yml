@@ -8,6 +8,13 @@ on:
       - frontend/package.json
       - frontend/package-lock.json
       - .github/workflows/recovery-rec-0002-lockfile.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - frontend/package.json
+      - frontend/package-lock.json
+      - .github/workflows/recovery-rec-0002-lockfile.yml
   workflow_dispatch:
 
 permissions:
@@ -15,6 +22,7 @@ permissions:
 
 jobs:
   regenerate-lockfile:
+    if: github.event_name != 'pull_request' || github.head_ref == 'recovery/rec-0002-frontend-manifest'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout recovery branch
