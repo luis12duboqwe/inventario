@@ -80,8 +80,9 @@ export default function CreateModal({ open, onClose, onCreate }: Props) {
     >
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-muted-foreground">Tipo</label>
+          <label htmlFor="movement-type" className="text-xs font-medium text-muted-foreground">Tipo</label>
           <select
+            id="movement-type"
             value={type}
             onChange={(e) => setType(e.target.value as "IN" | "OUT" | "TRANSFER")}
             className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"

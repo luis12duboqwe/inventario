@@ -70,7 +70,6 @@ vi.mock("../../components/layout/PageToolbar", () => ({
   default: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
 }));
 
-vi.mock("../../components/ui/Skeleton", () => ({
 vi.mock("@components/ui/Skeleton", () => ({
   Skeleton: () => <div data-testid="loading-skeleton">Cargando...</div>,
 }));

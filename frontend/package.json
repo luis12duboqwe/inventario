@@ -57,5 +57,9 @@
     "vite": "7.1.12",
     "vite-plugin-pwa": "1.2.0",
     "vitest": "4.0.14"
+  },
+  "overrides": {
+    "motion-dom": "12.23.23",
+    "motion-utils": "12.23.6"
   }
 }

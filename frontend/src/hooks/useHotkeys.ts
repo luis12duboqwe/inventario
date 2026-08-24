@@ -10,10 +10,12 @@ type KeyCombo = {
 
 type HotkeyAction = (e: KeyboardEvent) => void;
 
+const EMPTY_DEPS: readonly unknown[] = [];
+
 export function useHotkeys(
   keyCombo: string | KeyCombo,
   callback: HotkeyAction,
-  deps: unknown[] = []
+  deps: readonly unknown[] = EMPTY_DEPS
 ) {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -33,5 +35,5 @@ export function useHotkeys(
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [keyCombo, callback, ...deps]);
+  }, [keyCombo, callback, deps]);
 }
