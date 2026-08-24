@@ -4,10 +4,12 @@ on:
   push:
     branches:
       - recovery/rec-0004-legacy-candidate-f15
+    paths-ignore:
+      - docs/recovery/REC-0004_CANDIDATE_RESULT.md
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: rec-0004-legacy-${{ github.ref }}
@@ -17,7 +19,7 @@ jobs:
   backend-candidate:
     name: Backend candidate · compile, import, collect, smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 50
     env:
       PYTHONPATH: ${{ github.workspace }}
       DATABASE_URL: sqlite:///./ci_softmobile.db
@@ -35,8 +37,10 @@ jobs:
       SOFTMOBILE_ENABLE_2FA: '0'
       SOFTMOBILE_ENABLE_HYBRID_PREP: '1'
     steps:
-      - name: Checkout candidate
+      - name: Checkout candidate branch
         uses: actions/checkout@v4
+        with:
+          ref: recovery/rec-0004-legacy-candidate-f15
 
       - name: Setup Python 3.11
         uses: actions/setup-python@v5
@@ -46,14 +50,22 @@ jobs:
           cache-dependency-path: requirements.txt
 
       - name: Install dependencies
+        id: install
+        continue-on-error: true
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
       - name: Compile backend
+        id: compile
+        continue-on-error: true
+        if: steps.install.outcome == 'success'
         run: python -m compileall -q backend
 
       - name: Import FastAPI application
+        id: import_app
+        continue-on-error: true
+        if: steps.compile.outcome == 'success'
         run: |
           python - <<'PY'
           from backend.app.main import app
@@ -63,9 +75,15 @@ jobs:
           PY
 
       - name: Collect backend tests
+        id: collect
+        continue-on-error: true
+        if: steps.import_app.outcome == 'success'
         run: pytest --collect-only -q backend/tests
 
       - name: Critical smoke tests
+        id: smoke
+        continue-on-error: true
+        if: steps.collect.outcome == 'success'
         run: |
           pytest -q \
             backend/tests/test_http_simple_app.py \
@@ -74,4 +92,49 @@ jobs:
             backend/tests/test_price_lists.py
 
       - name: Full backend suite
+        id: full
+        continue-on-error: true
+        if: steps.smoke.outcome == 'success'
         run: pytest -q backend/tests
+
+      - name: Record evidence in branch
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p docs/recovery
+          cat > docs/recovery/REC-0004_CANDIDATE_RESULT.md <<'EOF'
+          # REC-0004 — Resultado candidato legacy f15
+
+          Candidate source: `f15a1b137237f5f78b7a11744708237227aff0f5`
+          Candidate blob: `a44419ca3a5e61f409e3a0ede232a7549a66bf57`
+
+          | Check | Result |
+          |---|---|
+          | requirements install | ${{ steps.install.outcome }} |
+          | compileall backend | ${{ steps.compile.outcome }} |
+          | import FastAPI | ${{ steps.import_app.outcome }} |
+          | pytest collect | ${{ steps.collect.outcome }} |
+          | critical smoke | ${{ steps.smoke.outcome }} |
+          | full backend suite | ${{ steps.full.outcome }} |
+
+          Este informe es generado únicamente en la rama de diagnóstico. No constituye aprobación para fusionar el snapshot histórico.
+          EOF
+          git config user.name "softmobile-recovery-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add docs/recovery/REC-0004_CANDIDATE_RESULT.md
+          if git diff --cached --quiet; then
+            echo "Evidence unchanged"
+          else
+            git commit -m "REC-0004: record legacy candidate validation"
+            git push origin HEAD:recovery/rec-0004-legacy-candidate-f15
+          fi
+
+      - name: Fail diagnostic run when candidate is not fully green
+        if: always()
+        run: |
+          test "${{ steps.install.outcome }}" = "success"
+          test "${{ steps.compile.outcome }}" = "success"
+          test "${{ steps.import_app.outcome }}" = "success"
+          test "${{ steps.collect.outcome }}" = "success"
+          test "${{ steps.smoke.outcome }}" = "success"
+          test "${{ steps.full.outcome }}" = "success"
