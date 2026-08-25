@@ -69,6 +69,7 @@ from .pos import *  # noqa: F401,F403
 from .analytics import *  # noqa: F401,F403
 from .transfers import *  # noqa: F401,F403
 from .invoicing import *  # noqa: F401,F403
+from .recovery_compat import *  # noqa: F401,F403
 
 # Compatibilidad de recuperación REC-0004.
 # El snapshot legacy intacto es anterior a varias extracciones de helpers. Esas
