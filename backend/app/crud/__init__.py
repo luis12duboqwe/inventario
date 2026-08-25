@@ -62,6 +62,7 @@ from .sync import *  # noqa: F401,F403
 from .sales import *  # noqa: F401,F403
 from .purchases import *  # noqa: F401,F403
 from .loyalty import *  # noqa: F401,F403
+from .backups import *  # noqa: F401,F403
 
 # Módulos nuevos preparados para recibir funciones de crud_legacy
 from .pos import *  # noqa: F401,F403
