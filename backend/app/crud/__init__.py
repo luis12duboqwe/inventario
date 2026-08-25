@@ -76,8 +76,11 @@ from .invoicing import *  # noqa: F401,F403
 # parcialmente dentro de crud_legacy.py. Reinyectamos aquí las implementaciones
 # especializadas actuales para que las funciones legacy resueltas en runtime no
 # dependan de imports que aún no existían en el snapshot histórico.
+import math as _math
+from collections import defaultdict as _defaultdict
 from pathlib import Path as _Path
 from .. import crud_legacy as _legacy
+from . import analytics as _analytics
 from .audit import log_audit_event as _legacy_log_audit_event
 from .customers import (
     _create_customer_ledger_entry as _legacy_create_customer_ledger_entry,
@@ -102,6 +105,11 @@ _legacy._register_purchase_status_event = _legacy_register_purchase_status_event
 _legacy._sync_supplier_ledger_entry = _legacy_sync_supplier_ledger_entry
 _legacy._create_supplier_ledger_entry = _legacy_create_supplier_ledger_entry
 _legacy._pos_draft_payload = _legacy_pos_draft_payload
+
+# El módulo analytics migrado usa estos símbolos pero la extracción no trasladó
+# sus imports. Se reinyectan aquí para preservar el código actual sin duplicarlo.
+_analytics.math = _math
+_analytics.defaultdict = _defaultdict
 
 # Utilidades adicionales expuestas para compatibilidad
 from ..utils.system_log_helpers import purge_system_logs  # noqa: F401
