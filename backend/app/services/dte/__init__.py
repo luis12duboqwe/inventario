@@ -16,8 +16,11 @@ from .signature import build_signature
 def _ensure_authorization_scope(authorization: models.DTEAuthorization, sale: models.Sale) -> None:
     if not authorization.active:
         raise ValueError("dte_authorization_inactive")
-    if authorization.expiration_date < date.today():
-        raise ValueError("dte_authorization_expired")
+    expiration = authorization.expiration_date
+    if expiration is not None:
+        expiration_date = expiration.date() if isinstance(expiration, datetime) else expiration
+        if expiration_date < date.today():
+            raise ValueError("dte_authorization_expired")
     if authorization.store_id not in (None, sale.store_id):
         raise ValueError("dte_authorization_store_mismatch")
 
@@ -80,7 +83,9 @@ def _render_dte_xml(
     SubElement(header, "NumeroControl").text = control_number
     SubElement(header, "CAI").text = authorization.cai
     SubElement(header, "FechaEmision").text = _format_timestamp(sale.created_at)
-    SubElement(header, "FechaLimiteEmision").text = authorization.expiration_date.isoformat()
+    SubElement(header, "FechaLimiteEmision").text = (
+        authorization.expiration_date.isoformat() if authorization.expiration_date else ""
+    )
     SubElement(header, "Sucursal").text = sale.store.name if sale.store else ""
     SubElement(header, "Documento").text = authorization.document_type
     SubElement(header, "Serie").text = authorization.serie
