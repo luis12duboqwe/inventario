@@ -69,5 +69,38 @@ from .analytics import *  # noqa: F401,F403
 from .transfers import *  # noqa: F401,F403
 from .invoicing import *  # noqa: F401,F403
 
+# Compatibilidad de recuperación REC-0004.
+# El snapshot legacy intacto es anterior a varias extracciones de helpers. Esas
+# extracciones sí son válidas; lo que se corrompió fueron los cuerpos comentados
+# parcialmente dentro de crud_legacy.py. Reinyectamos aquí las implementaciones
+# especializadas actuales para que las funciones legacy resueltas en runtime no
+# dependan de imports que aún no existían en el snapshot histórico.
+from pathlib import Path as _Path
+from .. import crud_legacy as _legacy
+from .audit import log_audit_event as _legacy_log_audit_event
+from .customers import (
+    _create_customer_ledger_entry as _legacy_create_customer_ledger_entry,
+    _ensure_debt_respects_limit as _legacy_ensure_debt_respects_limit,
+    _sync_customer_ledger_entry as _legacy_sync_customer_ledger_entry,
+)
+from .devices import _ensure_unique_identifier_payload as _legacy_ensure_unique_identifier_payload
+from .inventory import _hydrate_movement_references as _legacy_hydrate_movement_references
+from .purchases import _register_purchase_status_event as _legacy_register_purchase_status_event
+from ..utils.data_helpers import sync_supplier_ledger_entry as _legacy_sync_supplier_ledger_entry
+from ..utils.ledger_helpers import create_supplier_ledger_entry as _legacy_create_supplier_ledger_entry
+from ..utils.pos_helpers import pos_draft_payload as _legacy_pos_draft_payload
+
+_legacy.Path = _Path
+_legacy.log_audit_event = _legacy_log_audit_event
+_legacy._create_customer_ledger_entry = _legacy_create_customer_ledger_entry
+_legacy._ensure_debt_respects_limit = _legacy_ensure_debt_respects_limit
+_legacy._sync_customer_ledger_entry = _legacy_sync_customer_ledger_entry
+_legacy._ensure_unique_identifier_payload = _legacy_ensure_unique_identifier_payload
+_legacy._hydrate_movement_references = _legacy_hydrate_movement_references
+_legacy._register_purchase_status_event = _legacy_register_purchase_status_event
+_legacy._sync_supplier_ledger_entry = _legacy_sync_supplier_ledger_entry
+_legacy._create_supplier_ledger_entry = _legacy_create_supplier_ledger_entry
+_legacy._pos_draft_payload = _legacy_pos_draft_payload
+
 # Utilidades adicionales expuestas para compatibilidad
 from ..utils.system_log_helpers import purge_system_logs  # noqa: F401
