@@ -6,10 +6,12 @@ Contiene funciones para gestión de documentos tributarios electrónicos.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import func, or_, select
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from backend.app import models, schemas
 
@@ -32,13 +34,12 @@ __all__ = [
     'mark_dte_dispatch_sent',
     'list_dte_dispatch_queue',
 ]
+
+
 def create_dte_authorization(
     db: Session,
     payload: schemas.DTEAuthorizationCreate,
 ) -> models.DTEAuthorization:
-    # Late import to avoid circular dependency
-    from backend.app import crud_legacy
-    
     document_type = payload.document_type.strip().upper()
     serie = payload.serie.strip().upper()
     store_id = payload.store_id
@@ -52,8 +53,7 @@ def create_dte_authorization(
     if store_id is None:
         statement = statement.where(models.DTEAuthorization.store_id.is_(None))
     else:
-        statement = statement.where(
-            models.DTEAuthorization.store_id == store_id)
+        statement = statement.where(models.DTEAuthorization.store_id == store_id)
 
     conflict = db.scalars(statement).first()
     if conflict:
@@ -77,7 +77,6 @@ def create_dte_authorization(
     return authorization
 
 
-
 def list_dte_authorizations(
     db: Session,
     *,
@@ -85,12 +84,8 @@ def list_dte_authorizations(
     document_type: str | None = None,
     active: bool | None = None,
 ) -> list[models.DTEAuthorization]:
-    # Late import to avoid circular dependency
-    from backend.app import crud_legacy
-    
-    statement = (
-        select(models.DTEAuthorization)
-        .order_by(models.DTEAuthorization.created_at.desc())
+    statement = select(models.DTEAuthorization).order_by(
+        models.DTEAuthorization.created_at.desc()
     )
     if store_id is not None:
         statement = statement.where(
@@ -109,7 +104,6 @@ def list_dte_authorizations(
     return list(db.scalars(statement))
 
 
-
 def get_dte_authorization(db: Session, authorization_id: int) -> models.DTEAuthorization:
     authorization = db.get(models.DTEAuthorization, authorization_id)
     if authorization is None:
@@ -117,15 +111,11 @@ def get_dte_authorization(db: Session, authorization_id: int) -> models.DTEAutho
     return authorization
 
 
-
 def update_dte_authorization(
     db: Session,
     authorization_id: int,
     payload: schemas.DTEAuthorizationUpdate,
 ) -> models.DTEAuthorization:
-    # Late import to avoid circular dependency
-    from backend.app import crud_legacy
-    
     authorization = get_dte_authorization(db, authorization_id)
 
     if payload.expiration_date is not None:
@@ -141,14 +131,10 @@ def update_dte_authorization(
     return authorization
 
 
-
 def reserve_dte_folio(
     db: Session,
     authorization: models.DTEAuthorization,
 ) -> int:
-    # Late import to avoid circular dependency
-    from backend.app import crud_legacy
-    
     next_number = authorization.current_number
     if next_number < authorization.range_start:
         next_number = authorization.range_start
@@ -162,7 +148,6 @@ def reserve_dte_folio(
     return next_number
 
 
-
 def register_dte_document(
     db: Session,
     *,
@@ -174,9 +159,6 @@ def register_dte_document(
     correlative: int,
     reference_code: str | None,
 ) -> models.DTEDocument:
-    # Late import to avoid circular dependency
-    from backend.app import crud_legacy
-    
     document = models.DTEDocument(
         sale_id=sale.id,
         authorization_id=authorization.id if authorization else None,
@@ -198,7 +180,6 @@ def register_dte_document(
     return document
 
 
-
 def log_dte_event(
     db: Session,
     *,
@@ -208,9 +189,6 @@ def log_dte_event(
     detail: str | None,
     performed_by_id: int | None,
 ) -> models.DTEEvent:
-    # Late import to avoid circular dependency
-    from backend.app import crud_legacy
-    
     event = models.DTEEvent(
         document=document,
         event_type=event_type,
@@ -224,7 +202,6 @@ def log_dte_event(
     return event
 
 
-
 def list_dte_documents(
     db: Session,
     *,
@@ -234,9 +211,6 @@ def list_dte_documents(
     limit: int = 50,
     offset: int = 0,
 ) -> list[models.DTEDocument]:
-    # Late import to avoid circular dependency
-    from backend.app import crud_legacy
-    
     safe_limit = None if limit is None else max(1, min(limit, 200))
     statement = (
         select(models.DTEDocument)
@@ -255,11 +229,7 @@ def list_dte_documents(
     if sale_id is not None:
         statement = statement.where(models.DTEDocument.sale_id == sale_id)
     if status is not None:
-        enum_status = (
-            status
-            if isinstance(status, models.DTEStatus)
-            else models.DTEStatus(status)
-        )
+        enum_status = status if isinstance(status, models.DTEStatus) else models.DTEStatus(status)
         statement = statement.where(models.DTEDocument.status == enum_status)
     if offset:
         statement = statement.offset(offset)
@@ -268,13 +238,11 @@ def list_dte_documents(
     return list(db.scalars(statement))
 
 
-
 def get_dte_document(db: Session, document_id: int) -> models.DTEDocument:
     document = db.get(models.DTEDocument, document_id)
     if document is None:
         raise LookupError("dte_document_not_found")
     return document
-
 
 
 def register_dte_ack(
@@ -286,9 +254,6 @@ def register_dte_ack(
     detail: str | None,
     received_at: datetime,
 ) -> models.DTEDocument:
-    # Late import to avoid circular dependency
-    from backend.app import crud_legacy
-    
     ack_time = received_at
     if ack_time.tzinfo is not None:
         ack_time = ack_time.astimezone(timezone.utc).replace(tzinfo=None)
@@ -308,16 +273,12 @@ def register_dte_ack(
     return document
 
 
-
 def enqueue_dte_dispatch(
     db: Session,
     *,
     document: models.DTEDocument,
     error_message: str | None,
 ) -> models.DTEDispatchQueue:
-    # Late import to avoid circular dependency
-    from backend.app import crud_legacy
-    
     existing = db.scalar(
         select(models.DTEDispatchQueue).where(
             models.DTEDispatchQueue.document_id == document.id
@@ -349,16 +310,12 @@ def enqueue_dte_dispatch(
     return entry
 
 
-
 def mark_dte_dispatch_sent(
     db: Session,
     *,
     document: models.DTEDocument,
     error_message: str | None,
 ) -> models.DTEDispatchQueue:
-    # Late import to avoid circular dependency
-    from backend.app import crud_legacy
-    
     entry = db.scalar(
         select(models.DTEDispatchQueue).where(
             models.DTEDispatchQueue.document_id == document.id
@@ -389,15 +346,11 @@ def mark_dte_dispatch_sent(
     return entry
 
 
-
 def list_dte_dispatch_queue(
     db: Session,
     *,
     statuses: Iterable[models.DTEDispatchStatus] | None = None,
 ) -> list[models.DTEDispatchQueue]:
-    # Late import to avoid circular dependency
-    from backend.app import crud_legacy
-    
     statement = (
         select(models.DTEDispatchQueue)
         .options(joinedload(models.DTEDispatchQueue.document))
@@ -405,8 +358,6 @@ def list_dte_dispatch_queue(
     )
     if statuses:
         statement = statement.where(
-            models.DTEDispatchQueue.status.in_(tuple(statuses)))
+            models.DTEDispatchQueue.status.in_(tuple(statuses))
+        )
     return list(db.scalars(statement))
-
-
-
