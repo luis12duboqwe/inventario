@@ -117,12 +117,12 @@ def renew_reservation(
 
 
 def create_sale(db: Session, payload, *args, **kwargs):
-    """Normaliza reservas antes del flujo de venta legacy intacto."""
+    """Normaliza reservas y conserva el flujo especializado actual de ventas."""
 
-    from .. import crud_legacy
+    from . import sales as sales_crud
 
     _normalize_payload_reservations(db, payload)
-    return crud_legacy.create_sale(db, payload, *args, **kwargs)
+    return sales_crud.create_sale(db, payload, *args, **kwargs)
 
 
 def create_transfer_order(db: Session, payload, *args, **kwargs):
