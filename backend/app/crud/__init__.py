@@ -40,16 +40,8 @@ Módulos nuevos preparados para migración (4):
 - invoicing (0 exports): Facturación electrónica DTE (13 funciones planificadas)
 """
 
-# TODO: Migrar funciones desde crud_legacy.py a módulos especializados
-# Nota: crud_legacy aún usa wildcard por compatibilidad con 31 routers.
-# Se mantiene mientras se migran funciones a módulos especializados.
-#
-# Importamos legacy primero para que los módulos especializados sobrescriban
-# cualquier firma obsoleta (por ejemplo list_sales/start_date, métricas).
 from ..crud_legacy import *  # noqa: F401,F403
 
-# Imports explícitos desde módulos especializados (sobrescriben legacy cuando coinciden)
-# Nota: Los submódulos controlan sus exports mediante __all__
 from .users import *  # noqa: F401,F403
 from .devices import *  # noqa: F401,F403
 from .stores import *  # noqa: F401,F403
@@ -63,20 +55,12 @@ from .sales import *  # noqa: F401,F403
 from .purchases import *  # noqa: F401,F403
 from .loyalty import *  # noqa: F401,F403
 from .backups import *  # noqa: F401,F403
-
-# Módulos nuevos preparados para recibir funciones de crud_legacy
 from .pos import *  # noqa: F401,F403
 from .analytics import *  # noqa: F401,F403
 from .transfers import *  # noqa: F401,F403
 from .invoicing import *  # noqa: F401,F403
 from .recovery_compat import *  # noqa: F401,F403
 
-# Compatibilidad de recuperación REC-0004.
-# El snapshot legacy intacto es anterior a varias extracciones de helpers. Esas
-# extracciones sí son válidas; lo que se corrompió fueron los cuerpos comentados
-# parcialmente dentro de crud_legacy.py. Reinyectamos aquí las implementaciones
-# especializadas actuales para que las funciones legacy resueltas en runtime no
-# dependan de imports que aún no existían en el snapshot histórico.
 import json as _json
 import math as _math
 from collections import defaultdict as _defaultdict
@@ -90,6 +74,7 @@ from . import analytics as _analytics
 from . import devices as _devices
 from . import inventory as _inventory
 from . import recovery_compat as _recovery_compat
+from . import sales as _sales
 from . import transfers as _transfers
 from .audit import log_audit_event as _legacy_log_audit_event
 from .customers import (
@@ -117,17 +102,12 @@ _legacy._sync_supplier_ledger_entry = _legacy_sync_supplier_ledger_entry
 _legacy._create_supplier_ledger_entry = _legacy_create_supplier_ledger_entry
 _legacy._pos_draft_payload = _legacy_pos_draft_payload
 
-# El módulo analytics migrado usa estos símbolos pero la extracción no trasladó
-# sus imports. Se reinyectan aquí para preservar el código actual sin duplicarlo.
 _analytics.math = _math
 _analytics.defaultdict = _defaultdict
 
-# Restaurar el contrato histórico de catálogo: costo/margen recalculan precio.
 _devices._recalculate_sale_price = _recovery_compat._recalculate_sale_price
+_sales.release_reservation = _recovery_compat.release_reservation
 
-# El módulo transfers también fue extraído sin varios imports/helpers privados.
-# REC-0004 los enlaza con el snapshot legacy intacto y utilidades canónicas sin
-# duplicar la lógica de movimiento de stock.
 _transfers._require_store_permission = _legacy._require_store_permission
 _transfers._user_can_override_transfer = _legacy._user_can_override_transfer
 _transfers.expire_reservations = _inventory.expire_reservations
@@ -144,5 +124,4 @@ _transfers._apply_transfer_dispatch = _legacy._apply_transfer_dispatch
 _transfers._normalize_reception_quantities = _legacy._normalize_reception_quantities
 _transfers._apply_transfer_reception = _legacy._apply_transfer_reception
 
-# Utilidades adicionales expuestas para compatibilidad
 from ..utils.system_log_helpers import purge_system_logs  # noqa: F401
