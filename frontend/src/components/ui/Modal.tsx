@@ -116,5 +116,6 @@ function Modal({
   );
 }
 
+export { Modal };
 export type { ModalProps, ModalSize };
 export default Modal;
