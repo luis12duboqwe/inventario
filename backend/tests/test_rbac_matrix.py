@@ -14,7 +14,6 @@ def _bootstrap_role(client, role: str, username: str) -> dict[str, str]:
         "full_name": "Admin Bootstrap",
         "roles": [ADMIN],
     }
-    # Bootstrap admin (idempotente por prueba aislada)
     client.post("/auth/bootstrap", json=admin_payload)
     token_resp = client.post(
         "/auth/token",
@@ -35,7 +34,6 @@ def _bootstrap_role(client, role: str, username: str) -> dict[str, str]:
         },
         headers={"Authorization": f"Bearer {admin_token}"},
     )
-    # Puede existir ya si la prueba se reintenta: permitir 409
     assert create_resp.status_code in (
         status.HTTP_201_CREATED, status.HTTP_409_CONFLICT)
 
@@ -50,14 +48,11 @@ def _bootstrap_role(client, role: str, username: str) -> dict[str, str]:
 
 
 @pytest.mark.parametrize("path", [
-    "/reports/inventory/current/csv",  # requiere ADMIN (router + middleware)
+    "/reports/inventory/current/csv",
     "/reports/inventory/value/csv",
 ])
 def test_guest_cannot_access_reports(client, path: str) -> None:
-    """INVITADO no debe acceder aunque envíe un X-Reason válido.
-
-    Enviamos X-Reason para evitar el 400 por cabecera faltante y aislar la verificación RBAC.
-    """
+    """INVITADO no debe acceder aunque envíe un X-Reason válido."""
     guest_headers = _bootstrap_role(client, INVITADO, "guest_rbac")
     enriched = {**guest_headers, "X-Reason": "Motivo reporte inventario"}
     response = client.get(path, headers=enriched)
@@ -76,12 +71,14 @@ def test_operator_cannot_export_audit_ui(client) -> None:
 def test_manager_cannot_delete_security_resource(client) -> None:
     """GERENTE no posee permisos de borrado en módulo seguridad según matriz.
 
-    Simulamos intento de borrado usando un endpoint de sesión inexistente con método DELETE;
-    debe fallar (403/405/404), nunca 200.
+    Enviamos un motivo válido para que la prueba llegue a RBAC en vez de ser
+    detenida antes por el middleware corporativo X-Reason.
     """
     manager_headers = _bootstrap_role(client, GERENTE, "ger_rbac")
     response = client.delete(
-        "/security/sessions/99999/revoke", headers=manager_headers)
+        "/security/sessions/99999/revoke",
+        headers={**manager_headers, "X-Reason": "Prueba RBAC seguridad"},
+    )
     assert response.status_code in {
         status.HTTP_401_UNAUTHORIZED,
         status.HTTP_403_FORBIDDEN,
