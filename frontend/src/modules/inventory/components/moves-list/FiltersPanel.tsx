@@ -1,5 +1,5 @@
 import React from "react";
-import { FILTER_ALL_VALUE, FILTER_ALL_LABEL } from "../../../../../config/constants";
+import { FILTER_ALL_VALUE, FILTER_ALL_LABEL } from "@/config/constants";
 
 type MoveType = "IN" | "OUT" | "TRANSFER" | "ADJUST";
 type MoveStatus = "DRAFT" | "PENDING" | "APPROVED" | "PARTIAL" | "DONE" | "CANCELLED";
