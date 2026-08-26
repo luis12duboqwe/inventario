@@ -5,7 +5,7 @@ import { TextField } from "@components/ui/TextField";
 
 type Props = {
   open?: boolean;
-  onClose?: () => void;
+  onClose: () => void;
 };
 
 export default function ImportModal({ open, onClose }: Props) {
@@ -26,7 +26,7 @@ export default function ImportModal({ open, onClose }: Props) {
       }
     >
       <div className="space-y-4">
-        <TextField type="file" accept=".csv,.xlsx" fullWidth />
+        <TextField label="Archivo de movimientos" type="file" accept=".csv,.xlsx" fullWidth />
       </div>
     </Modal>
   );
