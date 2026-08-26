@@ -41,6 +41,7 @@ from . import analytics as _analytics
 from . import inventory as _inventory
 from . import recovery_compat as _recovery_compat
 from . import sales as _sales
+from . import suppliers as _suppliers
 from . import transfers as _transfers
 from .audit import log_audit_event as _legacy_log_audit_event
 from .customers import (
@@ -87,6 +88,10 @@ _analytics.defaultdict = _defaultdict
 _inventory_accounting.calculate_inventory_valuation = _inventory_service.calculate_inventory_valuation
 _inventory._normalize_date_range = _recovery_compat.normalize_inventory_date_range
 _inventory.create_inventory_movement = _recovery_compat.create_inventory_movement
+
+# Crear/actualizar lotes cambia el costo del producto y debe recalcular el
+# precio con costo+margen, igual que el monolito previo a la extracción.
+_suppliers._recalculate_sale_price = _recovery_compat._recalculate_sale_price
 
 _sales.release_reservation = _recovery_compat.release_reservation
 
