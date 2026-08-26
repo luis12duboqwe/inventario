@@ -9,7 +9,12 @@ type TooltipProps = {
 
 function Tooltip({ content, children, position = "top" }: TooltipProps) {
   const trigger = children ?? (
-    <span aria-hidden="true" style={{ cursor: "help", fontSize: "0.85em" }}>
+    <span
+      tabIndex={0}
+      role="img"
+      aria-label={`Ayuda: ${content}`}
+      style={{ cursor: "help", fontSize: "0.85em" }}
+    >
       ⓘ
     </span>
   );
