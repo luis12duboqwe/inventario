@@ -88,6 +88,7 @@ _analytics.defaultdict = _defaultdict
 # Contratos de inventario perdidos al separar servicio contable y CRUD.
 _inventory_accounting.calculate_inventory_valuation = _inventory_service.calculate_inventory_valuation
 _inventory._normalize_date_range = _recovery_compat.normalize_inventory_date_range
+_inventory._recalculate_sale_price = _recovery_compat._recalculate_sale_price
 _inventory.create_inventory_movement = _recovery_compat.create_inventory_movement
 
 # Crear/actualizar lotes cambia el costo del producto y debe recalcular el
