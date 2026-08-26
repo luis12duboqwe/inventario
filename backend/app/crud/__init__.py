@@ -35,6 +35,8 @@ from sqlalchemy.exc import NoResultFound as _NoResultFound
 from sqlalchemy.orm import joinedload as _joinedload
 
 from .. import crud_legacy as _legacy
+from ..services import inventory as _inventory_service
+from ..services import inventory_accounting as _inventory_accounting
 from . import analytics as _analytics
 from . import inventory as _inventory
 from . import recovery_compat as _recovery_compat
@@ -78,6 +80,11 @@ _legacy._store_credit_payload = _store_credit_payload
 
 _analytics.math = _math
 _analytics.defaultdict = _defaultdict
+
+# Contratos de inventario perdidos al separar servicio contable y CRUD.
+_inventory_accounting.calculate_inventory_valuation = _inventory_service.calculate_inventory_valuation
+_inventory._normalize_date_range = _recovery_compat.normalize_inventory_date_range
+_inventory.create_inventory_movement = _recovery_compat.create_inventory_movement
 
 _sales.release_reservation = _recovery_compat.release_reservation
 
