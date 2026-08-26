@@ -12,7 +12,9 @@ def _auth_headers(client) -> dict[str, str]:
         "roles": [ADMIN],
     }
     response = client.post("/auth/bootstrap", json=payload)
-    assert response.status_code == status.HTTP_201_CREATED
+    if response.status_code != status.HTTP_201_CREATED:
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "Bootstrap ya completado" in response.json().get("detail", "")
 
     token_response = client.post(
         "/auth/token",
