@@ -6,7 +6,7 @@ no volver a editar el archivo legacy recuperado.
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
@@ -28,6 +28,11 @@ def create_inventory_movement(db: Session, store_id: int, payload: schemas.Movem
 
 def create_device(db: Session, store_id: int, payload: schemas.DeviceCreate, *, performed_by_id: int | None = None) -> models.Device:
     from . import devices as devices_crud
+    from .stores import get_store
+
+    # El padre archivado debe comportarse como inexistente antes de evaluar
+    # conflictos del SKU preservado por el soft-delete.
+    get_store(db, store_id)
     device = devices_crud.create_device(db, store_id, payload, performed_by_id=performed_by_id)
     if device.completo != payload.completo:
         device.completo = payload.completo
@@ -83,40 +88,61 @@ def build_inventory_snapshot(db: Session) -> dict[str, object]:
     return snapshot
 
 
+def _naive_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _date_like(value: date | datetime | None) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, datetime):
+        return value.timetz().replace(tzinfo=None) == time.min
+    return True
+
+
 def normalize_inventory_date_range(
     date_from: date | datetime | None,
     date_to: date | datetime | None,
 ) -> tuple[datetime, datetime]:
-    """Normaliza límites diarios y corrige rangos invertidos de reportes."""
+    """Normaliza límites diarios y corrige rangos invertidos de reportes.
+
+    FastAPI puede materializar ``YYYY-MM-DD`` como un ``datetime`` a medianoche
+    cuando la anotación acepta ``datetime | date``. Para filtros de reportes esa
+    medianoche representa el día completo, no un instante de cero segundos.
+    """
+    from_is_day = _date_like(date_from)
+    to_is_day = _date_like(date_to)
+
     if date_from is None:
         start_dt = datetime.min
     elif isinstance(date_from, datetime):
-        start_dt = date_from
+        start_dt = _naive_utc(date_from)
     else:
-        start_dt = datetime.combine(date_from, datetime.min.time())
+        start_dt = datetime.combine(date_from, time.min)
 
     if date_to is None:
         end_dt = datetime.max
     elif isinstance(date_to, datetime):
-        end_dt = date_to
+        normalized_to = _naive_utc(date_to)
+        end_dt = (
+            datetime.combine(normalized_to.date(), time.max)
+            if to_is_day
+            else normalized_to
+        )
     else:
-        end_dt = datetime.combine(date_to, datetime.max.time())
-
-    if start_dt.tzinfo is not None:
-        start_dt = start_dt.astimezone(timezone.utc).replace(tzinfo=None)
-    if end_dt.tzinfo is not None:
-        end_dt = end_dt.astimezone(timezone.utc).replace(tzinfo=None)
+        end_dt = datetime.combine(date_to, time.max)
 
     if start_dt > end_dt:
-        lower = end_dt
-        upper = start_dt
-        # Si los argumentos originales eran fechas, mantener el día inferior
-        # desde 00:00 y el superior hasta 23:59:59.999999.
-        if isinstance(date_to, date) and not isinstance(date_to, datetime):
-            lower = datetime.combine(date_to, datetime.min.time())
-        if isinstance(date_from, date) and not isinstance(date_from, datetime):
-            upper = datetime.combine(date_from, datetime.max.time())
-        start_dt, end_dt = lower, upper
+        if from_is_day and to_is_day:
+            lower_day = min(start_dt.date(), end_dt.date())
+            upper_day = max(start_dt.date(), end_dt.date())
+            start_dt = datetime.combine(lower_day, time.min)
+            end_dt = datetime.combine(upper_day, time.max)
+        else:
+            start_dt, end_dt = end_dt, start_dt
+
     return start_dt, end_dt
 
 
