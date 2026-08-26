@@ -1,5 +1,5 @@
 import React from "react";
-import { FILTER_ALL_VALUE, FILTER_ALL_LABEL } from "../../../../../config/constants";
+import { FILTER_ALL_VALUE, FILTER_ALL_LABEL } from "@/config/constants";
 
 type MovementType = "IN" | "OUT" | "TRANSFER";
 
