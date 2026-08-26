@@ -1,8 +1,8 @@
 import React from "react";
-import Button from "../../../../../components/ui/Button";
+import Button from "@components/ui/Button";
 import StatusBadge from "./StatusBadge";
 import StockBadge from "./StockBadge";
-import "../../InventoryTable.css"; // Ensure styles are loaded
+import "../../InventoryTable.css";
 
 type ProductInfo = {
   name?: string;
