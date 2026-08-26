@@ -77,11 +77,18 @@ from .recovery_compat import *  # noqa: F401,F403
 # parcialmente dentro de crud_legacy.py. Reinyectamos aquí las implementaciones
 # especializadas actuales para que las funciones legacy resueltas en runtime no
 # dependan de imports que aún no existían en el snapshot histórico.
+import json as _json
 import math as _math
 from collections import defaultdict as _defaultdict
+from datetime import datetime as _datetime, timezone as _timezone
 from pathlib import Path as _Path
+from sqlalchemy.exc import NoResultFound as _NoResultFound
+from sqlalchemy.orm import joinedload as _joinedload
+
 from .. import crud_legacy as _legacy
 from . import analytics as _analytics
+from . import inventory as _inventory
+from . import transfers as _transfers
 from .audit import log_audit_event as _legacy_log_audit_event
 from .customers import (
     _create_customer_ledger_entry as _legacy_create_customer_ledger_entry,
@@ -93,6 +100,7 @@ from .inventory import _hydrate_movement_references as _legacy_hydrate_movement_
 from .purchases import _register_purchase_status_event as _legacy_register_purchase_status_event
 from ..utils.data_helpers import sync_supplier_ledger_entry as _legacy_sync_supplier_ledger_entry
 from ..utils.ledger_helpers import create_supplier_ledger_entry as _legacy_create_supplier_ledger_entry
+from ..utils.payload_serializers import transfer_order_payload as _transfer_order_payload
 from ..utils.pos_helpers import pos_draft_payload as _legacy_pos_draft_payload
 
 _legacy.Path = _Path
@@ -111,6 +119,25 @@ _legacy._pos_draft_payload = _legacy_pos_draft_payload
 # sus imports. Se reinyectan aquí para preservar el código actual sin duplicarlo.
 _analytics.math = _math
 _analytics.defaultdict = _defaultdict
+
+# El módulo transfers también fue extraído sin varios imports/helpers privados.
+# REC-0004 los enlaza con el snapshot legacy intacto y utilidades canónicas sin
+# duplicar la lógica de movimiento de stock.
+_transfers._require_store_permission = _legacy._require_store_permission
+_transfers._user_can_override_transfer = _legacy._user_can_override_transfer
+_transfers.expire_reservations = _inventory.expire_reservations
+_transfers.get_inventory_reservation = _inventory.get_inventory_reservation
+_transfers.datetime = _datetime
+_transfers.timezone = _timezone
+_transfers._log_action = _legacy._log_action
+_transfers.json = _json
+_transfers.enqueue_sync_outbox = _legacy.enqueue_sync_outbox
+_transfers.transfer_order_payload = _transfer_order_payload
+_transfers.joinedload = _joinedload
+_transfers.NoResultFound = _NoResultFound
+_transfers._apply_transfer_dispatch = _legacy._apply_transfer_dispatch
+_transfers._normalize_reception_quantities = _legacy._normalize_reception_quantities
+_transfers._apply_transfer_reception = _legacy._apply_transfer_reception
 
 # Utilidades adicionales expuestas para compatibilidad
 from ..utils.system_log_helpers import purge_system_logs  # noqa: F401
