@@ -3,14 +3,20 @@ import styles from "./Tooltip.module.css";
 
 type TooltipProps = {
   content: string;
-  children: ReactNode;
+  children?: ReactNode;
   position?: "top" | "bottom" | "left" | "right";
 };
 
 function Tooltip({ content, children, position = "top" }: TooltipProps) {
+  const trigger = children ?? (
+    <span aria-hidden="true" style={{ cursor: "help", fontSize: "0.85em" }}>
+      ⓘ
+    </span>
+  );
+
   return (
     <div className={styles.tooltipWrapper}>
-      {children}
+      {trigger}
       <div className={`${styles.tooltip} ${styles[position]}`} role="tooltip">
         {content}
       </div>
