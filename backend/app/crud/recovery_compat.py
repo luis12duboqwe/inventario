@@ -7,12 +7,14 @@ no volver a editar el archivo legacy recuperado.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..services.inventory_availability import invalidate_inventory_availability_cache
+from .common import to_decimal
 from .inventory import create_inventory_movement as _create_inventory_movement
 
 
@@ -42,6 +44,19 @@ def create_inventory_movement(
     )
     invalidate_inventory_availability_cache()
     return movement
+
+
+def _recalculate_sale_price(device: models.Device) -> None:
+    """Restaura el contrato histórico: costo/margen determinan precio de venta."""
+
+    base_cost = to_decimal(device.costo_unitario)
+    margin = to_decimal(device.margen_porcentaje)
+    sale_factor = Decimal("1") + (margin / Decimal("100"))
+    recalculated = (base_cost * sale_factor).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    device.unit_price = recalculated
+    device.precio_venta = recalculated
 
 
 def _utc_aware(value: datetime) -> datetime:
