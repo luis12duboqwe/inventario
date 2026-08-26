@@ -26,6 +26,7 @@ from .transfers import *  # noqa: F401,F403
 from .invoicing import *  # noqa: F401,F403
 from .recovery_compat import *  # noqa: F401,F403
 from .sync_recovery import *  # noqa: F401,F403
+from .warranty_recovery import *  # noqa: F401,F403
 
 import json as _json
 import math as _math
