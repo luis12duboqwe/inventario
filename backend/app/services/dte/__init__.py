@@ -187,7 +187,10 @@ def generate_document(
             )
 
         db.flush()
-        db.refresh(document, attribute_names=["events", "dispatch_entries"])
+        # El modelo persistido expone la relación canónica ``queue``. La
+        # extracción DTE referenciaba ``events``/``dispatch_entries`` que nunca
+        # llegaron al mapper activo.
+        db.refresh(document, attribute_names=["queue"])
         return document
 
 
@@ -215,7 +218,7 @@ def record_dispatch(
                 detail=payload.error_message or "Documento encolado para envío diferido.",
                 performed_by_id=performed_by_id,
             )
-            db.refresh(document, attribute_names=["dispatch_entries"])
+            db.refresh(document, attribute_names=["queue"])
             return queue_entry
 
         queue_entry = crud.mark_dte_dispatch_sent(
@@ -231,7 +234,7 @@ def record_dispatch(
             detail=payload.error_message or "Documento enviado al SAR.",
             performed_by_id=performed_by_id,
         )
-        db.refresh(document, attribute_names=["dispatch_entries"])
+        db.refresh(document, attribute_names=["queue"])
         return queue_entry
 
 
@@ -263,7 +266,7 @@ def register_acknowledgement(
             performed_by_id=performed_by_id,
         )
         db.flush()
-        db.refresh(updated_document, attribute_names=["events"])
+        db.refresh(updated_document)
         return updated_document
 
 
