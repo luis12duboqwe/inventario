@@ -25,12 +25,30 @@ import {
   type TransferOrder,
 } from "../../../api/transfers";
 import { useAuth } from "../../../auth/useAuth";
-import { useDashboard } from "../../../dashboard/context/DashboardContext";
+import { useDashboard } from "../../dashboard/context/DashboardContext";
 import { emitClientError } from "../../../utils/clientLog";
+
+type TransferView = {
+  number: string;
+  status: string;
+  from: string;
+  to: string;
+  items: TransferItemLine[];
+  steps: TimelineStep[];
+};
+
+const EMPTY_TRANSFER: TransferView = {
+  number: "",
+  status: "SOLICITADA",
+  from: "",
+  to: "",
+  items: [],
+  steps: [],
+};
 
 function TransferDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { token } = useAuth();
+  const { accessToken: token } = useAuth();
   const { pushToast } = useDashboard();
   const [transferData, setTransferData] = useState<TransferOrder | null>(null);
   const [loading, setLoading] = useState(true);
@@ -44,10 +62,10 @@ function TransferDetailPage() {
 
   useEffect(() => {
     if (!id || !token) return;
-    // Loading is initialized to true, and set to true on refresh
     getTransfer(token, parseInt(id))
       .then((data) => {
         setTransferData(data);
+        setError(null);
         setLoading(false);
       })
       .catch((err) => {
@@ -57,15 +75,8 @@ function TransferDetailPage() {
       });
   }, [id, token, refreshKey]);
 
-  const transfer = useMemo<{
-    number?: string;
-    status?: string;
-    from?: string;
-    to?: string;
-    items?: TransferItemLine[];
-    steps?: TimelineStep[];
-  }>(() => {
-    if (!transferData) return { items: [], steps: [] };
+  const transfer = useMemo<TransferView>(() => {
+    if (!transferData) return EMPTY_TRANSFER;
 
     const steps: TimelineStep[] = [
       {
@@ -78,14 +89,14 @@ function TransferDetailPage() {
       {
         id: "dispatched",
         label: "En Tránsito",
-        date: transferData.dispatched_at,
+        ...(transferData.dispatched_at ? { date: transferData.dispatched_at } : {}),
         completed: !!transferData.dispatched_at,
         active: transferData.status === "EN_TRANSITO",
       },
       {
         id: "received",
         label: "Recibida",
-        date: transferData.received_at,
+        ...(transferData.received_at ? { date: transferData.received_at } : {}),
         completed: !!transferData.received_at,
         active: transferData.status === "RECIBIDA",
       },
@@ -95,7 +106,7 @@ function TransferDetailPage() {
       steps.push({
         id: "cancelled",
         label: "Cancelada",
-        date: transferData.cancelled_at,
+        ...(transferData.cancelled_at ? { date: transferData.cancelled_at } : {}),
         completed: true,
         active: true,
         description: "La transferencia fue cancelada.",
@@ -111,14 +122,14 @@ function TransferDetailPage() {
       packed: item.dispatched_quantity || 0,
       shipped: item.dispatched_quantity || 0,
       received: item.received_quantity || 0,
-      imeis: [], // TODO: Add IMEIs if available
+      imeis: [],
     }));
 
     return {
       number: `TR-${transferData.id.toString().padStart(6, "0")}`,
       status: transferData.status,
-      from: transferData.origin_store_name,
-      to: transferData.destination_store_name,
+      from: transferData.origin_store_name ?? "",
+      to: transferData.destination_store_name ?? "",
       items,
       steps,
     };
@@ -129,30 +140,28 @@ function TransferDetailPage() {
   const [shipOpen, setShipOpen] = useState(false);
   const [receiveOpen, setReceiveOpen] = useState(false);
 
-  const pickLines = useMemo<PickLine[]>(() => {
-    if (!Array.isArray(transfer.items)) {
-      return [];
-    }
-    return transfer.items.map((item) => ({
-      id: item.id,
-      name: item.name,
-      qty: item.qty,
-      picked: item.picked ?? 0,
-    }));
-  }, [transfer.items]);
+  const pickLines = useMemo<PickLine[]>(
+    () =>
+      transfer.items.map((item) => ({
+        id: item.id,
+        name: item.name,
+        qty: item.qty,
+        picked: item.picked ?? 0,
+      })),
+    [transfer.items],
+  );
 
-  const receiveLines = useMemo<ReceiveLine[]>(() => {
-    if (!Array.isArray(transfer.items)) {
-      return [];
-    }
-    return transfer.items.map((item) => ({
-      id: item.id,
-      name: item.name,
-      qty: item.qty,
-      shipped: item.shipped ?? 0,
-      allowSerial: Boolean(item.imeis && item.imeis.length > 0),
-    }));
-  }, [transfer.items]);
+  const receiveLines = useMemo<ReceiveLine[]>(
+    () =>
+      transfer.items.map((item) => ({
+        id: item.id,
+        name: item.name,
+        qty: item.qty,
+        shipped: item.shipped ?? 0,
+        allowSerial: Boolean(item.imeis && item.imeis.length > 0),
+      })),
+    [transfer.items],
+  );
 
   const handleDispatch = async (payload: { carrier: string; tracking: string }) => {
     if (!token || !id) return;
@@ -203,7 +212,7 @@ function TransferDetailPage() {
     }
   };
 
-  const handlePrint = async () => {
+  const handlePrint = () => {
     window.print();
   };
 
@@ -239,10 +248,10 @@ function TransferDetailPage() {
       <PageHeader title="Detalle de transferencia" subtitle="Seguimiento y acciones operativas." />
 
       <TransferHeader
-        number={transfer.number ?? ""}
-        status={transfer.status ?? "SOLICITADA"}
-        from={transfer.from ?? ""}
-        to={transfer.to ?? ""}
+        number={transfer.number}
+        status={transfer.status}
+        from={transfer.from}
+        to={transfer.to}
         onPick={() => setPickOpen(true)}
         onPack={() => setPackOpen(true)}
         onShip={() => setShipOpen(true)}
@@ -250,10 +259,8 @@ function TransferDetailPage() {
         onCancel={handleCancel}
       />
 
-      <TransferTimeline steps={transfer.steps ?? []} />
-
-      <TransferItemsTable items={transfer.items ?? []} />
-
+      <TransferTimeline steps={transfer.steps} />
+      <TransferItemsTable items={transfer.items} />
       <TransferActionsBar
         onPick={() => setPickOpen(true)}
         onPack={() => setPackOpen(true)}
@@ -267,8 +274,6 @@ function TransferDetailPage() {
         lines={pickLines}
         onClose={() => setPickOpen(false)}
         onSubmit={() => {
-          // Picked: payload
-
           setPickOpen(false);
           setPackOpen(true);
           pushToast({ message: "Picking completado (simulado)", variant: "success" });
@@ -279,8 +284,6 @@ function TransferDetailPage() {
         open={packOpen}
         onClose={() => setPackOpen(false)}
         onSubmit={() => {
-          // Packed: payload
-
           setPackOpen(false);
           setShipOpen(true);
           pushToast({ message: "Packing completado (simulado)", variant: "success" });
@@ -288,7 +291,6 @@ function TransferDetailPage() {
       />
 
       <ShipModal open={shipOpen} onClose={() => setShipOpen(false)} onSubmit={handleDispatch} />
-
       <ReceiveModal
         open={receiveOpen}
         lines={receiveLines}
