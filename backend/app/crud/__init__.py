@@ -87,7 +87,9 @@ from sqlalchemy.orm import joinedload as _joinedload
 
 from .. import crud_legacy as _legacy
 from . import analytics as _analytics
+from . import devices as _devices
 from . import inventory as _inventory
+from . import recovery_compat as _recovery_compat
 from . import transfers as _transfers
 from .audit import log_audit_event as _legacy_log_audit_event
 from .customers import (
@@ -119,6 +121,9 @@ _legacy._pos_draft_payload = _legacy_pos_draft_payload
 # sus imports. Se reinyectan aquí para preservar el código actual sin duplicarlo.
 _analytics.math = _math
 _analytics.defaultdict = _defaultdict
+
+# Restaurar el contrato histórico de catálogo: costo/margen recalculan precio.
+_devices._recalculate_sale_price = _recovery_compat._recalculate_sale_price
 
 # El módulo transfers también fue extraído sin varios imports/helpers privados.
 # REC-0004 los enlaza con el snapshot legacy intacto y utilidades canónicas sin
