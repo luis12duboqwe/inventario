@@ -7,7 +7,7 @@ import type { ProductRow } from "./Table";
 type Props = {
   open?: boolean;
   row?: ProductRow | null;
-  onClose?: () => void;
+  onClose: () => void;
   onConfirm?: (delta: number) => void;
 };
 
@@ -42,6 +42,8 @@ export default function StockAdjustModal({ open, row, onClose, onConfirm }: Prop
     >
       <div className="space-y-4">
         <TextField
+          label="Variación de stock"
+          hideLabel
           type="number"
           placeholder="Δ Cantidad (ej. +5 o -3)"
           value={value}
