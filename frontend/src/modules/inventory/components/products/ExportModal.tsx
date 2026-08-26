@@ -4,7 +4,7 @@ import { Button } from "@components/ui/Button";
 
 type Props = {
   open?: boolean;
-  onClose?: () => void;
+  onClose: () => void;
 };
 
 export default function ExportModal({ open, onClose }: Props) {
@@ -22,10 +22,7 @@ export default function ExportModal({ open, onClose }: Props) {
         </>
       }
     >
-      <div className="text-muted-foreground">
-        {/* Opciones de exportación (CSV/XLSX) */}
-        Opciones de exportación próximamente.
-      </div>
+      <div className="text-muted-foreground">Opciones de exportación próximamente.</div>
     </Modal>
   );
 }
