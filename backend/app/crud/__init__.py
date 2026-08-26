@@ -60,6 +60,7 @@ from ..utils.pos_helpers import (
     pos_draft_payload as _legacy_pos_draft_payload,
     repair_payload as _repair_payload,
     store_credit_payload as _store_credit_payload,
+    store_credit_redemption_payload as _store_credit_redemption_payload,
 )
 
 _legacy.Path = _Path
@@ -77,6 +78,7 @@ _legacy._generate_store_credit_code = _generate_store_credit_code
 _legacy._build_pos_promotions_response = _build_pos_promotions_response
 _legacy._repair_payload = _repair_payload
 _legacy._store_credit_payload = _store_credit_payload
+_legacy._store_credit_redemption_payload = _store_credit_redemption_payload
 
 _analytics.math = _math
 _analytics.defaultdict = _defaultdict
