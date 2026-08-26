@@ -27,12 +27,7 @@ def create_inventory_movement(
     reference_type: str | None = None,
     reference_id: str | None = None,
 ) -> models.InventoryMovement:
-    """Crea el movimiento e invalida la vista agregada de disponibilidad.
-
-    El CRUD especializado actual modifica correctamente ``Device.quantity`` pero
-    la extracción perdió la invalidación del cache de disponibilidad, dejando
-    respuestas antiguas hasta vencer el TTL.
-    """
+    """Crea el movimiento e invalida la vista agregada de disponibilidad."""
 
     movement = _create_inventory_movement(
         db,
@@ -131,6 +126,37 @@ def renew_reservation(
     return reservation
 
 
+def release_reservation(
+    db: Session,
+    reservation_id: int,
+    *,
+    performed_by_id: int | None,
+    reason: str | None = None,
+    target_state: models.InventoryState = models.InventoryState.CANCELADO,
+    reference_type: str | None = None,
+    reference_id: str | None = None,
+) -> models.InventoryReservation:
+    """Conserva el resolved_at existente y registra además consumed_at al vender."""
+
+    from . import inventory as inventory_crud
+
+    reservation = inventory_crud.release_reservation(
+        db,
+        reservation_id,
+        performed_by_id=performed_by_id,
+        reason=reason,
+        target_state=target_state,
+        reference_type=reference_type,
+        reference_id=reference_id,
+    )
+    if target_state == models.InventoryState.CONSUMIDO and reservation.consumed_at is None:
+        reservation.consumed_at = datetime.now(timezone.utc)
+        db.add(reservation)
+        db.flush()
+        db.refresh(reservation)
+    return reservation
+
+
 def create_sale(db: Session, payload, *args, **kwargs):
     """Normaliza reservas y conserva el flujo especializado actual de ventas."""
 
@@ -149,6 +175,29 @@ def create_transfer_order(db: Session, payload, *args, **kwargs):
     return transfer_crud.create_transfer_order(db, payload, *args, **kwargs)
 
 
+def register_pos_sale(
+    db: Session,
+    payload: schemas.POSSaleRequest,
+    *,
+    performed_by_id: int | None = None,
+    sold_by_id: int | None = None,
+    reason: str | None = None,
+):
+    """Acepta ambas firmas POS y delega al flujo legacy completo recuperado."""
+
+    from .. import crud_legacy
+
+    actor_id = performed_by_id if performed_by_id is not None else sold_by_id
+    if actor_id is None:
+        raise ValueError("pos_operator_required")
+    return crud_legacy.register_pos_sale(
+        db,
+        payload,
+        performed_by_id=actor_id,
+        reason=reason,
+    )
+
+
 def log_dte_event(
     db: Session,
     *,
@@ -158,12 +207,7 @@ def log_dte_event(
     detail: str | None,
     performed_by_id: int | None,
 ):
-    """Puente REC-0004 para un modelo DTEEvent que nunca llegó al esquema.
-
-    El estado fiscal sigue persistiendo en DTEDocument, Sale y la cola DTE. La
-    tabla de eventos se recuperará como migración propia en lugar de inventarla
-    durante el establecimiento del baseline.
-    """
+    """Puente REC-0004 para un modelo DTEEvent que nunca llegó al esquema."""
 
     return None
 
@@ -172,7 +216,9 @@ __all__ = [
     "create_inventory_movement",
     "create_reservation",
     "renew_reservation",
+    "release_reservation",
     "create_sale",
     "create_transfer_order",
+    "register_pos_sale",
     "log_dte_event",
 ]
