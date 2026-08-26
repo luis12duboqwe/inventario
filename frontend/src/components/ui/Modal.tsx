@@ -6,8 +6,11 @@ import Button from "./Button";
 
 type ModalSize = "sm" | "md" | "lg" | "xl";
 
-type ModalProps = {
-  open: boolean;
+type ModalVisibility =
+  | { open: boolean; isOpen?: never }
+  | { open?: never; isOpen: boolean };
+
+type ModalProps = ModalVisibility & {
   title: string;
   description?: string;
   onClose: () => void;
@@ -28,6 +31,7 @@ const sizeClassName: Record<ModalSize, string> = {
 
 function Modal({
   open,
+  isOpen,
   title,
   description,
   onClose,
@@ -38,11 +42,12 @@ function Modal({
   dismissLabel = "Cerrar",
   dismissDisabled = false,
 }: ModalProps) {
+  const visible = open ?? isOpen;
   const titleId = useId();
   const descriptionId = useMemo(() => (description ? `${titleId}-description` : undefined), [description, titleId]);
 
   useEffect(() => {
-    if (!open) {
+    if (!visible) {
       return;
     }
 
@@ -54,7 +59,7 @@ function Modal({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open, onClose]);
+  }, [visible, onClose]);
 
   if (typeof document === "undefined") {
     return null;
@@ -62,7 +67,7 @@ function Modal({
 
   return createPortal(
     <AnimatePresence>
-      {open ? (
+      {visible ? (
         <div className="ui-modal" role="presentation">
           <motion.button
             type="button"
