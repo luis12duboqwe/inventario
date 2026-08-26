@@ -19,8 +19,10 @@ from .inventory import create_inventory_movement as _create_inventory_movement
 
 
 def create_inventory_movement(db: Session, store_id: int, payload: schemas.MovementCreate, *, performed_by_id: int | None = None, reference_type: str | None = None, reference_id: str | None = None) -> models.InventoryMovement:
+    from . import inventory as inventory_crud
     movement = _create_inventory_movement(db, store_id, payload, performed_by_id=performed_by_id, reference_type=reference_type, reference_id=reference_id)
     invalidate_inventory_availability_cache()
+    inventory_crud.invalidate_inventory_movements_cache()
     return movement
 
 
@@ -79,6 +81,43 @@ def build_inventory_snapshot(db: Session) -> dict[str, object]:
     if isinstance(summary, dict):
         summary["inventory_value"] = float(total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
     return snapshot
+
+
+def normalize_inventory_date_range(
+    date_from: date | datetime | None,
+    date_to: date | datetime | None,
+) -> tuple[datetime, datetime]:
+    """Normaliza límites diarios y corrige rangos invertidos de reportes."""
+    if date_from is None:
+        start_dt = datetime.min
+    elif isinstance(date_from, datetime):
+        start_dt = date_from
+    else:
+        start_dt = datetime.combine(date_from, datetime.min.time())
+
+    if date_to is None:
+        end_dt = datetime.max
+    elif isinstance(date_to, datetime):
+        end_dt = date_to
+    else:
+        end_dt = datetime.combine(date_to, datetime.max.time())
+
+    if start_dt.tzinfo is not None:
+        start_dt = start_dt.astimezone(timezone.utc).replace(tzinfo=None)
+    if end_dt.tzinfo is not None:
+        end_dt = end_dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+    if start_dt > end_dt:
+        lower = end_dt
+        upper = start_dt
+        # Si los argumentos originales eran fechas, mantener el día inferior
+        # desde 00:00 y el superior hasta 23:59:59.999999.
+        if isinstance(date_to, date) and not isinstance(date_to, datetime):
+            lower = datetime.combine(date_to, datetime.min.time())
+        if isinstance(date_from, date) and not isinstance(date_from, datetime):
+            upper = datetime.combine(date_from, datetime.max.time())
+        start_dt, end_dt = lower, upper
+    return start_dt, end_dt
 
 
 def list_sales(
@@ -191,6 +230,7 @@ def log_dte_event(db: Session, *, document, event_type: str, status, detail: str
 
 __all__ = [
     "create_inventory_movement", "create_device", "update_device", "build_inventory_snapshot",
-    "list_sales", "create_reservation", "renew_reservation", "release_reservation", "create_sale",
-    "create_transfer_order", "save_pos_draft", "register_pos_sale", "log_dte_event",
+    "normalize_inventory_date_range", "list_sales", "create_reservation", "renew_reservation",
+    "release_reservation", "create_sale", "create_transfer_order", "save_pos_draft",
+    "register_pos_sale", "log_dte_event",
 ]
