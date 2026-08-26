@@ -71,7 +71,6 @@ from sqlalchemy.orm import joinedload as _joinedload
 
 from .. import crud_legacy as _legacy
 from . import analytics as _analytics
-from . import devices as _devices
 from . import inventory as _inventory
 from . import recovery_compat as _recovery_compat
 from . import sales as _sales
@@ -105,7 +104,6 @@ _legacy._pos_draft_payload = _legacy_pos_draft_payload
 _analytics.math = _math
 _analytics.defaultdict = _defaultdict
 
-_devices._recalculate_sale_price = _recovery_compat._recalculate_sale_price
 _sales.release_reservation = _recovery_compat.release_reservation
 
 _transfers._require_store_permission = _legacy._require_store_permission
