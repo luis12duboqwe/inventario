@@ -6,6 +6,7 @@ from .sales import router as sales_router
 from .customers import router as customers_router
 from .audit import router as audit_router
 from .analytics import router as analytics_router
+from .recovery_performance import router as recovery_performance_router
 from .inventory import router as inventory_router
 
 router = APIRouter(prefix="/reports")
@@ -16,4 +17,5 @@ router.include_router(sales_router)
 router.include_router(customers_router)
 router.include_router(audit_router)
 router.include_router(analytics_router)
+router.include_router(recovery_performance_router)
 router.include_router(inventory_router)
