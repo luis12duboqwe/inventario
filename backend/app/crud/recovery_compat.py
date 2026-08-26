@@ -6,7 +6,7 @@ no volver a editar el archivo legacy recuperado.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
@@ -79,6 +79,37 @@ def build_inventory_snapshot(db: Session) -> dict[str, object]:
     if isinstance(summary, dict):
         summary["inventory_value"] = float(total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
     return snapshot
+
+
+def list_sales(
+    db: Session,
+    *,
+    store_id: int | None = None,
+    customer_id: int | None = None,
+    performed_by_id: int | None = None,
+    start_date: date | datetime | None = None,
+    end_date: date | datetime | None = None,
+    date_from: date | datetime | None = None,
+    date_to: date | datetime | None = None,
+    status: str | None = None,
+    search: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[models.Sale]:
+    """Acepta aliases históricos ``date_from/date_to`` del reporte fiscal."""
+    from . import sales as sales_crud
+    return sales_crud.list_sales(
+        db,
+        store_id=store_id,
+        customer_id=customer_id,
+        performed_by_id=performed_by_id,
+        start_date=start_date if start_date is not None else date_from,
+        end_date=end_date if end_date is not None else date_to,
+        status=status,
+        search=search,
+        limit=limit,
+        offset=offset,
+    )
 
 
 def _utc_aware(value: datetime) -> datetime:
@@ -160,6 +191,6 @@ def log_dte_event(db: Session, *, document, event_type: str, status, detail: str
 
 __all__ = [
     "create_inventory_movement", "create_device", "update_device", "build_inventory_snapshot",
-    "create_reservation", "renew_reservation", "release_reservation", "create_sale",
+    "list_sales", "create_reservation", "renew_reservation", "release_reservation", "create_sale",
     "create_transfer_order", "save_pos_draft", "register_pos_sale", "log_dte_event",
 ]
