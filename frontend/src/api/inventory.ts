@@ -1,3 +1,4 @@
+export type { PaginatedResponse, Store } from "./types";
 export * from "./inventoryTypes";
 export * from "./inventory_endpoints/devices";
 export * from "./inventory_endpoints/movements";
