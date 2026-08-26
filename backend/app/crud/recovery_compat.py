@@ -41,6 +41,31 @@ def create_inventory_movement(
     return movement
 
 
+def create_device(
+    db: Session,
+    store_id: int,
+    payload: schemas.DeviceCreate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.Device:
+    """Restaura campos de DeviceCreate omitidos durante la extracción CRUD."""
+
+    from . import devices as devices_crud
+
+    device = devices_crud.create_device(
+        db,
+        store_id,
+        payload,
+        performed_by_id=performed_by_id,
+    )
+    if device.completo != payload.completo:
+        device.completo = payload.completo
+        db.add(device)
+        db.flush()
+        db.refresh(device)
+    return device
+
+
 def _recalculate_sale_price(device: models.Device) -> None:
     """Calcula costo + margen cuando una edición invalida el precio previo."""
 
@@ -62,13 +87,7 @@ def update_device(
     *,
     performed_by_id: int | None = None,
 ) -> models.Device:
-    """Respeta precio explícito al crear, pero recalcula al editar costo/margen.
-
-    La extracción especializada preserva correctamente un precio explícito al
-    crear un producto. Sin embargo, el contrato de Catálogo Pro exige que una
-    edición de costo o margen vuelva a derivar el precio, aun si el PATCH también
-    contiene un precio manual. Este wrapper limita esa compatibilidad al update.
-    """
+    """Respeta precio explícito al crear, pero recalcula al editar costo/margen."""
 
     from . import devices as devices_crud
     from .stores import recalculate_store_inventory_value
@@ -88,6 +107,36 @@ def update_device(
         recalculate_store_inventory_value(db, store_id)
         db.refresh(device)
     return device
+
+
+def build_inventory_snapshot(db: Session) -> dict[str, object]:
+    """Calcula el valor del snapshot desde los dispositivos, no desde un cache de tienda."""
+
+    from . import inventory as inventory_crud
+
+    snapshot = inventory_crud.build_inventory_snapshot(db)
+    stores = snapshot.get("stores", [])
+    total = Decimal("0")
+    if isinstance(stores, list):
+        for store in stores:
+            if not isinstance(store, dict):
+                continue
+            devices = store.get("devices", [])
+            store_value = Decimal("0")
+            if isinstance(devices, list):
+                for device in devices:
+                    if not isinstance(device, dict):
+                        continue
+                    store_value += to_decimal(device.get("inventory_value", 0))
+            store_value = store_value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            store["inventory_value"] = float(store_value)
+            total += store_value
+    summary = snapshot.get("summary")
+    if isinstance(summary, dict):
+        summary["inventory_value"] = float(
+            total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        )
+    return snapshot
 
 
 def _utc_aware(value: datetime) -> datetime:
@@ -172,7 +221,7 @@ def release_reservation(
     reference_type: str | None = None,
     reference_id: str | None = None,
 ) -> models.InventoryReservation:
-    """Conserva el resolved_at existente y registra además consumed_at al vender."""
+    """Conserva resolución y estado comercial correcto al consumir una venta."""
 
     from . import inventory as inventory_crud
 
@@ -185,8 +234,12 @@ def release_reservation(
         reference_type=reference_type,
         reference_id=reference_id,
     )
-    if target_state == models.InventoryState.CONSUMIDO and reservation.consumed_at is None:
-        reservation.consumed_at = datetime.now(timezone.utc)
+    if target_state == models.InventoryState.CONSUMIDO:
+        if reservation.consumed_at is None:
+            reservation.consumed_at = datetime.now(timezone.utc)
+        if reservation.device and (reservation.device.imei or reservation.device.serial):
+            reservation.device.estado = "vendido"
+            db.add(reservation.device)
         db.add(reservation)
         db.flush()
         db.refresh(reservation)
@@ -250,7 +303,9 @@ def log_dte_event(
 
 __all__ = [
     "create_inventory_movement",
+    "create_device",
     "update_device",
+    "build_inventory_snapshot",
     "create_reservation",
     "renew_reservation",
     "release_reservation",
