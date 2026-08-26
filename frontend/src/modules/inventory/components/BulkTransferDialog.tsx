@@ -4,8 +4,7 @@ import Button from "@components/ui/Button";
 import { Store } from "@api/stores";
 import { createTransferOrder } from "@api/transfers";
 
-type Props = {
-  isOpen: boolean;
+type BaseProps = {
   onClose: () => void;
   selectedDeviceIds: number[];
   stores: Store[];
@@ -14,8 +13,14 @@ type Props = {
   onSuccess: () => void;
 };
 
+type Props = BaseProps & (
+  | { isOpen: boolean; open?: never }
+  | { isOpen?: never; open: boolean }
+);
+
 export default function BulkTransferDialog({
   isOpen,
+  open,
   onClose,
   selectedDeviceIds,
   stores,
@@ -23,19 +28,20 @@ export default function BulkTransferDialog({
   token,
   onSuccess,
 }: Props) {
+  const visible = isOpen ?? open;
   const [destinationStoreId, setDestinationStoreId] = useState<number | null>(null);
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isOpen) {
+    if (visible) {
       setDestinationStoreId(null);
       setReason("");
       setError(null);
       setLoading(false);
     }
-  }, [isOpen]);
+  }, [visible]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,8 +62,6 @@ export default function BulkTransferDialog({
       setLoading(true);
       setError(null);
 
-      // Create transfer order with multiple items
-      // Assuming quantity 1 for each selected device ID as they are unique items in this table context
       const items = selectedDeviceIds.map((id) => ({
         device_id: id,
         quantity: 1,
@@ -87,7 +91,7 @@ export default function BulkTransferDialog({
 
   return (
     <Modal
-      open={isOpen}
+      open={visible}
       onClose={onClose}
       title={`Transferir ${selectedDeviceIds.length} dispositivos`}
       size="md"
