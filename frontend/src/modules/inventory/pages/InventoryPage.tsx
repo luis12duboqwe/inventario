@@ -7,7 +7,6 @@ import LoadingOverlay from "../../../shared/components/LoadingOverlay";
 import Tabs, { type TabOption } from "@components/ui/Tabs/Tabs";
 import { Loader } from "@components/ui/Loader";
 
-// Split Contexts
 import { InventorySearchContext } from "./context/InventorySearchContext";
 import { InventoryMetricsContext } from "./context/InventoryMetricsContext";
 import { InventoryActionsContext } from "./context/InventoryActionsContext";
@@ -36,7 +35,8 @@ function InventoryPage() {
   const tabs = useMemo<TabOption<InventoryTabId>[]>(
     () =>
       tabOptions.map((tab) => ({
-        id: tab.id,
+        // tabOptions is derived from useInventoryTabs, whose ids are InventoryTabId.
+        id: tab.id as InventoryTabId,
         label: tab.label,
         icon: tab.icon,
         content: null,
