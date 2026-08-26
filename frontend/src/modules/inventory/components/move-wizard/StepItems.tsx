@@ -50,6 +50,8 @@ export default function StepItems({ items, onAdd, onEdit, onRemove }: Props) {
                   <td className="p-3">{row.name}</td>
                   <td className="p-3 text-center">
                     <TextField
+                      label={`Cantidad de ${row.name}`}
+                      hideLabel
                       type="number"
                       value={String(row.qty)}
                       onChange={(event) => onEdit(row.id, { qty: Number(event.target.value || 0) })}
