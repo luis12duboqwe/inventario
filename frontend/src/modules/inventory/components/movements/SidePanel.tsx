@@ -1,6 +1,6 @@
 import React from "react";
 import type { MovementRow } from "./Table";
-import { Button } from "../../../../../components/ui/Button";
+import { Button } from "@components/ui/Button";
 
 type Props = {
   row?: MovementRow | null;
