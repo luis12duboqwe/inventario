@@ -42,7 +42,7 @@ def create_inventory_movement(
 
 
 def _recalculate_sale_price(device: models.Device) -> None:
-    """Restaura el contrato histórico: costo/margen determinan precio de venta."""
+    """Calcula costo + margen cuando una edición invalida el precio previo."""
 
     base_cost = to_decimal(device.costo_unitario)
     margin = to_decimal(device.margen_porcentaje)
@@ -52,6 +52,42 @@ def _recalculate_sale_price(device: models.Device) -> None:
     )
     device.unit_price = recalculated
     device.precio_venta = recalculated
+
+
+def update_device(
+    db: Session,
+    store_id: int,
+    device_id: int,
+    payload: schemas.DeviceUpdate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.Device:
+    """Respeta precio explícito al crear, pero recalcula al editar costo/margen.
+
+    La extracción especializada preserva correctamente un precio explícito al
+    crear un producto. Sin embargo, el contrato de Catálogo Pro exige que una
+    edición de costo o margen vuelva a derivar el precio, aun si el PATCH también
+    contiene un precio manual. Este wrapper limita esa compatibilidad al update.
+    """
+
+    from . import devices as devices_crud
+    from .stores import recalculate_store_inventory_value
+
+    payload_dict = payload.model_dump(exclude_unset=True)
+    device = devices_crud.update_device(
+        db,
+        store_id,
+        device_id,
+        payload,
+        performed_by_id=performed_by_id,
+    )
+    if "costo_unitario" in payload_dict or "margen_porcentaje" in payload_dict:
+        _recalculate_sale_price(device)
+        db.add(device)
+        db.flush()
+        recalculate_store_inventory_value(db, store_id)
+        db.refresh(device)
+    return device
 
 
 def _utc_aware(value: datetime) -> datetime:
@@ -214,6 +250,7 @@ def log_dte_event(
 
 __all__ = [
     "create_inventory_movement",
+    "update_device",
     "create_reservation",
     "renew_reservation",
     "release_reservation",
