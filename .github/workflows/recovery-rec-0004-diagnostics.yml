@@ -43,21 +43,16 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
 
-      - name: Install backend dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Run suite and print only concise failure summary
+      - name: Run suite and print concise failure summary
         shell: bash
         run: |
           set +e
-          pytest -q backend/tests --tb=no --maxfail=10 > /tmp/rec0004-pytest.log 2>&1
+          pytest -q backend/tests --tb=short --maxfail=10 > /tmp/rec0004-pytest.log 2>&1
           rc=$?
           echo '=== REC-0004 FAILED/ERROR TESTS ==='
           grep -E '^(FAILED|ERROR) ' /tmp/rec0004-pytest.log || true
           echo '=== REC-0004 PYTEST SUMMARY ==='
-          tail -n 25 /tmp/rec0004-pytest.log
+          tail -n 35 /tmp/rec0004-pytest.log
           exit "$rc"
 
       - name: Preserve full pytest diagnostics
