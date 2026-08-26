@@ -1,7 +1,7 @@
 import React from "react";
-import { Modal } from "../../../../../components/ui/Modal";
-import { Button } from "../../../../../components/ui/Button";
-import { TextField } from "../../../../../components/ui/TextField";
+import { Modal } from "@components/ui/Modal";
+import { Button } from "@components/ui/Button";
+import { TextField } from "@components/ui/TextField";
 
 export type MovementCreatePayload = {
   type: "IN" | "OUT" | "TRANSFER";
@@ -15,7 +15,7 @@ export type MovementCreatePayload = {
 
 type Props = {
   open?: boolean;
-  onClose?: () => void;
+  onClose: () => void;
   onCreate?: (payload: MovementCreatePayload) => void;
 };
 
