@@ -35,10 +35,10 @@ function MovementForm({ devices, onSubmit }: Props) {
     },
   });
 
-  // Set default device when devices list loads
   useEffect(() => {
-    if (devices.length > 0) {
-      setValue("deviceId", String(devices[0].id));
+    const firstDevice = devices[0];
+    if (firstDevice) {
+      setValue("deviceId", String(firstDevice.id));
     }
   }, [devices, setValue]);
 
