@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import select
 
 from backend.app import models
+from backend.app.core.transactions import flush_session
 from backend.app.utils.decimal_helpers import (
     to_decimal,
     quantize_currency,
@@ -21,7 +22,6 @@ from backend.app.utils.decimal_helpers import (
 from backend.app.utils.customer_helpers import ensure_positive_decimal
 from backend.app.utils.json_helpers import append_customer_history
 from backend.app.utils.normalization_helpers import normalize_optional_note
-from backend.app.crud.common import flush_session
 
 
 def generate_store_credit_code(db: Session) -> str:
@@ -45,7 +45,7 @@ def apply_store_credit_redemption(
     sale_id: int | None,
     notes: str | None,
     performed_by_id: int | None,
-    create_ledger_entry_fn,  # Función _create_customer_ledger_entry
+    create_ledger_entry_fn,
 ) -> models.StoreCreditRedemption:
     """Aplica una redención de crédito de tienda."""
     amount_value = ensure_positive_decimal(
@@ -163,8 +163,8 @@ def record_loyalty_transaction(
     performed_by_id: int | None,
     expires_at: datetime | None = None,
     details: dict[str, Any] | None = None,
-    enqueue_sync_fn,  # Función enqueue_sync_outbox
-    loyalty_transaction_payload_fn,  # Función _loyalty_transaction_payload
+    enqueue_sync_fn,
+    loyalty_transaction_payload_fn,
 ) -> models.LoyaltyTransaction:
     """Registra una transacción de lealtad."""
     transaction = models.LoyaltyTransaction(

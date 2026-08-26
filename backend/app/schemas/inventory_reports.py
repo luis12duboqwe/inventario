@@ -1,5 +1,5 @@
 from __future__ import annotations
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any, Literal
 
@@ -90,9 +90,9 @@ class InventoryValuation(BaseModel):
 
 
 class MovementPeriodSummary(BaseModel):
-    periodo: str
-    total_movimientos: int
-    total_unidades: int
+    periodo: date
+    tipo_movimiento: MovementType
+    total_cantidad: int
     total_valor: Decimal
 
     @field_serializer("total_valor")
@@ -103,8 +103,7 @@ class MovementPeriodSummary(BaseModel):
 
 class MovementTypeSummary(BaseModel):
     tipo_movimiento: MovementType
-    total_movimientos: int
-    total_unidades: int
+    total_cantidad: int
     total_valor: Decimal
 
     @field_serializer("total_valor")

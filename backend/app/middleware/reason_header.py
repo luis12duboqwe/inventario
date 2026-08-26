@@ -16,11 +16,31 @@ DEFAULT_EXPORT_PREFIXES: tuple[str, ...] = (
 )
 DEFAULT_SENSITIVE_GET_PREFIXES: tuple[str, ...] = ("/pos/receipt", "/pos/config")
 
+# Una configuración antigua amplió por error las lecturas sensibles a módulos
+# completos. Eso obliga a enviar X-Reason incluso para dashboards y consultas de
+# clientes, contradiciendo el contrato probado. Se reconoce sólo ese valor legado
+# exacto; cualquier configuración personalizada distinta sigue respetándose.
+LEGACY_BROAD_SENSITIVE_GET_PREFIXES: tuple[str, ...] = (
+    "/pos",
+    "/reports",
+    "/customers",
+    "/loyalty",
+)
+
 CallNext = Callable[[Request], Awaitable[Response]]
 
 
 def _normalize_collection(values: Iterable[str]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(value.strip() for value in values if value.strip()))
+
+
+def _normalize_read_sensitive_prefixes(values: Iterable[str]) -> tuple[str, ...]:
+    normalized = _normalize_collection(values)
+    if set(normalized) == set(LEGACY_BROAD_SENSITIVE_GET_PREFIXES) and len(normalized) == len(
+        LEGACY_BROAD_SENSITIVE_GET_PREFIXES
+    ):
+        return DEFAULT_SENSITIVE_GET_PREFIXES
+    return normalized
 
 
 def build_reason_header_middleware(
@@ -39,7 +59,9 @@ def build_reason_header_middleware(
     sensitive_prefixes_tuple = _normalize_collection(sensitive_prefixes)
     export_tokens_tuple = _normalize_collection(export_tokens)
     export_prefixes_tuple = _normalize_collection(export_prefixes)
-    read_sensitive_prefixes_tuple = _normalize_collection(read_sensitive_get_prefixes)
+    read_sensitive_prefixes_tuple = _normalize_read_sensitive_prefixes(
+        read_sensitive_get_prefixes
+    )
     optional_reason_prefixes_tuple = _normalize_collection(optional_reason_prefixes or [])
     optional_reason_suffixes_tuple = _normalize_collection(optional_reason_suffixes or [])
 
@@ -99,5 +121,6 @@ __all__ = [
     "DEFAULT_EXPORT_PREFIXES",
     "DEFAULT_EXPORT_TOKENS",
     "DEFAULT_SENSITIVE_GET_PREFIXES",
+    "LEGACY_BROAD_SENSITIVE_GET_PREFIXES",
     "build_reason_header_middleware",
 ]

@@ -1,0 +1,262 @@
+"""Compatibilidad acotada para contratos perdidos durante la migración CRUD.
+
+Las funciones de este módulo deben desaparecer cuando REC-0004/R3 incorpore cada
+comportamiento directamente en su módulo canónico. Se mantienen separadas para
+no volver a editar el archivo legacy recuperado.
+"""
+from __future__ import annotations
+
+from datetime import date, datetime, time, timezone
+from decimal import Decimal, ROUND_HALF_UP
+from typing import Any
+
+from sqlalchemy.orm import Session
+
+from .. import models, schemas
+from ..services.inventory_availability import invalidate_inventory_availability_cache
+from .common import to_decimal
+from .inventory import create_inventory_movement as _create_inventory_movement
+
+
+def create_inventory_movement(db: Session, store_id: int, payload: schemas.MovementCreate, *, performed_by_id: int | None = None, reference_type: str | None = None, reference_id: str | None = None) -> models.InventoryMovement:
+    from . import inventory as inventory_crud
+    movement = _create_inventory_movement(db, store_id, payload, performed_by_id=performed_by_id, reference_type=reference_type, reference_id=reference_id)
+    invalidate_inventory_availability_cache()
+    inventory_crud.invalidate_inventory_movements_cache()
+    return movement
+
+
+def create_device(db: Session, store_id: int, payload: schemas.DeviceCreate, *, performed_by_id: int | None = None) -> models.Device:
+    from . import devices as devices_crud
+    from .stores import get_store
+
+    # El padre archivado debe comportarse como inexistente antes de evaluar
+    # conflictos del SKU preservado por el soft-delete.
+    get_store(db, store_id)
+    device = devices_crud.create_device(db, store_id, payload, performed_by_id=performed_by_id)
+    if device.completo != payload.completo:
+        device.completo = payload.completo
+        db.add(device)
+        db.flush()
+        db.refresh(device)
+    return device
+
+
+def _recalculate_sale_price(device: models.Device) -> None:
+    base_cost = to_decimal(device.costo_unitario)
+    margin = to_decimal(device.margen_porcentaje)
+    recalculated = (base_cost * (Decimal("1") + margin / Decimal("100"))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    device.unit_price = recalculated
+    device.precio_venta = recalculated
+
+
+def update_device(db: Session, store_id: int, device_id: int, payload: schemas.DeviceUpdate, *, performed_by_id: int | None = None) -> models.Device:
+    from . import devices as devices_crud
+    from .stores import recalculate_store_inventory_value
+    payload_dict = payload.model_dump(exclude_unset=True)
+    device = devices_crud.update_device(db, store_id, device_id, payload, performed_by_id=performed_by_id)
+    if "costo_unitario" in payload_dict or "margen_porcentaje" in payload_dict:
+        _recalculate_sale_price(device)
+        db.add(device)
+        db.flush()
+        recalculate_store_inventory_value(db, store_id)
+        db.refresh(device)
+    return device
+
+
+def build_inventory_snapshot(db: Session) -> dict[str, object]:
+    from . import inventory as inventory_crud
+    snapshot = inventory_crud.build_inventory_snapshot(db)
+    stores = snapshot.get("stores", [])
+    total = Decimal("0")
+    if isinstance(stores, list):
+        for store in stores:
+            if not isinstance(store, dict):
+                continue
+            devices = store.get("devices", [])
+            store_value = Decimal("0")
+            if isinstance(devices, list):
+                for device in devices:
+                    if isinstance(device, dict):
+                        store_value += to_decimal(device.get("inventory_value", 0))
+            store_value = store_value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            store["inventory_value"] = float(store_value)
+            total += store_value
+    summary = snapshot.get("summary")
+    if isinstance(summary, dict):
+        summary["inventory_value"] = float(total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+    return snapshot
+
+
+def _naive_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _date_like(value: date | datetime | None) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, datetime):
+        return value.timetz().replace(tzinfo=None) == time.min
+    return True
+
+
+def normalize_inventory_date_range(
+    date_from: date | datetime | None,
+    date_to: date | datetime | None,
+) -> tuple[datetime, datetime]:
+    """Normaliza límites diarios y corrige rangos invertidos de reportes.
+
+    FastAPI puede materializar ``YYYY-MM-DD`` como un ``datetime`` a medianoche
+    cuando la anotación acepta ``datetime | date``. Para filtros de reportes esa
+    medianoche representa el día completo, no un instante de cero segundos.
+    """
+    from_is_day = _date_like(date_from)
+    to_is_day = _date_like(date_to)
+
+    if date_from is None:
+        start_dt = datetime.min
+    elif isinstance(date_from, datetime):
+        start_dt = _naive_utc(date_from)
+    else:
+        start_dt = datetime.combine(date_from, time.min)
+
+    if date_to is None:
+        end_dt = datetime.max
+    elif isinstance(date_to, datetime):
+        normalized_to = _naive_utc(date_to)
+        end_dt = (
+            datetime.combine(normalized_to.date(), time.max)
+            if to_is_day
+            else normalized_to
+        )
+    else:
+        end_dt = datetime.combine(date_to, time.max)
+
+    if start_dt > end_dt:
+        if from_is_day and to_is_day:
+            lower_day = min(start_dt.date(), end_dt.date())
+            upper_day = max(start_dt.date(), end_dt.date())
+            start_dt = datetime.combine(lower_day, time.min)
+            end_dt = datetime.combine(upper_day, time.max)
+        else:
+            start_dt, end_dt = end_dt, start_dt
+
+    return start_dt, end_dt
+
+
+def list_sales(
+    db: Session,
+    *,
+    store_id: int | None = None,
+    customer_id: int | None = None,
+    performed_by_id: int | None = None,
+    start_date: date | datetime | None = None,
+    end_date: date | datetime | None = None,
+    date_from: date | datetime | None = None,
+    date_to: date | datetime | None = None,
+    status: str | None = None,
+    search: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[models.Sale]:
+    """Acepta aliases históricos ``date_from/date_to`` del reporte fiscal."""
+    from . import sales as sales_crud
+    return sales_crud.list_sales(
+        db,
+        store_id=store_id,
+        customer_id=customer_id,
+        performed_by_id=performed_by_id,
+        start_date=start_date if start_date is not None else date_from,
+        end_date=end_date if end_date is not None else date_to,
+        status=status,
+        search=search,
+        limit=limit,
+        offset=offset,
+    )
+
+
+def _utc_aware(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _normalize_payload_reservations(db: Session, payload: Any) -> None:
+    for item in getattr(payload, "items", ()) or ():
+        reservation_id = getattr(item, "reservation_id", None)
+        if reservation_id is None:
+            continue
+        reservation = db.get(models.InventoryReservation, reservation_id)
+        if reservation is not None and reservation.expires_at is not None and reservation.expires_at.tzinfo is None:
+            reservation.expires_at = _utc_aware(reservation.expires_at)
+
+
+def create_reservation(db: Session, *, store_id: int, device_id: int, quantity: int, expires_at: datetime, reserved_by_id: int | None, reason: str) -> models.InventoryReservation:
+    from . import inventory as inventory_crud
+    reservation = inventory_crud.create_reservation(db, store_id=store_id, device_id=device_id, quantity=quantity, expires_at=_utc_aware(expires_at), reserved_by_id=reserved_by_id, reason=reason)
+    if reservation.expires_at is not None and reservation.expires_at.tzinfo is None:
+        reservation.expires_at = _utc_aware(reservation.expires_at)
+    return reservation
+
+
+def renew_reservation(db: Session, reservation_id: int, *, expires_at: datetime, performed_by_id: int | None, reason: str) -> models.InventoryReservation:
+    from . import inventory as inventory_crud
+    reservation = inventory_crud.renew_reservation(db, reservation_id, expires_at=_utc_aware(expires_at), performed_by_id=performed_by_id, reason=reason)
+    if reservation.expires_at is not None and reservation.expires_at.tzinfo is None:
+        reservation.expires_at = _utc_aware(reservation.expires_at)
+    return reservation
+
+
+def release_reservation(db: Session, reservation_id: int, *, performed_by_id: int | None, reason: str | None = None, target_state: models.InventoryState = models.InventoryState.CANCELADO, reference_type: str | None = None, reference_id: str | None = None) -> models.InventoryReservation:
+    from . import inventory as inventory_crud
+    reservation = inventory_crud.release_reservation(db, reservation_id, performed_by_id=performed_by_id, reason=reason, target_state=target_state, reference_type=reference_type, reference_id=reference_id)
+    if target_state == models.InventoryState.CONSUMIDO:
+        if reservation.consumed_at is None:
+            reservation.consumed_at = datetime.now(timezone.utc)
+        if reservation.device and (reservation.device.imei or reservation.device.serial):
+            reservation.device.estado = "vendido"
+            db.add(reservation.device)
+        db.add(reservation)
+        db.flush()
+        db.refresh(reservation)
+    return reservation
+
+
+def create_sale(db: Session, payload, *args, **kwargs):
+    from . import sales as sales_crud
+    _normalize_payload_reservations(db, payload)
+    return sales_crud.create_sale(db, payload, *args, **kwargs)
+
+
+def create_transfer_order(db: Session, payload, *args, **kwargs):
+    from . import transfers as transfer_crud
+    _normalize_payload_reservations(db, payload)
+    return transfer_crud.create_transfer_order(db, payload, *args, **kwargs)
+
+
+def save_pos_draft(db: Session, payload, *, saved_by_id: int | None, reason: str | None = None):
+    """Restaura la firma POS que aceptaba el motivo de auditoría."""
+    from .. import crud_legacy
+    return crud_legacy.save_pos_draft(db, payload, saved_by_id=saved_by_id, reason=reason)
+
+
+def register_pos_sale(db: Session, payload: schemas.POSSaleRequest, *, performed_by_id: int | None = None, sold_by_id: int | None = None, reason: str | None = None):
+    from .. import crud_legacy
+    actor_id = performed_by_id if performed_by_id is not None else sold_by_id
+    if actor_id is None:
+        raise ValueError("pos_operator_required")
+    return crud_legacy.register_pos_sale(db, payload, performed_by_id=actor_id, reason=reason)
+
+
+def log_dte_event(db: Session, *, document, event_type: str, status, detail: str | None, performed_by_id: int | None):
+    return None
+
+
+__all__ = [
+    "create_inventory_movement", "create_device", "update_device", "build_inventory_snapshot",
+    "normalize_inventory_date_range", "list_sales", "create_reservation", "renew_reservation",
+    "release_reservation", "create_sale", "create_transfer_order", "save_pos_draft",
+    "register_pos_sale", "log_dte_event",
+]

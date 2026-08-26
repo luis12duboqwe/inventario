@@ -56,9 +56,11 @@ def _map_authorization_error(exc: ValueError) -> None:
 
 
 def _build_document_response(document: models.DTEDocument) -> schemas.DTEDocumentResponse:
+    # REC-0004: el mapper activo nunca tuvo ``dispatch_entries``; la relación
+    # persistida y bidireccional se llama ``queue``.
     events = getattr(document, "events", [])
     setattr(document, "events", list(events))
-    queue_entries = getattr(document, "dispatch_entries", [])
+    queue_entries = getattr(document, "queue", [])
     setattr(document, "queue", list(queue_entries))
     return schemas.DTEDocumentResponse.model_validate(document, from_attributes=True)
 

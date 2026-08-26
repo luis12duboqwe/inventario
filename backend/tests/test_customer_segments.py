@@ -137,7 +137,9 @@ def test_export_customer_segment_endpoint(client, db_session, tmp_path: Path, se
     try:
         store = _create_store(db_session)
         customer = _create_customer(db_session, "Cliente Segmentado")
-        now = datetime(2025, 2, 1, 9, 0, tzinfo=timezone.utc)
+        # El endpoint valida TTL con el reloj real. Usar una fecha fija hacía que
+        # el test envejeciera y regenerara el snapshot sin la venta sembrada.
+        now = datetime.now(timezone.utc)
         sale = models.Sale(
             store_id=store.id,
             customer_id=customer.id,
