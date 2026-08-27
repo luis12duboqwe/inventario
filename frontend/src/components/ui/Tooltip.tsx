@@ -7,7 +7,9 @@ type TooltipProps = {
   position?: "top" | "bottom" | "left" | "right";
 };
 
-function Tooltip({ content, children, position = "top" }: TooltipProps) {
+const DEFAULT_TOOLTIP_POSITION: NonNullable<TooltipProps["position"]> = "top";
+
+function Tooltip({ content, children, position = DEFAULT_TOOLTIP_POSITION }: TooltipProps) {
   const trigger = children ?? (
     <span
       tabIndex={0}
