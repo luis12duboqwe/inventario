@@ -5,7 +5,7 @@ import { SuspenseGate } from "@components/ui/SuspenseGate"; // [PACK37-frontend]
 import AppErrorBoundary from "@components/ui/AppErrorBoundary"; // [PACK37-frontend]
 
 const SalesDashboardPage = lazy(() => import("./pages/SalesDashboardPage"));
-const POSPage = lazy(() => import("./pages/POSPage"));
+const POSPage = lazy(() => import("../operations/pages/OperationsPOS"));
 const QuotesListPage = lazy(() => import("./pages/QuotesListPage"));
 const QuoteDetailPage = lazy(() => import("./pages/QuoteDetailPage"));
 const ReturnsListPage = lazy(() => import("./pages/ReturnsListPage"));
