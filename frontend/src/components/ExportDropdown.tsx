@@ -37,7 +37,10 @@ export default function ExportDropdown({ entity, currentItems }: Props) {
     const ok = await exportXlsxIfAvailable(entity, currentItems);
     close();
     if (!ok) {
-      pushToast("XLSX no disponible (requiere SheetJS). Se recomienda CSV.", "warning");
+      pushToast({
+        message: "XLSX no disponible (requiere SheetJS). Se recomienda CSV.",
+        variant: "warning",
+      });
     }
   }
 

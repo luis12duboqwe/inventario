@@ -31,17 +31,14 @@ export default function SalesDashboardPage() {
         listReturns(token, { dateFrom: today, dateTo: today }),
       ]);
 
-      // 1. Ventas hoy (Sum of sales_today from all stores)
       const salesToday = realtime.items.reduce((acc, item) => acc + (item.sales_today || 0), 0);
 
-      // 2. Ticket promedio (Average of average_ticket from all stores)
       const validTickets = projection.items.filter((p) => p.average_ticket > 0);
       const averageTicket =
         validTickets.length > 0
           ? validTickets.reduce((acc, item) => acc + item.average_ticket, 0) / validTickets.length
           : 0;
 
-      // 3. Top producto (Best selling item from rotation analytics)
       const topItem =
         rotation.items.length > 0
           ? rotation.items.reduce(
@@ -51,7 +48,6 @@ export default function SalesDashboardPage() {
           : null;
       const topProduct = topItem ? topItem.name : "—";
 
-      // 4. Devoluciones hoy (Count of returns)
       const returnsToday = returns.totals.total || returns.items.length;
 
       setMetrics({
@@ -62,7 +58,7 @@ export default function SalesDashboardPage() {
       });
     } catch (err) {
       emitClientError("SalesDashboardPage", "Error loading sales dashboard", err);
-      pushToast("Error al cargar métricas de ventas", "error");
+      pushToast({ message: "Error al cargar métricas de ventas", variant: "error" });
     } finally {
       setLoading(false);
     }

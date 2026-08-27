@@ -82,7 +82,10 @@ function InventoryReservationsPage(): JSX.Element {
     }
     const isoExpires = parseDateInput(expiresAt);
     if (!isoExpires) {
-      pushToast("Ingresa una fecha de expiración válida en formato AAAA-MM-DD HH:MM", "warning");
+      pushToast({
+        message: "Ingresa una fecha de expiración válida en formato AAAA-MM-DD HH:MM",
+        variant: "warning",
+      });
       return;
     }
     const reason = promptCorporateReason(DEFAULT_REASON_CREATE);
@@ -120,7 +123,10 @@ function InventoryReservationsPage(): JSX.Element {
     }
     const isoExpires = parseDateInput(newExpiration);
     if (!isoExpires) {
-      pushToast("No se pudo interpretar la nueva fecha de expiración.", "warning");
+      pushToast({
+        message: "No se pudo interpretar la nueva fecha de expiración.",
+        variant: "warning",
+      });
       return;
     }
     const reason = promptCorporateReason(`Renovar reserva #${reservation.id}`);

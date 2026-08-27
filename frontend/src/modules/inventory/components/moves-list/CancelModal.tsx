@@ -4,7 +4,7 @@ import { Button } from "@components/ui/Button";
 
 type Props = {
   open?: boolean;
-  onClose?: () => void;
+  onClose: () => void;
   onConfirm?: () => void;
 };
 

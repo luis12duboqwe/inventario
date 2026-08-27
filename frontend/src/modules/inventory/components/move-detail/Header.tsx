@@ -1,6 +1,6 @@
 import React from "react";
 import MoveStatusBadge from "../moves-list/StatusBadge";
-import { Button } from "../../../../../components/ui/Button";
+import { Button } from "@components/ui/Button";
 
 type Props = {
   number?: string;

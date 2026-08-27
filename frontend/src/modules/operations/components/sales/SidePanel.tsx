@@ -69,7 +69,7 @@ function SidePanel({
         saleForm={saleForm}
         onSaleFormChange={onSaleFormChange}
         paymentLabels={paymentLabels}
-        customerSelectRef={customerSelectRef}
+        {...(customerSelectRef ? { customerSelectRef } : {})}
       />
 
       <DeviceSearch
@@ -80,7 +80,7 @@ function SidePanel({
         onAddDevice={onAddDevice}
         disabled={deviceSearchDisabled}
         formatCurrency={formatCurrency}
-        inputRef={deviceSearchRef}
+        {...(deviceSearchRef ? { inputRef: deviceSearchRef } : {})}
       />
 
       <SaleCart

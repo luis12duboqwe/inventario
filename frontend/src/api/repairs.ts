@@ -214,7 +214,7 @@ export function closeRepairOrder(
   payload: RepairOrderClosePayload | undefined,
   reason: string
 ): Promise<Blob> {
-  const init: RequestInit = payload
+  const init: RequestInit & { responseType: "blob" } = payload
     ? {
         method: "POST",
         body: JSON.stringify(payload),

@@ -4,7 +4,7 @@ import { Button } from "@components/ui/Button";
 
 type Props = {
   open?: boolean;
-  onClose?: () => void;
+  onClose: () => void;
 };
 
 export default function ImportModal({ open, onClose }: Props) {
@@ -22,10 +22,7 @@ export default function ImportModal({ open, onClose }: Props) {
         </>
       }
     >
-      <div className="text-muted-foreground">
-        {/* Dropzone y validador (se conectará en pack posterior) */}
-        Funcionalidad de importación próximamente.
-      </div>
+      <div className="text-muted-foreground">Funcionalidad de importación próximamente.</div>
     </Modal>
   );
 }

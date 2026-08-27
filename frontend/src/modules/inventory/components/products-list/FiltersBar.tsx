@@ -1,6 +1,6 @@
 import React from "react";
-import TextField from "../../../../../components/ui/TextField";
-import { FILTER_ALL_VALUE, FILTER_ALL_LABEL } from "../../../../../config/constants";
+import TextField from "@components/ui/TextField";
+import { FILTER_ALL_VALUE, FILTER_ALL_LABEL } from "@/config/constants";
 
 type StoreOption = { id: number; name: string }; // [PACK30-31-FRONTEND]
 

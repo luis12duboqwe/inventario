@@ -1,5 +1,5 @@
 import React from "react";
-import { TextField } from "../../../../../components/ui/TextField";
+import { TextField } from "@components/ui/TextField";
 
 export type ProductFilters = {
   query?: string;
@@ -21,26 +21,36 @@ export default function FiltersPanel({ value, onChange }: Props) {
   return (
     <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
       <TextField
+        label="Buscar"
+        hideLabel
         placeholder="Buscar por nombre, SKU o IMEI…"
         value={v.query || ""}
         onChange={(e) => onChange({ ...v, query: e.target.value })}
       />
       <TextField
+        label="Categoría"
+        hideLabel
         placeholder="Categoría"
         value={v.category || ""}
         onChange={(e) => onChange({ ...v, category: e.target.value })}
       />
       <TextField
+        label="Marca"
+        hideLabel
         placeholder="Marca"
         value={v.brand || ""}
         onChange={(e) => onChange({ ...v, brand: e.target.value })}
       />
       <TextField
+        label="Sucursal"
+        hideLabel
         placeholder="Sucursal ID"
         value={v.storeId || ""}
         onChange={(e) => onChange({ ...v, storeId: e.target.value })}
       />
       <TextField
+        label="Stock mínimo"
+        hideLabel
         type="number"
         placeholder="Stock ≥"
         value={v.stockFrom ?? ""}
@@ -56,6 +66,8 @@ export default function FiltersPanel({ value, onChange }: Props) {
         }}
       />
       <TextField
+        label="Stock máximo"
+        hideLabel
         type="number"
         placeholder="Stock ≤"
         value={v.stockTo ?? ""}
@@ -70,7 +82,6 @@ export default function FiltersPanel({ value, onChange }: Props) {
           onChange(next);
         }}
       />
-      {/* estado si aplica */}
     </div>
   );
 }

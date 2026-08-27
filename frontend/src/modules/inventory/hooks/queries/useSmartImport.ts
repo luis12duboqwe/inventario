@@ -9,10 +9,10 @@ export function useSmartImportHistory(token: string, limit = 10) {
   });
 }
 
-export function useIncompleteDevices(token: string, storeId?: number, limit = 100) {
+export function useIncompleteDevices(token: string, storeId: number | null = null, limit = 100) {
   return useQuery({
     queryKey: ["incompleteDevices", storeId, limit],
-    queryFn: () => inventoryService.fetchIncompleteDevices(token, storeId, limit),
+    queryFn: () => inventoryService.fetchIncompleteDevices(token, storeId ?? undefined, limit),
     enabled: !!token,
   });
 }

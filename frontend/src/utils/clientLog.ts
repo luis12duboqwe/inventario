@@ -63,6 +63,16 @@ export function emitClientWarning(message: string, error?: unknown): void {
   emitClientLog("warning", message, error);
 }
 
-export function emitClientError(message: string, error?: unknown): void {
-  emitClientLog("error", message, error);
+export function emitClientError(message: string, error?: unknown): void;
+export function emitClientError(scope: string, message: string, error: unknown): void;
+export function emitClientError(
+  messageOrScope: string,
+  messageOrError?: string | unknown,
+  scopedError?: unknown,
+): void {
+  if (arguments.length >= 3 && typeof messageOrError === "string") {
+    emitClientLog("error", `[${messageOrScope}] ${messageOrError}`, scopedError);
+    return;
+  }
+  emitClientLog("error", messageOrScope, messageOrError);
 }

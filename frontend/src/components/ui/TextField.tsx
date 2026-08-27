@@ -13,6 +13,7 @@ type BaseProps = {
   leadingIcon?: ReactNode;
   trailingIcon?: ReactNode;
   hideLabel?: boolean;
+  fullWidth?: boolean;
 };
 
 type InputProps = BaseProps &
@@ -40,6 +41,7 @@ const TextField = forwardRef<HTMLInputElement | HTMLTextAreaElement, TextFieldPr
       trailingIcon,
       className,
       hideLabel = false,
+      fullWidth = false,
       multiline = false,
       ...rest
     } = props;
@@ -49,7 +51,12 @@ const TextField = forwardRef<HTMLInputElement | HTMLTextAreaElement, TextFieldPr
     const descriptionId = helperText ? `${fieldId}-helper` : undefined;
     const errorId = error ? `${fieldId}-error` : undefined;
 
-    const classes = ["ui-field", error ? "ui-field--error" : "", className ?? ""]
+    const classes = [
+      "ui-field",
+      error ? "ui-field--error" : "",
+      fullWidth ? "w-full" : "",
+      className ?? "",
+    ]
       .filter(Boolean)
       .join(" ");
     const labelClassName = ["ui-field__label", hideLabel ? "sr-only" : ""]
@@ -109,5 +116,6 @@ const TextField = forwardRef<HTMLInputElement | HTMLTextAreaElement, TextFieldPr
 
 TextField.displayName = "TextField";
 
+export { TextField };
 export type { TextFieldProps };
 export default TextField;

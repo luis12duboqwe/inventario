@@ -1,11 +1,11 @@
 import React from "react";
-import Modal from "../../../../../components/ui/Modal";
-import Button from "../../../../../components/ui/Button";
-import TextField from "../../../../../components/ui/TextField";
+import Modal from "@components/ui/Modal";
+import Button from "@components/ui/Button";
+import TextField from "@components/ui/TextField";
 
 type Props = {
   open?: boolean;
-  onClose?: () => void;
+  onClose: () => void;
   onSubmit?: (payload: { categoryId: string }) => void;
 };
 
@@ -27,7 +27,7 @@ export default function MoveCategoryModal({ open, onClose, onSubmit }: Props) {
   return (
     <Modal
       isOpen={open}
-      onClose={onClose || (() => {})}
+      onClose={onClose}
       title="Mover a categoría"
       size="sm"
       footer={
@@ -44,10 +44,11 @@ export default function MoveCategoryModal({ open, onClose, onSubmit }: Props) {
       <div className="flex flex-col gap-4">
         <p className="m-0 text-muted-foreground text-sm">Ingresa el ID de la categoría destino.</p>
         <TextField
+          label="Categoría destino"
+          hideLabel
           placeholder="Categoría ID"
           value={categoryId}
           onChange={(event) => setCategoryId(event.target.value)}
-          fullWidth
         />
       </div>
     </Modal>

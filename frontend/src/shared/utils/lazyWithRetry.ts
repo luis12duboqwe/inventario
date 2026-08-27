@@ -1,6 +1,19 @@
-import { lazy, type ComponentType, type LazyExoticComponent } from "react";
+import {
+  lazy,
+  type ComponentType,
+  type ExoticComponent,
+  type LazyExoticComponent,
+} from "react";
 
-type LazyFactory<T extends ComponentType<unknown>> = () => Promise<{ default: T }>;
+type RenderableComponent = ComponentType<never> | ExoticComponent<never>;
+
+type ComponentProps<T> = T extends ComponentType<infer P>
+  ? P
+  : T extends ExoticComponent<infer P>
+    ? P
+    : never;
+
+type LazyFactory<T extends RenderableComponent> = () => Promise<{ default: T }>;
 
 type LazyWithRetryOptions = {
   retries?: number;
@@ -27,11 +40,12 @@ function wait(delayMs: number): Promise<void> {
 
 /**
  * Envuelve React.lazy con reintentos limitados para mitigar fallos intermitentes al cargar módulos.
+ * Conserva las props del componente, incluso cuando el export default está memoizado.
  */
-export function lazyWithRetry<T extends ComponentType<unknown>>(
+export function lazyWithRetry<T extends RenderableComponent>(
   factory: LazyFactory<T>,
   options: LazyWithRetryOptions = {},
-): LazyExoticComponent<T> {
+): LazyExoticComponent<ComponentType<ComponentProps<T>>> {
   const {
     retries = 2,
     delayMs = 500,
@@ -64,5 +78,10 @@ export function lazyWithRetry<T extends ComponentType<unknown>>(
     }
   }
 
-  return lazy(() => load(0));
+  return lazy(async () => {
+    const module = await load(0);
+    return {
+      default: module.default as ComponentType<ComponentProps<T>>,
+    };
+  });
 }

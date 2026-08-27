@@ -8,6 +8,11 @@ export type ToastMessage = {
   variant: ToastVariant;
 };
 
+export type PushToast = {
+  (toast: Omit<ToastMessage, "id">): void;
+  (message: string, variant: ToastVariant): void;
+};
+
 export function useUIState() {
   const [compactMode, setCompactModeState] = useState<boolean>(() => {
     if (typeof window === "undefined") {
@@ -41,7 +46,14 @@ export function useUIState() {
     });
   }, []);
 
-  const pushToast = useCallback((toast: Omit<ToastMessage, "id">) => {
+  const pushToast = useCallback<PushToast>((
+    toastOrMessage: Omit<ToastMessage, "id"> | string,
+    legacyVariant?: ToastVariant,
+  ) => {
+    const toast: Omit<ToastMessage, "id"> =
+      typeof toastOrMessage === "string"
+        ? { message: toastOrMessage, variant: legacyVariant ?? "info" }
+        : toastOrMessage;
     const id = Date.now() + Math.round(Math.random() * 1000);
     setToasts((current) => [...current, { id, ...toast }]);
     window.setTimeout(() => {

@@ -122,7 +122,10 @@ import InventoryMovementsPage from "../InventoryMovementsPage";
 import InventorySuppliersPage from "../InventorySuppliersPage";
 import InventoryAlertsPage from "../InventoryAlertsPage";
 import InventoryReservationsPage from "../InventoryReservationsPage";
-import { useInventoryLayoutState } from "../useInventoryLayoutState";
+import {
+  useInventoryLayoutState,
+  type InventoryLayoutContextValue,
+} from "../useInventoryLayoutState";
 import * as corporateReasonModule from "../../../../utils/corporateReason";
 import type { InventoryReservation } from "../../../../api";
 
@@ -245,7 +248,7 @@ const createContextValue = (): InventoryLayoutContextValue => ({
   search: {
     inventoryQuery: "",
     setInventoryQuery: vi.fn(),
-    estadoFilter: "TODOS",
+    estadoFilter: "ALL",
     setEstadoFilter: vi.fn(),
     filteredDevices: [],
     highlightedDeviceIds: new Set(),
@@ -352,6 +355,24 @@ const createContextValue = (): InventoryLayoutContextValue => ({
   },
 });
 
+const createSplitValues = (contextValue: InventoryLayoutContextValue) => ({
+  searchValue: contextValue.search,
+  metricsValue: contextValue.metrics,
+  actionsValue: {
+    module: contextValue.module,
+    smartImport: contextValue.smartImport,
+    editing: contextValue.editing,
+    downloads: contextValue.downloads,
+    catalog: contextValue.catalog,
+    alerts: contextValue.alerts,
+    helpers: contextValue.helpers,
+    labeling: contextValue.labeling,
+    reservations: contextValue.reservations,
+    variants: contextValue.variants,
+    bundles: contextValue.bundles,
+  },
+});
+
 describe("InventoryPage", () => {
   const handleTabChange = vi.fn();
   const closeEditDialog = vi.fn();
@@ -363,12 +384,13 @@ describe("InventoryPage", () => {
     handleSubmitDeviceUpdates.mockReset();
     const contextValue = createContextValue();
     useInventoryLayoutStateMock.mockReturnValue({
+      ...createSplitValues(contextValue),
       contextValue,
       tabOptions: [
-        { id: "productos", label: "Productos", icon: null },
-        { id: "listas", label: "Listas de precios", icon: null },
-        { id: "movimientos", label: "Movimientos", icon: null },
-        { id: "reservas", label: "Reservas", icon: null },
+        { id: "productos", label: "Productos", icon: null, href: "/inventario/productos" },
+        { id: "listas", label: "Listas de precios", icon: null, href: "/inventario/listas" },
+        { id: "movimientos", label: "Movimientos", icon: null, href: "/inventario/movimientos" },
+        { id: "reservas", label: "Reservas", icon: null, href: "/inventario/reservas" },
       ],
       activeTab: "productos",
       handleTabChange,
@@ -391,10 +413,10 @@ describe("InventoryPage", () => {
     );
 
     expect(screen.getByRole("heading", { name: /Inventario corporativo/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Productos/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Listas de precios/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Movimientos/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Reservas/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Productos/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Listas de precios/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Movimientos/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Reservas/i })).toBeInTheDocument();
   });
 
   it("cambia de pestaña al hacer clic", async () => {
@@ -405,7 +427,7 @@ describe("InventoryPage", () => {
       </MemoryRouter>,
     );
 
-    const movimientosTab = screen.getByRole("button", { name: /Movimientos/i });
+    const movimientosTab = screen.getByRole("link", { name: /Movimientos/i });
     await user.click(movimientosTab);
 
     expect(handleTabChange).toHaveBeenCalledWith("movimientos");
@@ -414,8 +436,11 @@ describe("InventoryPage", () => {
   it("muestra indicador de carga y diálogo de edición", async () => {
     const contextValue = createContextValue();
     useInventoryLayoutStateMock.mockReturnValue({
+      ...createSplitValues(contextValue),
       contextValue,
-      tabOptions: [{ id: "productos", label: "Productos", icon: null }],
+      tabOptions: [
+        { id: "productos", label: "Productos", icon: null, href: "/inventario/productos" },
+      ],
       activeTab: "productos",
       handleTabChange,
       moduleStatus: "warning",
@@ -441,10 +466,11 @@ describe("InventoryPage", () => {
   it("renderiza la pestaña de listas de precios con el proveedor de dashboard", () => {
     const contextValue = createContextValue();
     useInventoryLayoutStateMock.mockReturnValue({
+      ...createSplitValues(contextValue),
       contextValue,
       tabOptions: [
-        { id: "productos", label: "Productos", icon: null },
-        { id: "listas", label: "Listas de precios", icon: null },
+        { id: "productos", label: "Productos", icon: null, href: "/inventario/productos" },
+        { id: "listas", label: "Listas de precios", icon: null, href: "/inventario/listas" },
       ],
       activeTab: "listas",
       handleTabChange,

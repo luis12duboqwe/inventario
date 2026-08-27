@@ -4,10 +4,10 @@ import Button from "@components/ui/Button";
 
 type Props = {
   open?: boolean;
-  onClose?: () => void;
+  onClose: () => void;
 };
 
-export default function ExportModal({ open = false, onClose = () => {} }: Props) {
+export default function ExportModal({ open = false, onClose }: Props) {
   return (
     <Modal
       open={open}

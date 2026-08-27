@@ -1,11 +1,11 @@
 import React from "react";
-import Modal from "../../../../../components/ui/Modal";
-import Button from "../../../../../components/ui/Button";
-import TextField from "../../../../../components/ui/TextField";
+import Modal from "@components/ui/Modal";
+import Button from "@components/ui/Button";
+import TextField from "@components/ui/TextField";
 
 type Props = {
   open?: boolean;
-  onClose?: () => void;
+  onClose: () => void;
   onSubmit?: (payload: { tags: string[] }) => void;
 };
 
@@ -31,7 +31,7 @@ export default function TagModal({ open, onClose, onSubmit }: Props) {
   return (
     <Modal
       isOpen={open}
-      onClose={onClose || (() => {})}
+      onClose={onClose}
       title="Asignar etiquetas"
       size="sm"
       footer={
@@ -50,10 +50,11 @@ export default function TagModal({ open, onClose, onSubmit }: Props) {
           Ingresa las etiquetas separadas por coma.
         </p>
         <TextField
+          label="Etiquetas"
+          hideLabel
           placeholder="tag1, tag2, tag3"
           value={tags}
           onChange={(event) => setTags(event.target.value)}
-          fullWidth
         />
       </div>
     </Modal>

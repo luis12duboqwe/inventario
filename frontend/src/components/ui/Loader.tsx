@@ -37,9 +37,13 @@ export const Loader: React.FC<LoaderProps> = ({
   }
 
   if (variant === "skeleton") {
+    const skeletonProps = {
+      ...(height !== undefined ? { height } : {}),
+      ...(width !== undefined ? { width } : {}),
+    };
     return (
       <div aria-label={displayLabel} role="status" className={className}>
-        <Skeleton height={height} width={width} />
+        <Skeleton {...skeletonProps} />
       </div>
     );
   }

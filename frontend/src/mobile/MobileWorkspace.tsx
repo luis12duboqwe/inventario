@@ -57,7 +57,7 @@ function MobileWorkspace({ title = "Softmobile móvil" }: MobileWorkspaceProps) 
   // POS State
   const [mode, setMode] = useState<"inventory" | "pos">("inventory");
   const [cartLines, setCartLines] = useState<CartLine[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("CASH");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("EFECTIVO");
 
   const [lookupQuery, setLookupQuery] = useState("");
   const [lookupResults, setLookupResults] = useState<CatalogDevice[]>([]);
@@ -140,6 +140,18 @@ function MobileWorkspace({ title = "Softmobile móvil" }: MobileWorkspaceProps) 
     });
   }, []);
 
+  const addToCart = useCallback((device: CatalogDevice) => {
+    setCartLines((current) => {
+      const existing = current.find((line) => line.device.id === device.id);
+      if (existing) {
+        return current.map((line) =>
+          line.device.id === device.id ? { ...line, quantity: line.quantity + 1 } : line,
+        );
+      }
+      return [{ id: crypto.randomUUID(), device, quantity: 1 }, ...current];
+    });
+  }, []);
+
   const handleCameraDetection = useCallback(
     async (value: string) => {
       if (mode === "pos") {
@@ -148,13 +160,14 @@ function MobileWorkspace({ title = "Softmobile móvil" }: MobileWorkspaceProps) 
           if (results.length === 0) {
             results = await searchCatalogDevices(token, { serial: value });
           }
-          if (results.length > 0) {
-            addToCart(results[0]);
-            pushToast({ message: `Agregado: ${results[0].name}`, variant: "success" });
+          const device = results[0];
+          if (device) {
+            addToCart(device);
+            pushToast({ message: `Agregado: ${device.name}`, variant: "success" });
           } else {
             pushToast({ message: `No encontrado: ${value}`, variant: "error" });
           }
-        } catch (e) {
+        } catch {
           pushToast({ message: "Error al buscar producto", variant: "error" });
         }
       } else {
@@ -163,7 +176,7 @@ function MobileWorkspace({ title = "Softmobile móvil" }: MobileWorkspaceProps) 
         pushToast({ message: `Capturado ${value} desde la cámara.`, variant: "success" });
       }
     },
-    [addCountLine, addReceivingLine, pushToast, mode, addToCart, token],
+    [addCountLine, addReceivingLine, addToCart, pushToast, mode, token],
   );
 
   useEffect(() => {
@@ -235,18 +248,6 @@ function MobileWorkspace({ title = "Softmobile móvil" }: MobileWorkspaceProps) 
     };
   }, [cameraEnabled, handleCameraDetection, stopCamera, stopTracks]);
 
-  const addToCart = useCallback((device: CatalogDevice) => {
-    setCartLines((current) => {
-      const existing = current.find((line) => line.device.id === device.id);
-      if (existing) {
-        return current.map((line) =>
-          line.device.id === device.id ? { ...line, quantity: line.quantity + 1 } : line,
-        );
-      }
-      return [{ id: crypto.randomUUID(), device, quantity: 1 }, ...current];
-    });
-  }, []);
-
   const handleCheckout = async () => {
     if (!selectedStoreId) {
       pushToast({ message: "Selecciona una sucursal.", variant: "error" });
@@ -287,30 +288,28 @@ function MobileWorkspace({ title = "Softmobile móvil" }: MobileWorkspaceProps) 
 
     if (mode === "pos") {
       try {
-        // Intentar búsqueda exacta por IMEI/Serie
         let results = await searchCatalogDevices(token, { imei: value });
         if (results.length === 0) {
           results = await searchCatalogDevices(token, { serial: value });
         }
 
-        if (results.length > 0) {
-          const device = results[0];
+        const device = results[0];
+        if (device) {
           addToCart(device);
           pushToast({ message: `Agregado: ${device.name}`, variant: "success" });
           return { label: device.name };
-        } else {
-          pushToast({ message: "Producto no encontrado", variant: "error" });
-          return "No encontrado";
         }
-      } catch (e) {
-        console.error(e);
+        pushToast({ message: "Producto no encontrado", variant: "error" });
+        return "No encontrado";
+      } catch (error) {
+        console.error(error);
         return "Error búsqueda";
       }
-    } else {
-      addCountLine(value);
-      addReceivingLine(value);
-      return { label: value };
     }
+
+    addCountLine(value);
+    addReceivingLine(value);
+    return { label: value };
   };
 
   const handleUpdateLine = (
@@ -695,9 +694,9 @@ function MobileWorkspace({ title = "Softmobile móvil" }: MobileWorkspaceProps) 
                   value={paymentMethod}
                   onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
                 >
-                  <option value="CASH">Efectivo</option>
-                  <option value="CARD">Tarjeta</option>
-                  <option value="TRANSFER">Transferencia</option>
+                  <option value="EFECTIVO">Efectivo</option>
+                  <option value="TARJETA">Tarjeta</option>
+                  <option value="TRANSFERENCIA">Transferencia</option>
                 </select>
               </label>
 

@@ -8,14 +8,24 @@ export type PrintOptions = {
   template: "standard" | "price_tag" | "inventory_tag";
 };
 
-type Props = {
-  isOpen: boolean;
-  onClose: () => void;
-  onConfirm: (options: PrintOptions) => void;
-  deviceCount: number;
-};
+type Props =
+  | {
+      isOpen: boolean;
+      open?: never;
+      onClose: () => void;
+      onConfirm: (options: PrintOptions) => void;
+      deviceCount: number;
+    }
+  | {
+      isOpen?: never;
+      open: boolean;
+      onClose: () => void;
+      onConfirm: (options: PrintOptions) => void;
+      deviceCount: number;
+    };
 
-export default function PrintLabelDialog({ isOpen, onClose, onConfirm, deviceCount }: Props) {
+export default function PrintLabelDialog({ isOpen, open, onClose, onConfirm, deviceCount }: Props) {
+  const visible = isOpen ?? open;
   const [options, setOptions] = useState<PrintOptions>({
     includePrice: true,
     includeLogo: true,
@@ -29,7 +39,7 @@ export default function PrintLabelDialog({ isOpen, onClose, onConfirm, deviceCou
   };
 
   return (
-    <Modal open={isOpen} onClose={onClose} title={`Imprimir etiquetas (${deviceCount})`} size="sm">
+    <Modal open={visible} onClose={onClose} title={`Imprimir etiquetas (${deviceCount})`} size="sm">
       <form onSubmit={handleSubmit} className="print-options-form flex flex-col gap-6">
         <div className="form-group flex flex-col gap-2">
           <label htmlFor="template-select" className="text-muted-foreground text-sm font-medium">

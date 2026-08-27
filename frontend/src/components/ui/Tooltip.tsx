@@ -3,14 +3,33 @@ import styles from "./Tooltip.module.css";
 
 type TooltipProps = {
   content: string;
-  children: ReactNode;
+  children?: ReactNode;
   position?: "top" | "bottom" | "left" | "right";
 };
 
-function Tooltip({ content, children, position = "top" }: TooltipProps) {
+const DEFAULT_TOOLTIP_POSITION: NonNullable<TooltipProps["position"]> = "top";
+
+function Tooltip({ content, children, position = DEFAULT_TOOLTIP_POSITION }: TooltipProps) {
+  const trigger = children ?? (
+    <button
+      type="button"
+      aria-label={`Ayuda: ${content}`}
+      style={{
+        border: 0,
+        padding: 0,
+        background: "transparent",
+        color: "inherit",
+        cursor: "help",
+        font: "inherit",
+      }}
+    >
+      ⓘ
+    </button>
+  );
+
   return (
     <div className={styles.tooltipWrapper}>
-      {children}
+      {trigger}
       <div className={`${styles.tooltip} ${styles[position]}`} role="tooltip">
         {content}
       </div>
@@ -18,4 +37,6 @@ function Tooltip({ content, children, position = "top" }: TooltipProps) {
   );
 }
 
+export { Tooltip };
+export type { TooltipProps };
 export default Tooltip;

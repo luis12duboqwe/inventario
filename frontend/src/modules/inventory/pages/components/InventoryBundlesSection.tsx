@@ -122,7 +122,10 @@ function InventoryBundlesSection(): JSX.Element | null {
       );
 
     if (preparedItems.length === 0) {
-      pushToast("Agrega al menos un dispositivo al combo corporativo.", "warning");
+      pushToast({
+        message: "Agrega al menos un dispositivo al combo corporativo.",
+        variant: "warning",
+      });
       return;
     }
 

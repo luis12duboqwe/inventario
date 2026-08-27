@@ -2,9 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import { inventoryService } from "../../services/inventoryService";
 import { InventoryMovementsFilters } from "@api/inventory";
 
-export function useRecentMovements(token: string, storeId: number | null, lastRefresh?: number) {
+export function useRecentMovements(token: string, storeId: number | null, lastRefresh: Date | null = null) {
   return useQuery({
-    queryKey: ["recentMovements", storeId, lastRefresh],
+    queryKey: ["recentMovements", storeId, lastRefresh?.toISOString() ?? null],
     queryFn: async () => {
       const filters: InventoryMovementsFilters = {};
       if (storeId) {
@@ -20,6 +20,6 @@ export function useRecentMovements(token: string, storeId: number | null, lastRe
       return report.movimientos.slice(0, 8);
     },
     enabled: !!token,
-    staleTime: 1000 * 60, // 1 minute
+    staleTime: 1000 * 60,
   });
 }
