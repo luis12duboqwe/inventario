@@ -60,7 +60,7 @@ function Sidebar({ items, currentPath, mobileOpen = false, onNavigate }: Sidebar
 
   const onHoverSales = useCallback(() => {
     const base = getApiBaseUrl();
-    preimport(() => import("@/modules/sales/pages/POSPage"));
+    preimport(() => import("@/modules/operations/pages/OperationsPOS"));
     preimport(() => import("@/modules/sales/pages/QuotesListPage"));
     preimport(() => import("@/modules/sales/pages/CustomersListPage"));
 
