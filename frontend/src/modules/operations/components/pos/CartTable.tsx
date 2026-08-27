@@ -1,6 +1,9 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useCallback, useState } from "react";
 
+import { getDevices } from "@api/inventory";
 import type { PosSaleItemRequest } from "@api/pos";
+import POSQuickScan from "../../../sales/components/pos/POSQuickScan";
+import { useOperationsModule } from "../../hooks/useOperationsModule";
 
 export type CartLine = PosSaleItemRequest & {
   id: string;
@@ -14,13 +17,74 @@ const CLEAR_DISCOUNT_FIELDS: (keyof CartLine)[] = ["discount"];
 type CartTableProps = {
   items: CartLine[];
   onAdd: (item: Omit<CartLine, "id">) => void;
-  onUpdate: (id: string, update: Partial<CartLine>, options?: { clear?: ReadonlyArray<keyof CartLine> }) => void;
+  onUpdate: (
+    id: string,
+    update: Partial<CartLine>,
+    options?: { clear?: ReadonlyArray<keyof CartLine> },
+  ) => void;
   onRemove: (id: string) => void;
 };
 
+function normalizeIdentifier(value: string | null | undefined): string {
+  return value?.trim().toLowerCase() ?? "";
+}
+
 // [PACK34-UI]
 export default function CartTable({ items, onAdd, onUpdate, onRemove }: CartTableProps) {
+  const { token, selectedStoreId } = useOperationsModule();
   const [draft, setDraft] = useState<Omit<CartLine, "id">>({ qty: 1 });
+
+  const handleQuickScan = useCallback(
+    async (rawCode: string) => {
+      const code = rawCode.trim();
+      if (!code) {
+        throw new Error("Escanea o ingresa un código válido.");
+      }
+      if (!token || !selectedStoreId) {
+        throw new Error("Selecciona una sucursal antes de escanear.");
+      }
+
+      const matches = await getDevices(token, selectedStoreId, {
+        search: code,
+        limit: 20,
+      });
+      const normalizedCode = normalizeIdentifier(code);
+      const device = matches.find((candidate) => {
+        const identifiers = [
+          candidate.sku,
+          candidate.imei,
+          candidate.serial,
+          candidate.identifier?.imei_1,
+          candidate.identifier?.imei_2,
+          candidate.identifier?.numero_serie,
+        ];
+        return identifiers.some(
+          (identifier) => normalizeIdentifier(identifier) === normalizedCode,
+        );
+      });
+
+      if (!device) {
+        throw new Error("No se encontró un equipo exacto con ese SKU, IMEI o serie.");
+      }
+      if (device.quantity <= 0) {
+        throw new Error(`${device.name} no tiene stock disponible en esta sucursal.`);
+      }
+
+      const nextItem: Omit<CartLine, "id"> = {
+        device_id: device.id,
+        qty: 1,
+        price: device.precio_venta ?? device.unit_price,
+        description: device.name,
+      };
+      if (device.imei) {
+        nextItem.imei = device.imei;
+      }
+
+      onAdd(nextItem);
+      return { label: device.name };
+    },
+    [onAdd, selectedStoreId, token],
+  );
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -38,8 +102,12 @@ export default function CartTable({ items, onAdd, onUpdate, onRemove }: CartTabl
     <section className="card">
       <header className="card__header">
         <h3 className="card__title">Carrito</h3>
-        <p className="card__subtitle">Agrega artículos por SKU/ID o IMEI y ajusta el precio manualmente.</p>
+        <p className="card__subtitle">
+          Escanea SKU/IMEI/serie o agrega artículos manualmente y ajusta el precio.
+        </p>
       </header>
+
+      <POSQuickScan onSubmit={handleQuickScan} />
 
       <form className="pos-cart-form" onSubmit={handleSubmit}>
         <label>
@@ -94,17 +162,17 @@ export default function CartTable({ items, onAdd, onUpdate, onRemove }: CartTabl
             min={0}
             step="0.01"
             value={draft.price ?? ""}
-              onChange={(event) =>
-                setDraft((prev) => {
-                  const raw = event.target.value;
-                  if (raw) {
-                    return { ...prev, price: Number(raw) };
-                  }
-                  const next = { ...prev };
-                  delete next.price;
-                  return next;
-                })
-              }
+            onChange={(event) =>
+              setDraft((prev) => {
+                const raw = event.target.value;
+                if (raw) {
+                  return { ...prev, price: Number(raw) };
+                }
+                const next = { ...prev };
+                delete next.price;
+                return next;
+              })
+            }
           />
         </label>
         <label>
@@ -115,17 +183,17 @@ export default function CartTable({ items, onAdd, onUpdate, onRemove }: CartTabl
             max={100}
             step="0.1"
             value={draft.discount ?? ""}
-              onChange={(event) =>
-                setDraft((prev) => {
-                  const raw = event.target.value;
-                  if (raw) {
-                    return { ...prev, discount: Number(raw) };
-                  }
-                  const next = { ...prev };
-                  delete next.discount;
-                  return next;
-                })
-              }
+            onChange={(event) =>
+              setDraft((prev) => {
+                const raw = event.target.value;
+                if (raw) {
+                  return { ...prev, discount: Number(raw) };
+                }
+                const next = { ...prev };
+                delete next.discount;
+                return next;
+              })
+            }
           />
         </label>
         <label className="pos-cart-form__description">
@@ -256,4 +324,3 @@ export default function CartTable({ items, onAdd, onUpdate, onRemove }: CartTabl
     </section>
   );
 }
-
