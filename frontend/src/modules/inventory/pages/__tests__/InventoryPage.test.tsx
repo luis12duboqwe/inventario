@@ -122,7 +122,10 @@ import InventoryMovementsPage from "../InventoryMovementsPage";
 import InventorySuppliersPage from "../InventorySuppliersPage";
 import InventoryAlertsPage from "../InventoryAlertsPage";
 import InventoryReservationsPage from "../InventoryReservationsPage";
-import { useInventoryLayoutState } from "../useInventoryLayoutState";
+import {
+  useInventoryLayoutState,
+  type InventoryLayoutContextValue,
+} from "../useInventoryLayoutState";
 import * as corporateReasonModule from "../../../../utils/corporateReason";
 import type { InventoryReservation } from "../../../../api";
 
@@ -365,10 +368,10 @@ describe("InventoryPage", () => {
     useInventoryLayoutStateMock.mockReturnValue({
       contextValue,
       tabOptions: [
-        { id: "productos", label: "Productos", icon: null },
-        { id: "listas", label: "Listas de precios", icon: null },
-        { id: "movimientos", label: "Movimientos", icon: null },
-        { id: "reservas", label: "Reservas", icon: null },
+        { id: "productos", label: "Productos", icon: null, href: "/inventario/productos" },
+        { id: "listas", label: "Listas de precios", icon: null, href: "/inventario/listas" },
+        { id: "movimientos", label: "Movimientos", icon: null, href: "/inventario/movimientos" },
+        { id: "reservas", label: "Reservas", icon: null, href: "/inventario/reservas" },
       ],
       activeTab: "productos",
       handleTabChange,
@@ -415,7 +418,9 @@ describe("InventoryPage", () => {
     const contextValue = createContextValue();
     useInventoryLayoutStateMock.mockReturnValue({
       contextValue,
-      tabOptions: [{ id: "productos", label: "Productos", icon: null }],
+      tabOptions: [
+        { id: "productos", label: "Productos", icon: null, href: "/inventario/productos" },
+      ],
       activeTab: "productos",
       handleTabChange,
       moduleStatus: "warning",
@@ -443,8 +448,8 @@ describe("InventoryPage", () => {
     useInventoryLayoutStateMock.mockReturnValue({
       contextValue,
       tabOptions: [
-        { id: "productos", label: "Productos", icon: null },
-        { id: "listas", label: "Listas de precios", icon: null },
+        { id: "productos", label: "Productos", icon: null, href: "/inventario/productos" },
+        { id: "listas", label: "Listas de precios", icon: null, href: "/inventario/listas" },
       ],
       activeTab: "listas",
       handleTabChange,
