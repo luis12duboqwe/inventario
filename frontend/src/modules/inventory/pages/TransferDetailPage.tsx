@@ -173,7 +173,7 @@ function TransferDetailPage() {
       pushToast({ message: "Transferencia despachada exitosamente", variant: "success" });
     } catch (err) {
       emitClientError("TransferDetailPage", "Error dispatching transfer", err);
-      pushToast({ message: "Error al despachar la transferencia", variant: "danger" });
+      pushToast({ message: "Error al despachar la transferencia", variant: "error" });
     }
   };
 
@@ -194,7 +194,7 @@ function TransferDetailPage() {
       pushToast({ message: "Transferencia recibida exitosamente", variant: "success" });
     } catch (err) {
       emitClientError("TransferDetailPage", "Error receiving transfer", err);
-      pushToast({ message: "Error al recibir la transferencia", variant: "danger" });
+      pushToast({ message: "Error al recibir la transferencia", variant: "error" });
     }
   };
 
@@ -208,7 +208,7 @@ function TransferDetailPage() {
       pushToast({ message: "Transferencia cancelada", variant: "info" });
     } catch (err) {
       emitClientError("TransferDetailPage", "Error cancelling transfer", err);
-      pushToast({ message: "Error al cancelar la transferencia", variant: "danger" });
+      pushToast({ message: "Error al cancelar la transferencia", variant: "error" });
     }
   };
 
