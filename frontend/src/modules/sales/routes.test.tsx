@@ -6,10 +6,14 @@ vi.mock("../operations/pages/OperationsPOS", () => ({
   default: () => <div data-testid="canonical-operations-pos">POS canónico</div>,
 }));
 
+vi.mock("./pages/POSPage", () => ({
+  default: () => <div data-testid="legacy-sales-pos">POS legacy</div>,
+}));
+
 import SalesRoutes from "./routes";
 
 describe("SalesRoutes", () => {
-  it("monta OperationsPOS como implementación canónica en /sales/pos", async () => {
+  it("monta OperationsPOS y no el POS legacy en /sales/pos", async () => {
     render(
       <MemoryRouter initialEntries={["/pos"]}>
         <SalesRoutes />
@@ -17,5 +21,6 @@ describe("SalesRoutes", () => {
     );
 
     expect(await screen.findByTestId("canonical-operations-pos")).toBeInTheDocument();
+    expect(screen.queryByTestId("legacy-sales-pos")).not.toBeInTheDocument();
   });
 });
