@@ -1,7 +1,9 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 import OperationsPOS from "../../../pages/OperationsPOS";
+import { getDevices } from "@api/inventory";
 
 const moduleState = {
   token: "token-123",
@@ -20,6 +22,24 @@ vi.mock("../../../../dashboard/context/DashboardContext", () => ({
     token: "token-123",
     pushToast: vi.fn(),
   }),
+}));
+
+vi.mock("@api/inventory", () => ({
+  getDevices: vi.fn(async () => [
+    {
+      id: 10,
+      sku: "IPH15-128-BLK",
+      name: "iPhone 15 128GB Negro",
+      quantity: 1,
+      store_id: 1,
+      unit_price: 18000,
+      precio_venta: 18500,
+      inventory_value: 18000,
+      completo: true,
+      imei: "356789012345678",
+      serial: "SN-IP15-001",
+    },
+  ]),
 }));
 
 vi.mock("@api/pos", () => ({
@@ -89,10 +109,13 @@ vi.mock("@api/pos", () => ({
   })),
 }));
 
+const getDevicesMock = vi.mocked(getDevices);
+
 // [PACK34-UI]
 describe("OperationsPOS", () => {
   beforeEach(() => {
     moduleState.enablePurchasesSales = true;
+    getDevicesMock.mockClear();
   });
 
   it("muestra la estructura principal del POS", async () => {
@@ -100,6 +123,23 @@ describe("OperationsPOS", () => {
 
     expect(await screen.findByText(/POS \/ Caja/i)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText(/Totales/)).toBeInTheDocument());
+  });
+
+  it("agrega al carrito un equipo escaneado desde el inventario real de la sucursal", async () => {
+    const user = userEvent.setup();
+    render(<OperationsPOS />);
+
+    const input = await screen.findByRole("textbox", { name: "Código manual" });
+    await user.type(input, "356789012345678");
+    await user.click(screen.getByRole("button", { name: "Aplicar" }));
+
+    await waitFor(() =>
+      expect(getDevicesMock).toHaveBeenCalledWith("token-123", 1, {
+        search: "356789012345678",
+        limit: 20,
+      }),
+    );
+    expect(await screen.findByText("iPhone 15 128GB Negro")).toBeInTheDocument();
   });
 
   it("informa cuando el flag de ventas y compras está desactivado", async () => {
