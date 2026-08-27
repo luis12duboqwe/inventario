@@ -29,5 +29,6 @@ function Tooltip({ content, children, position = "top" }: TooltipProps) {
   );
 }
 
+export { Tooltip };
 export type { TooltipProps };
 export default Tooltip;
