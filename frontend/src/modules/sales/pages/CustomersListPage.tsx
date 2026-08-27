@@ -2,6 +2,7 @@ import React from "react";
 // [PACK23-CUSTOMERS-LIST-IMPORTS-START]
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { emitClientError } from "../../../utils/clientLog";
 import { SalesCustomers } from "../../../services/sales";
 import type { Customer, CustomerListParams } from "../../../services/sales";
@@ -85,7 +86,7 @@ export function CustomersListPage() {
         setTotal(response.total);
       } catch (err) {
         emitClientError("CustomersListPage", "Error loading customers", err);
-        pushToast("Error al cargar clientes", "error");
+        toast.error("Error al cargar clientes");
       } finally {
         setLoading(false);
       }
