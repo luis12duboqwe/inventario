@@ -22,7 +22,7 @@
 }
 
 .tooltipWrapper:hover .tooltip,
-.tooltipWrapper:focus-visible .tooltip {
+.tooltipWrapper:focus-within .tooltip {
   opacity: 1;
   visibility: visible;
 }
@@ -35,7 +35,7 @@
 }
 
 .tooltipWrapper:hover .top,
-.tooltipWrapper:focus-visible .top {
+.tooltipWrapper:focus-within .top {
   transform: translateX(-50%) translateY(0);
 }
 
@@ -47,7 +47,7 @@
 }
 
 .tooltipWrapper:hover .bottom,
-.tooltipWrapper:focus-visible .bottom {
+.tooltipWrapper:focus-within .bottom {
   transform: translateX(-50%) translateY(0);
 }
 
@@ -59,7 +59,7 @@
 }
 
 .tooltipWrapper:hover .left,
-.tooltipWrapper:focus-visible .left {
+.tooltipWrapper:focus-within .left {
   transform: translateY(-50%) translateX(0);
 }
 
@@ -71,6 +71,6 @@
 }
 
 .tooltipWrapper:hover .right,
-.tooltipWrapper:focus-visible .right {
+.tooltipWrapper:focus-within .right {
   transform: translateY(-50%) translateX(0);
 }
