@@ -11,14 +11,20 @@ const DEFAULT_TOOLTIP_POSITION: NonNullable<TooltipProps["position"]> = "top";
 
 function Tooltip({ content, children, position = DEFAULT_TOOLTIP_POSITION }: TooltipProps) {
   const trigger = children ?? (
-    <span
-      tabIndex={0}
-      role="img"
+    <button
+      type="button"
       aria-label={`Ayuda: ${content}`}
-      style={{ cursor: "help", fontSize: "0.85em" }}
+      style={{
+        border: 0,
+        padding: 0,
+        background: "transparent",
+        color: "inherit",
+        cursor: "help",
+        font: "inherit",
+      }}
     >
       ⓘ
-    </span>
+    </button>
   );
 
   return (
